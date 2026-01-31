@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wolfee Analytics</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+
+<body>
+    <div id="loader">
+        <div class="spinner"></div>
+    </div>
+
+    <header>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <img src="logo.png" alt="Wolfee Logo" style="height: 50px; width: auto;">
+            <h1>Wolfee Analytics</h1>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="🔍 Search stocks..." autocomplete="off">
+            <div id="search-results" class="hidden"></div>
+        </div>
+
+        <div class="header-right">
+            <button id="mobile-opp-btn" class="secondary-btn hidden-desktop" onclick="toggleSidebar()">📈
+                Opportunities</button>
+            <button id="refresh-btn" onclick="init()">↻ Refresh Market</button>
+            <button id="export-btn" class="secondary-btn" onclick="openExportModal()">📊 Export Excel</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <main>
+            <!-- AI Section -->
+            <div id="ai-section" class="ai-card hidden">
+                <div class="ai-header">
+                    <span>🐺 Wolfee AI Protocol</span>
+                    <span class="ai-badge">LIVE INSIGHT</span>
+                </div>
+                <p id="ai-text">Analyzing market data...</p>
+            </div>
+
+            <div id="stock-grid">
+                <!-- Stock cards injected here -->
+            </div>
+        </main>
+
+        <aside id="sidebar">
+            <span id="sidebar-close" class="close-sidebar" onclick="toggleSidebar()">&times;</span>
+            <div class="sidebar-section">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                    <img src="logo.png" alt="Logo" style="height: 30px; opacity: 0.8;">
+                    <h2>📈 Buy Opportunities</h2>
+                </div>
+                <div id="opportunities-list">
+                    <p style="color: grey;">Scanning market...</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal hidden">
+        <div class="modal-content export-content">
+            <span class="close-modal" onclick="closeExportModal()">&times;</span>
+            <h2>📊 Export Market Analysis</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">Select a time period for your detailed Excel
+                export:</p>
+
+            <div class="export-options">
+                <button class="export-card" onclick="triggerExport('daily')">
+                    <div class="export-icon">📅</div>
+                    <div class="export-info">
+                        <h3>Daily Report</h3>
+                        <p>Last 5 trading days analysis</p>
+                    </div>
+                </button>
+
+                <button class="export-card" onclick="triggerExport('weekly')">
+                    <div class="export-icon">🗓️</div>
+                    <div class="export-info">
+                        <h3>Weekly Report</h3>
+                        <p>Past week performance</p>
+                    </div>
+                </button>
+
+                <button class="export-card" onclick="triggerExport('monthly')">
+                    <div class="export-icon">📆</div>
+                    <div class="export-info">
+                        <h3>Monthly Report</h3>
+                        <p>30-Day trend analysis</p>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for detailed view -->
+    <div id="stock-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 id="modal-title">Stock Name</h2>
+            <div class="modal-prediction" id="modal-prediction">
+                Best Entry: Loading...
+            </div>
+
+            <div class="chart-controls">
+                <button onclick="updateChart('1mo')">1 Month</button>
+                <button onclick="updateChart('1y')" class="active">1 Year</button>
+                <button onclick="updateChart('5y')">5 Years</button>
+            </div>
+
+            <div class="chart-container">
+                <div id="stockChart" style="width:100%; height:100%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
