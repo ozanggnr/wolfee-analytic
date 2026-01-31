@@ -1,4 +1,4 @@
-name = "wolfee-frontend"
+name = "wolfeeanalytics"
 main = "worker.js"
 compatibility_date = "2024-01-31"
 
