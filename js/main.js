@@ -5,7 +5,7 @@ let allStocks = [];
 async function init() {
     const loader = document.getElementById('loader');
     loader.classList.remove('hidden');
-    loader.innerHTML = '<div class="loader-spinner"></div><p>Loading market data... (first load may take 2-3 minutes)</p>';
+    loader.innerHTML = '<div class="loader-spinner"></div><p>Loading 100 stocks... (~60 sec)</p>';
 
     // Check cache first  
     const cachedData = sessionStorage.getItem('wolfee_market_data');
@@ -23,26 +23,33 @@ async function init() {
         return;
     }
 
-    // Fetch fresh data from new endpoint
+    // Two-stage loading
     try {
-        await fetchAndCache();
+        // Stage 1: Quick batch (100 stocks)
+        await fetchQuickBatch();
+        loader.innerHTML = '<div class="loader-spinner"></div><p>✓ Loaded 100 stocks! Loading rest in background...</p>';
+        setTimeout(() => loader.classList.add('hidden'), 2000);
+
+        // Stage 2: Load rest in background (doesn't block UI)
+        fetchFullBatchInBackground();
+
         loadAIInsight();
         loadOpportunities();
     } catch (error) {
         console.error('Init error:', error);
         document.getElementById('stock-grid').innerHTML =
             '<p style="color: red; grid-column: 1/-1;">Failed to load market data. Please refresh or check if Railway backend is running.</p>';
-    } finally {
         loader.classList.add('hidden');
     }
 }
 
-async function fetchAndCache() {
+// Stage 1: Fetch quick batch (100 stocks)
+async function fetchQuickBatch() {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 180000); // 3 minute timeout
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
 
     try {
-        const response = await fetch(`${API_URL}/api/market-data`, {
+        const response = await fetch(`${API_URL}/api/market-data/quick`, {
             signal: controller.signal
         });
 
@@ -57,11 +64,57 @@ async function fetchAndCache() {
         sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
 
         processData(data);
+        console.log(`✓ Quick batch loaded: ${data.stocks.length} stocks`);
     } catch (error) {
-        console.error("Fetch error:", error);
+        console.error("Quick batch error:", error);
         throw error;
     } finally {
         clearTimeout(timeout);
+    }
+}
+
+// Stage 2: Fetch full batch in background (doesn't block UI)
+async function fetchFullBatchInBackground() {
+    console.log("⏳ Starting background load of remaining stocks...");
+
+    try {
+        const response = await fetch(`${API_URL}/api/market-data/full`);
+
+        if (!response.ok) {
+            console.error("Background load failed:", response.status);
+            return;
+        }
+
+        const data = await response.json();
+
+        // Update cache with full data
+        sessionStorage.setItem('wolfee_market_data', JSON.stringify(data));
+        sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
+
+        // Merge new stocks into display
+        const currentStocks = window.allStocks || [];
+        const newStocks = data.stocks.filter(newStock =>
+            !currentStocks.some(existing => existing.symbol === newStock.symbol)
+        );
+
+        if (newStocks.length > 0) {
+            window.allStocks = [...currentStocks, ...newStocks];
+            console.log(`✓ Background load complete: +${newStocks.length} new stocks (Total: ${window.allStocks.length})`);
+
+            // Re-render with new stocks
+            const toggle = document.getElementById('region-toggle');
+            const isGlobalMode = toggle ? toggle.checked : false;
+
+            // Add new stock cards
+            newStocks.forEach(stock => {
+                const isStockGlobal = !stock.symbol.endsWith('.IS');
+                if ((isGlobalMode && isStockGlobal) || (!isGlobalMode && !isStockGlobal)) {
+                    renderStockCard(stock);
+                }
+            });
+        }
+    } catch (error) {
+        console.error("Background load error:", error);
     }
 }
 
