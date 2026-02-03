@@ -20,6 +20,12 @@ app.add_middleware(
 def read_root():
     return {"message": "Welcome to BIST Stock Analysis API"}
 
+@app.get("/healthz")
+@app.get("/health")
+def health_check():
+    """Health check endpoint for monitoring"""
+    return {"status": "healthy", "service": "Wolfee Analytics API"}
+
 @app.get("/api/stocks")
 def get_stocks():
     """Returns list of supported BIST, Global symbols and Commodities."""
