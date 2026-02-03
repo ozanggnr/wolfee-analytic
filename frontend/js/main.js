@@ -30,8 +30,7 @@ async function init() {
         loader.innerHTML = '<div class="loader-spinner"></div><p>✓ Data loaded!</p>';
         setTimeout(() => loader.classList.add('hidden'), 1500);
 
-        // Stage 2: Load rest in background (doesn't block UI)
-        fetchFullBatchInBackground();
+        // Data is now fully loaded
 
         loadAIInsight();
         loadOpportunities();
@@ -46,10 +45,10 @@ async function init() {
 // Stage 1: Fetch quick batch (100 stocks)
 async function fetchQuickBatch() {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
 
     try {
-        const response = await fetch(`${API_URL}/api/market-data/quick`, {
+        const response = await fetch(`${API_URL}/stocks`, {
             signal: controller.signal
         });
 
@@ -59,64 +58,45 @@ async function fetchQuickBatch() {
 
         const data = await response.json();
 
-        // Save to Cache with timestamp
+        // If backend returned 0 stocks, use client-side Yahoo Finance
+        if (!data.stocks || data.stocks.length === 0) {
+            console.warn('⚠️ Backend returned 0 stocks, fetching from browser...');
+            const browserData = await fetchAllStocksFromBrowser();
+            const fallbackData = {
+                stocks: browserData,
+                timestamp: new Date().toISOString(),
+                source: 'browser'
+            };
+            sessionStorage.setItem('wolfee_market_data', JSON.stringify(fallbackData));
+            sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
+            processData(fallbackData);
+            console.log(`✓ Client-side fetch loaded: ${browserData.length} stocks`);
+            return;
+        }
+
+        // Backend has data, use it
         sessionStorage.setItem('wolfee_market_data', JSON.stringify(data));
         sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
-
         processData(data);
-        console.log(`✓ Quick batch loaded: ${data.stocks.length} stocks`);
+        console.log(`✓ Backend loaded: ${data.stocks.length} stocks`);
     } catch (error) {
-        console.error("Quick batch error:", error);
-        throw error;
+        console.error("Backend fetch failed, using client-side fallback:", error);
+        // Backend is down, use client-side
+        const browserData = await fetchAllStocksFromBrowser();
+        const fallbackData = {
+            stocks: browserData,
+            timestamp: new Date().toISOString(),
+            source: 'browser'
+        };
+        sessionStorage.setItem('wolfee_market_data', JSON.stringify(fallbackData));
+        sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
+        processData(fallbackData);
+        console.log(`✓ Client-side fallback loaded: ${browserData.length} stocks`);
     } finally {
         clearTimeout(timeout);
     }
 }
 
-// Stage 2: Fetch full batch in background (doesn't block UI)
-async function fetchFullBatchInBackground() {
-    console.log("⏳ Starting background load of remaining stocks...");
-
-    try {
-        const response = await fetch(`${API_URL}/api/market-data/full`);
-
-        if (!response.ok) {
-            console.error("Background load failed:", response.status);
-            return;
-        }
-
-        const data = await response.json();
-
-        // Update cache with full data
-        sessionStorage.setItem('wolfee_market_data', JSON.stringify(data));
-        sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
-
-        // Merge new stocks into display
-        const currentStocks = window.allStocks || [];
-        const newStocks = data.stocks.filter(newStock =>
-            !currentStocks.some(existing => existing.symbol === newStock.symbol)
-        );
-
-        if (newStocks.length > 0) {
-            window.allStocks = [...currentStocks, ...newStocks];
-            console.log(`✓ Background load complete: +${newStocks.length} new stocks (Total: ${window.allStocks.length})`);
-
-            // Re-render with new stocks
-            const toggle = document.getElementById('region-toggle');
-            const isGlobalMode = toggle ? toggle.checked : false;
-
-            // Add new stock cards
-            newStocks.forEach(stock => {
-                const isStockGlobal = !stock.symbol.endsWith('.IS');
-                if ((isGlobalMode && isStockGlobal) || (!isGlobalMode && !isStockGlobal)) {
-                    renderStockCard(stock);
-                }
-            });
-        }
-    } catch (error) {
-        console.error("Background load error:", error);
-    }
-}
 
 function processData(data) {
     allStocks = data.stocks || [];
