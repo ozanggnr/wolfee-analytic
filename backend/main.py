@@ -146,58 +146,23 @@ def get_quick_market_data(background_tasks: BackgroundTasks):
 
 @app.get("/api/market-data/full")
 def get_full_market_data():
-    """Returns ALL stocks using multi-API intelligent rotation."""
-    global full_cache
+    """Returns ALL stocks using existing background cache."""
+    global cache
     
     # Check cache
-    now = datetime.now()
-    if full_cache["data"] is not None and full_cache["timestamp"]:
-        if now - full_cache["timestamp"] < timedelta(minutes=5):
-            print(f"Serving full batch from cache ({len(full_cache['data'])} stocks)")
-            return {"stocks": full_cache["data"]}
+    now = time.time()
+    if cache["quick_data"] and (now - cache["last_updated"]) < 300:
+        print(f"Serving full batch from cache ({len(cache['quick_data'])} stocks)")
+        return {"stocks": cache["quick_data"]}
     
-    print("🚀 Loading FULL batch with multi-API rotation...")
-    results = []
+    # If no cache (first run), return whatever we have or empty list
+    # The background task should be running from the first 'quick' call
+    if cache["quick_data"]:
+         return {"stocks": cache["quick_data"]}
+         
+    return {"stocks": []}
     
-    # Get API router
-    router = get_router()
-    
-    # All Turkish stocks
-    print(f"📊 Loading {len(BIST_SYMBOLS)} Turkish stocks...")
-    for symbol in BIST_SYMBOLS:
-        try:
-            data = analyze_stock(symbol, is_commodity=False)
-            if data:
-                results.append(data)
-        except Exception as e:
-            print(f"Error {symbol}: {e}")
-    
-    # All Global stocks
-    print(f"🌍 Loading {len(GLOBAL_SYMBOLS)} Global stocks...")
-    for symbol in GLOBAL_SYMBOLS:
-        try:
-            data = analyze_stock(symbol, is_commodity=False)
-            if data:
-                results.append(data)
-        except Exception as e:
-            print(f"Error {symbol}: {e}")
-    
-    # Commodities
-    print("💰 Loading commodities...")
-    for symbol in COMMODITIES_SYMBOLS.keys():
-        try:
-            data = analyze_stock(symbol, is_commodity=True)
-            if data:
-                results.append(data)
-        except Exception as e:
-            print(f"Error {symbol}: {e}")
-    
-    # Cache and return
-    full_cache["data"] = results
-    full_cache["timestamp"] = now
-    print(f"✅ Full batch loaded: {len(results)} stocks")
-    print(f"API stats: {router.get_api_stats()}")
-    return {"stocks": results}
+
 
 # Legacy endpoint - redirects to quick batch
 @app.get("/api/market-data")
