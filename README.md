@@ -1,170 +1,50 @@
-# Wolfee Market - Stock Analysis Platform
+# Wolfee Analytics
 
-A full-stack stock market analysis platform focused on Turkish stocks (BIST - Borsa Istanbul) with advanced technical analysis, AI insights, and portfolio management features.
+Wolfee Analytics is a sophisticated financial data analysis platform designed to provide real-time insights, comprehensive market tracking, and intelligent stock evaluation for both BIST (Borsa Istanbul) and Global markets.
 
-## Features
+The system bridges the gap between raw market data and actionable financial intelligence, offering a unified dashboard for tracking stocks, commodities, and market trends.
 
-- 📊 **Real-time Stock Data**: Fetch and analyze Turkish stock market data using Yahoo Finance
-- 📈 **Technical Analysis**: Advanced indicators including RSI, MACD, Bollinger Bands, and more
-- 🤖 **AI Insights**: Intelligent market analysis and trading opportunities
-- 💼 **Portfolio Management**: Track and export your stock portfolio
-- 📉 **Interactive Charts**: Visualize stock performance with multiple timeframes (1M, 1Y, 5Y)
-- 📥 **Export Functionality**: Export portfolio data to Excel
+## 🚀 Key Features
 
-## Tech Stack
+### 1. Comprehensive Market Tracking
+-   **Dual Market Coverage**: Seamlessly tracks top liquid stocks from both **BIST 100** (Turkish Market) and **Global Markets** (US Tech, Pharma, Energy, etc.).
+-   **Live & Cached Data**: Utilizes a smart hybrid caching system to deliver instant "Quick View" data while updating full market statistics in the background.
+-   **Commodities Monitoring**: Real-time tracking of essential commodities like Gold, Silver, Copper, and Crude Oil.
 
-### Backend
-- **Python 3.10** with FastAPI
-- **yfinance** for stock data
-- **pandas** and **numpy** for data analysis
-- **uvicorn** as ASGI server
+### 2. Intelligent Technical Analysis
+-   **Automated Indicators**: Automatically calculates key technical indicators for every stock:
+    -   **RSI (Relative Strength Index)**: Identifies Overbought/Oversold conditions.
+    -   **SMA (Simple Moving Averages)**: Tracks 20-day trends.
+    -   **Volatility Analysis**: categorization of price movement risks.
+-   **Opportunity Scanner**: A built-in logic engine that scans the market for favorable conditions (e.g., Oversold + Uptrend) and highlights potential buy opportunities.
+-   **AI-Driven Insights**: Generates dynamic market summaries and "Day's Insight" based on aggregate market performance.
 
-### Frontend
-- **Vanilla JavaScript** (ES6+)
-- **HTML5** and **CSS3**
-- **Chart.js** or similar for visualizations
-- Deployed on **Cloudflare Pages**
+### 3. Data Visualization & Reporting
+-   **Interactive Dashboard**: A responsive, card-based UI that provides at-a-glance metrics (Price, Change %, Volume, High/Low).
+-   **Dynamic Charting**: Integrated interactive charts for visualizing historical price performance over 1M, 1Y, and 5Y periods.
+-   **Professional Reporting**:
+    -   **Market Export**: Generates detailed Excel reports (Daily, Weekly, Monthly) with full technical breakdowns.
+    -   **Portfolio Export**: Allows users to select specific stocks and export a snapshot report matching professional market standards.
 
-## Project Structure
+## 🛠 Technical Architecture
 
-```
-wolfee/
-├── backend/               # FastAPI backend
-│   ├── main.py           # Main FastAPI application
-│   ├── analysis.py       # Stock analysis logic
-│   ├── api_router.py     # API route handlers
-│   ├── requirements.txt  # Python dependencies
-│   ├── Procfile          # Render deployment config
-│   └── runtime.txt       # Python version
-│
-└── frontend/             # Static frontend
-    ├── index.html        # Main application page
-    ├── app.js            # Main JavaScript logic
-    ├── style.css         # Styling
-    ├── js/               # JavaScript modules
-    │   ├── config.js     # API configuration
-    │   ├── main.js       # Main app logic
-    │   ├── api.js        # API calls
-    │   ├── chart.js      # Chart rendering
-    │   └── ui.js         # UI components
-    └── wrangler.toml     # Cloudflare Pages config
-```
+Wolfee Analytics runs on a modern, high-performance architecture designed for speed and reliability.
 
-## Local Development
+### Backend Core (Python & FastAPI)
+The backbone of the system is a robust **FastAPI** application that serves as the central data aggregator.
+-   **Multi-Source Data Router**: A resilient scraping engine that fetches data from multiple financial providers, automatically failing over between sources (e.g., Yahoo Finance, Google Finance, Finnhub) to ensure data continuity.
+-   **Background Task Processing**: Utilizes asynchronous background workers to fetch and process heavy datasets without freezing the user interface.
+-   **Smart Caching**: Implements time-based caching (TTL) to instantly serve frequent requests while keeping data fresh.
 
-### Backend Setup
+### Frontend Experience
+A lightweight, high-performance interface built for clarity and speed.
+-   **Dynamic Search & Filtering**: Client-side filtering allowing instant access to any stock.
+-   **Responsive Design**: Optimized for both desktop and mobile viewing.
+-   **Asynchronous Loading**: Features a progressive loading system that displays critical data immediately (`Quick Load`) while populating deeper analytics incrementally.
 
-1. Navigate to the backend directory:
-```bash
-cd backend
-```
+### Data Integrity & Safety
+-   **Rate Limit Protection**: Advanced throttling and delay mechanisms to respect third-party API limits.
+-   **Error Resilience**: graceful error handling for missing charts or delisted assets, ensuring the platform remains stable even during partial data outages.
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Run the development server:
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-The backend will be available at `http://localhost:8000`
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-```bash
-cd frontend
-```
-
-2. Update `js/config.js` to use local backend:
-```javascript
-const API_URL = "http://127.0.0.1:8000";
-```
-
-3. Serve the frontend using any static server:
-```bash
-# Using Python
-python -m http.server 3000
-
-# Or using Node.js http-server
-npx http-server -p 3000
-```
-
-The frontend will be available at `http://localhost:3000`
-
-## Deployment
-
-### Backend Deployment (Render)
-
-1. **Push code to GitHub**
-
-2. **Create a new Web Service on Render**:
-   - Connect your GitHub repository
-   - Set **Root Directory**: `backend`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: Uses `Procfile` (auto-detected)
-   - **Environment**: Python 3
-
-3. **Configure Environment Variables** (if needed):
-   - Add any API keys or secrets in Render dashboard
-
-4. **Deploy**: Render will automatically deploy your backend
-
-Your backend URL will be: `https://your-service-name.onrender.com`
-
-### Frontend Deployment (Cloudflare Pages)
-
-1. **Update API URL**: In `frontend/js/config.js`, update to your Render backend URL:
-```javascript
-const API_URL = "https://your-service-name.onrender.com";
-```
-
-2. **Commit and push changes**
-
-3. **Create a new Cloudflare Pages project**:
-   - Connect your GitHub repository
-   - Set **Root Directory**: `frontend`
-   - **Build Command**: (leave empty for static files)
-   - **Build Output Directory**: `.`
-
-4. **Deploy**: Cloudflare will automatically deploy your frontend
-
-Your app will be available at: `https://your-project.pages.dev`
-
-## API Endpoints
-
-- `GET /docs` - FastAPI interactive documentation
-- `GET /api/market-data/quick` - Quick market overview
-- `GET /api/market-data/full` - Full market data
-- `GET /analyze/{symbol}` - Analyze specific stock
-- `GET /opportunities` - Get trading opportunities
-- `GET /insight` - Get AI market insights
-- `GET /api/chart/{symbol}/{range}` - Get chart data
-- `GET /api/export/{period}` - Export portfolio data
-
-## Environment Variables
-
-The backend may require the following environment variables:
-
-- `PORT` - Server port (set automatically by Render)
-- Add any API keys for external services if needed
-
-## Contributing
-
-This is a personal project for stock market analysis. Feel free to fork and modify for your own use.
-
-## License
-
-Private project - All rights reserved
-
-## Contact
-
-For questions or issues, please contact the project owner.
+---
+*Wolfee Analytics is built for analysts, traders, and finance enthusiasts who require reliable, aggregated market data at their fingertips.*
