@@ -48,7 +48,7 @@ async function fetchQuickBatch() {
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
 
     try {
-        const response = await fetch(`${API_URL}/stocks`, {
+        const response = await fetch(`${API_URL}/api/market-data/quick`, {
             signal: controller.signal
         });
 
@@ -58,19 +58,20 @@ async function fetchQuickBatch() {
 
         const data = await response.json();
 
-        // If backend returned 0 stocks, use client-side Yahoo Finance
+        // If backend returned 0 stocks, use mock data
         if (!data.stocks || data.stocks.length === 0) {
-            console.warn('⚠️ Backend returned 0 stocks, fetching from browser...');
-            const browserData = await fetchAllStocksFromBrowser();
+            console.warn('⚠️ Backend returned 0 stocks (Yahoo Finance IP blocked)');
+            console.warn('📊 Using MOCK data for local testing...');
+            const mockData = window.generateMockStocks ? window.generateMockStocks() : [];
             const fallbackData = {
-                stocks: browserData,
+                stocks: mockData,
                 timestamp: new Date().toISOString(),
-                source: 'browser'
+                source: 'mock'
             };
             sessionStorage.setItem('wolfee_market_data', JSON.stringify(fallbackData));
             sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
             processData(fallbackData);
-            console.log(`✓ Client-side fetch loaded: ${browserData.length} stocks`);
+            console.log(`✓ Mock data loaded: ${mockData.length} stocks`);
             return;
         }
 
@@ -80,18 +81,19 @@ async function fetchQuickBatch() {
         processData(data);
         console.log(`✓ Backend loaded: ${data.stocks.length} stocks`);
     } catch (error) {
-        console.error("Backend fetch failed, using client-side fallback:", error);
-        // Backend is down, use client-side
-        const browserData = await fetchAllStocksFromBrowser();
+        console.warn("⚠️ Backend fetch failed, using MOCK data for local testing:", error);
+        // Yahoo Finance blocks CORS from ALL origins (including localhost)
+        // Use mock data for local testing
+        const mockData = window.generateMockStocks ? window.generateMockStocks() : [];
         const fallbackData = {
-            stocks: browserData,
+            stocks: mockData,
             timestamp: new Date().toISOString(),
-            source: 'browser'
+            source: 'mock'
         };
         sessionStorage.setItem('wolfee_market_data', JSON.stringify(fallbackData));
         sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
         processData(fallbackData);
-        console.log(`✓ Client-side fallback loaded: ${browserData.length} stocks`);
+        console.log(`✓ Mock data loaded for testing: ${mockData.length} stocks`);
     } finally {
         clearTimeout(timeout);
     }
