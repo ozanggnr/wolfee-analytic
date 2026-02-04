@@ -45,7 +45,7 @@ async function init() {
 // Stage 1: Fetch quick batch (100 stocks)
 async function fetchQuickBatch() {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
+    const timeout = setTimeout(() => controller.abort(), 90000); // 90 sec timeout for rate-limited APIs
 
     try {
         const response = await fetch(`${API_URL}/api/market-data/quick`, {
