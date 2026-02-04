@@ -83,7 +83,7 @@ class StockAPIRouter:
         Fetch from Alpha Vantage (25 requests/day free - USE SPARINGLY)
         Best for: Daily data when Finnhub fails
         """
-        if not self.alpha_vantage_key:
+        if not self.alphavantage_key:
             return None
             
         try:
@@ -97,7 +97,7 @@ class StockAPIRouter:
             params = {
                 'function': 'GLOBAL_QUOTE',
                 'symbol': symbol,
-                'apikey': self.alpha_vantage_key
+                'apikey': self.alphavantage_key
             }
             
             response = requests.get(url, params=params, timeout=5)
