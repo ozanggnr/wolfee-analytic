@@ -4,10 +4,8 @@ uvicorn
 yfinance
 pandas
 numpy
-python-multipart
-openpyxl
-requests==3.1.5
 python-multipart==0.0.20
-requests==2.31.0
+openpyxl==3.1.5
+requests==2.32.3
 polygon-api-client
 alpaca-py
