@@ -5,7 +5,8 @@ let allStocks = [];
 async function init() {
     const loader = document.getElementById('loader');
     loader.classList.remove('hidden');
-    loader.innerHTML = '<div class="loader-spinner"></div><p>Loading market data...</p>';
+    // loader.innerHTML = '<div class="loader-spinner"></div><p>Loading market data...</p>'; // Removed text update
+
 
     // Check cache first  
     const cachedData = sessionStorage.getItem('wolfee_market_data');
@@ -27,7 +28,8 @@ async function init() {
     try {
         // Stage 1: Quick batch (100 stocks with multi-API fallback)
         await fetchQuickBatch();
-        loader.innerHTML = '<div class="loader-spinner"></div><p>✓ Fast data loaded!</p>';
+        // loader.innerHTML = '<div class="loader-spinner"></div><p>✓ Fast data loaded!</p>'; // Removed text update
+
 
         // Stage 2: Load the rest silently
         fetchFullBatch();

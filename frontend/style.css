@@ -708,6 +708,21 @@ aside {
     /* Ensure strictly above other elements */
 }
 
+@media (max-width: 600px) {
+    .close-modal {
+        top: 0.5rem;
+        right: 0.5rem;
+        background: rgba(0, 0, 0, 0.5); /* Add background for better visibility */
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+}
+
 /* Modal Header adjustment to avoid overlap */
 #stock-modal .modal-content h2 {
     margin-right: 40px;
@@ -724,7 +739,7 @@ aside {
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
-    padding-right: 40px;
+    padding-right: 50px; /* Increased padding to avoid overlap with close button */
     /* Ensure non-overlap with X */
 }
 

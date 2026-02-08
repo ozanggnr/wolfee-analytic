@@ -15,13 +15,37 @@ async function loadChart(symbol, range) {
     const btn = Array.from(document.querySelectorAll('.chart-controls button')).find(b => b.textContent.includes(btnText));
     if (btn) btn.classList.add('active');
 
+    const chartContainer = document.getElementById('stockChart');
+
+    // Check Cache
+    const cacheKey = `chart_${symbol}_${range}`;
+    const cachedData = sessionStorage.getItem(cacheKey);
+    const cacheTime = sessionStorage.getItem(`${cacheKey}_time`);
+    const now = Date.now();
+
+    if (cachedData && cacheTime && (now - parseInt(cacheTime)) < 300000) { // 5 min cache
+        console.log(`Loading chart for ${symbol} (${range}) from cache`);
+        renderChart(JSON.parse(cachedData), range);
+        return;
+    }
+
+    // Show persistent spinner
+    chartContainer.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;"><div class="spinner"></div></div>';
+
     // Fetch History from /api/chart endpoint
     try {
         const res = await fetch(`${API_URL}/api/chart/${symbol}/${range}`);
+        if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
+
+        // Save to Cache
+        sessionStorage.setItem(cacheKey, JSON.stringify(data.history));
+        sessionStorage.setItem(`${cacheKey}_time`, now.toString());
+
         renderChart(data.history, range);
     } catch (e) {
         console.error("Chart load failed", e);
+        chartContainer.innerHTML = '<p style="text-align:center;color:#f87171;">Failed to load chart data.</p>';
     }
 }
 

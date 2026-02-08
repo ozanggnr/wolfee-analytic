@@ -10,6 +10,7 @@
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="js/mock-data.js"></script>
     <script src="js/yahoo-client.js"></script>
+    <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
 
 <body>
@@ -19,7 +20,8 @@
 
     <header>
         <a href="./index.html" style="text-decoration: none; display: flex; align-items: center; gap: 1rem;">
-            <img src="logo.png" alt="Wolfee Logo" style="height: 50px; width: auto;">
+            <img src="logo.png" alt="Wolfee Logo"
+                style="height: 50px; width: 50px; border-radius: 50%; object-fit: cover;">
             <h1>Wolfee Analytics</h1>
         </a>
 
@@ -130,7 +132,7 @@
             <span id="sidebar-close" class="close-sidebar" onclick="toggleSidebar()">&times;</span>
             <div class="sidebar-section">
                 <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
-                    <img src="logo.png" alt="Logo" style="height: 30px; opacity: 0.8;">
+
                     <h2>📈 Buy Opportunities</h2>
                 </div>
                 <div id="opportunities-list">
