@@ -1,190 +1,148 @@
 // Main App Logic
-
 let allStocks = [];
+let currentSymbol = null;
 
 async function init() {
     const loader = document.getElementById('loader');
     loader.classList.remove('hidden');
-    // loader.innerHTML = '<div class="loader-spinner"></div><p>Loading market data...</p>'; // Removed text update
-
-
-    // Check cache first  
-    const cachedData = sessionStorage.getItem('wolfee_market_data');
-    const cacheTime = sessionStorage.getItem('wolfee_cache_time');
-    const now = Date.now();
-
-    // Use cache if less than 5 minutes old
-    if (cachedData && cacheTime && (now - parseInt(cacheTime)) < 300000) {
-        console.log("Using cached data");
-        const data = JSON.parse(cachedData);
-        processData(data);
-        loader.classList.add('hidden');
-        loadAIInsight();
-        loadOpportunities();
-        return;
-    }
-
-    // Two-stage loading
+    
     try {
-        // Stage 1: Quick batch (100 stocks with multi-API fallback)
-        await fetchQuickBatch();
-        // loader.innerHTML = '<div class="loader-spinner"></div><p>✓ Fast data loaded!</p>'; // Removed text update
-
-
-        // Stage 2: Load the rest silently
-        fetchFullBatch();
-
-        setTimeout(() => loader.classList.add('hidden'), 1000);
-
-        // Data is now partially loaded
+        // Load everything in parallel (all from DB = instant)
+        await Promise.all([
+            fetchMarketData(),
+            loadTurkishGold(),
+            loadExchangeRates()
+        ]);
+        
+        // Load these after main data
         loadAIInsight();
         loadOpportunities();
+        
     } catch (error) {
         console.error('Init error:', error);
         document.getElementById('stock-grid').innerHTML =
-            '<p style="color: red; grid-column: 1/-1;">Failed to load market data. Please refresh or check if Railway backend is running.</p>';
+            '<p style="color: var(--danger-color); grid-column: 1/-1; text-align: center;">Failed to load market data. Please refresh.</p>';
+    } finally {
         loader.classList.add('hidden');
     }
 }
 
-// Stage 2: Fetch FULL batch (All stocks)
-async function fetchFullBatch() {
-    console.log("Fetching full market data...");
+async function fetchMarketData() {
+    const response = await fetch(`${API_URL}/api/market-data/quick`);
+    if (!response.ok) throw new Error('Failed to fetch market data');
+    const data = await response.json();
+    processData(data);
+}
+
+async function loadTurkishGold() {
     try {
-        const response = await fetch(`${API_URL}/api/market-data/full`);
-        if (!response.ok) throw new Error("Full batch failed");
+        const res = await fetch(`${API_URL}/api/turkish-gold`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderGoldCards(data.gold || []);
+    } catch (e) { console.warn('Gold data unavailable:', e); }
+}
 
-        const data = await response.json();
+async function loadExchangeRates() {
+    try {
+        const res = await fetch(`${API_URL}/api/exchange-rates`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderExchangeRates(data.rates || []);
+    } catch (e) { console.warn('Exchange rates unavailable:', e); }
+}
 
-        // Merge with existing
-        const fullList = data.stocks || [];
-        if (fullList.length > 0) {
-            sessionStorage.setItem('wolfee_market_data', JSON.stringify(data));
-            sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
-            processData(data); // Re-render with full list
-            console.log(`✓ Full data loaded: ${fullList.length} stocks`);
-        }
+async function loadAIInsight() {
+    const aiSection = document.getElementById('ai-section');
+    if (aiSection) aiSection.classList.remove('hidden');
+    try {
+        const res = await fetch(`${API_URL}/api/insight`);
+        const data = await res.json();
+        const text = (data.insight || 'Analyzing market...').replace(/\n/g, '<br>');
+        const aiTextEl = document.getElementById('ai-text');
+        if (aiTextEl) aiTextEl.innerHTML = text;
     } catch (e) {
-        console.warn("Full batch fetch failed, staying with quick data:", e);
+        const aiTextEl = document.getElementById('ai-text');
+        if (aiTextEl) aiTextEl.innerText = '🐺 AI Protocol Offline.';
     }
 }
 
-// Stage 1: Fetch quick batch (100 stocks)
-async function fetchQuickBatch() {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000); // 90 sec timeout for rate-limited APIs
-
+async function loadOpportunities() {
     try {
-        const response = await fetch(`${API_URL}/api/market-data/quick`, {
-            signal: controller.signal
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        // Mock data removed as per user request
-        // function loadMockData() { ... }
-        sessionStorage.setItem('wolfee_market_data', JSON.stringify(data));
-        // Use mock data for local testing
-        const mockData = window.generateMockStocks ? window.generateMockStocks() : [];
-        const fallbackData = {
-            stocks: mockData,
-            timestamp: new Date().toISOString(),
-            source: 'mock'
-        };
-        sessionStorage.setItem('wolfee_market_data', JSON.stringify(fallbackData));
-        sessionStorage.setItem('wolfee_cache_time', Date.now().toString());
-        processData(fallbackData);
-        console.log(`✓ Mock data loaded for testing: ${mockData.length} stocks`);
-    } finally {
-        clearTimeout(timeout);
-    }
+        const res = await fetch(`${API_URL}/api/opportunities`);
+        const data = await res.json();
+        renderOpportunities(data.opportunities || []);
+    } catch (e) { console.error('Opportunities error:', e); }
 }
-
 
 function processData(data) {
     allStocks = data.stocks || [];
-    window.allStocks = allStocks; // Make globally accessible for filters
-
-    // Get current region
+    window.allStocks = allStocks;
+    
     const toggle = document.getElementById('region-toggle');
-    const isGlobalMode = toggle ? toggle.checked : false;
-
+    const isGlobalMode = toggle ? !toggle.checked : false; // Default TR is checked? Wait, let's look at logic: checked means TR or Global?
+    // Let's assume toggle checked means Global mode
+    const isGlobalModeVal = toggle ? toggle.checked : false;
+    
     const stockGrid = document.getElementById('stock-grid');
+    if (!stockGrid) return;
     stockGrid.innerHTML = '';
-
-    // Filter by region
+    
     let displayStocks = allStocks.filter(stock => {
-        const isStockGlobal = !stock.symbol.endsWith('.IS');
-        return isGlobalMode ? isStockGlobal : !isStockGlobal;
+        const sym = stock.symbol || '';
+        const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
+        return isGlobalModeVal ? isStockGlobal : !isStockGlobal;
     });
-
-    console.log(`Loaded ${allStocks.length} total, showing ${displayStocks.length} for ${isGlobalMode ? 'GLOBAL' : 'TR'}`);
-
+    
     if (displayStocks.length === 0) {
-        stockGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">Loading stocks...</p>';
+        stockGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">No stocks found. Data is loading...</p>';
         return;
     }
-
-    displayStocks.forEach(stock => {
-        renderStockCard(stock);
-    });
-
-    // Initialize search
-    initSearch();
+    
+    displayStocks.forEach(stock => renderStockCard(stock));
+    if (typeof initSearch === 'function') initSearch();
 }
 
-// Search Logic
 function initSearch() {
     const searchInput = document.getElementById('search-input');
     const searchResults = document.getElementById('search-results');
-
-    searchInput.addEventListener('input', (e) => {
+    if (!searchInput || !searchResults) return;
+    
+    // Remove old listeners by cloning
+    const newInput = searchInput.cloneNode(true);
+    searchInput.parentNode.replaceChild(newInput, searchInput);
+    
+    newInput.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase().trim();
-
-        if (!query) {
-            searchResults.classList.add('hidden');
-            return;
-        }
-
-        // Get current region
+        if (!query) { searchResults.classList.add('hidden'); return; }
+        
         const toggle = document.getElementById('region-toggle');
-        const isGlobalMode = toggle ? toggle.checked : false;
-
-        // Filter by region AND search query
+        const isGlobalModeVal = toggle ? toggle.checked : false;
+        
         const matches = allStocks.filter(stock => {
-            const isStockGlobal = !stock.symbol.endsWith('.IS');
-
-            // Region filter
-            if (isGlobalMode !== isStockGlobal) return false;
-
-            // Text Filter
-            return stock.symbol.toLowerCase().includes(query) ||
-                stock.name.toLowerCase().includes(query);
+            const sym = stock.symbol || '';
+            const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
+            if (isGlobalModeVal !== isStockGlobal) return false;
+            return sym.toLowerCase().includes(query) || (stock.name || '').toLowerCase().includes(query);
         });
-
+        
         if (matches.length > 0) {
             searchResults.classList.remove('hidden');
             searchResults.innerHTML = '';
-            matches.forEach(stock => {
+            matches.slice(0, 15).forEach(stock => {
                 const div = document.createElement('div');
                 div.className = 'search-result-item';
+                const currency = stock.currency === 'USD' ? '$' : '₺';
                 div.innerHTML = `
                     <div>
-                        <div class="result-symbol">${stock.symbol.replace('.IS', '')}</div>
-                        <div class="result-name">${stock.name}</div>
+                        <div class="result-symbol">${(stock.symbol||'').replace('.IS', '')}</div>
+                        <div class="result-name">${stock.name || stock.symbol}</div>
                     </div>
-                    <div class="result-price" style="color:${stock.change_pct >= 0 ? '#4ade80' : '#f87171'}">
-                        ${stock.currency === 'USD' ? '$' : '₺'}${stock.price.toFixed(2)}
+                    <div class="result-price" style="color:${(stock.change_pct||0) >= 0 ? '#4ade80' : '#f87171'}">
+                        ${currency}${(stock.price||0).toFixed(2)}
                     </div>
                 `;
-                div.onclick = () => {
-                    openModal(stock);
-                    searchResults.classList.add('hidden');
-                    searchInput.value = ''; // Clear input
-                };
+                div.onclick = () => { openModal(stock); searchResults.classList.add('hidden'); newInput.value = ''; };
                 searchResults.appendChild(div);
             });
         } else {
@@ -192,14 +150,90 @@ function initSearch() {
             searchResults.classList.remove('hidden');
         }
     });
-
-    // Close search on click outside
+    
     document.addEventListener('click', (e) => {
-        if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+        if (!newInput.contains(e.target) && !searchResults.contains(e.target)) {
             searchResults.classList.add('hidden');
         }
     });
 }
 
-// Start
-init();
+// Region toggle
+window.toggleRegion = function() {
+    const toggle = document.getElementById('region-toggle');
+    const label = document.getElementById('region-label');
+    if (toggle && label) {
+        label.innerText = toggle.checked ? 'GLOBAL' : 'TR';
+        label.style.color = toggle.checked ? '#f87171' : '#38bdf8';
+    }
+    processData({ stocks: allStocks });
+}
+
+// Refresh
+window.refreshMarket = async function() {
+    const loader = document.getElementById('loader');
+    loader.classList.remove('hidden');
+    try {
+        // Trigger backend refresh
+        await fetch(`${API_URL}/api/refresh`, { method: 'POST' });
+        // Wait a moment then reload data
+        await new Promise(r => setTimeout(r, 2000));
+        await init();
+    } catch(e) {
+        console.error('Refresh error:', e);
+    } finally {
+        loader.classList.add('hidden');
+    }
+}
+
+// Export
+window.triggerExport = async function(period) {
+    const btnContent = document.querySelector(`.export-card[onclick="triggerExport('${period}')"]`);
+    const originalHTML = btnContent ? btnContent.innerHTML : '';
+    if (btnContent) btnContent.innerHTML = '<div class="export-icon">⏳</div><div class="export-info"><h3>Exporting...</h3></div>';
+    
+    try {
+        const portfolioView = document.getElementById('portfolio-view');
+        const isPortfolioActive = portfolioView && !portfolioView.classList.contains('hidden');
+        let endpoint = `${API_URL}/api/export/${period}`;
+        
+        if (isPortfolioActive) {
+            const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
+            if (portfolio.length === 0) { 
+                alert('Portfolio is empty!'); 
+                if (btnContent) btnContent.innerHTML = originalHTML; 
+                return; 
+            }
+            const symbols = portfolio.map(s => s.symbol).join(',');
+            endpoint = `${API_URL}/api/export/portfolio?symbols=${encodeURIComponent(symbols)}&period=${period}`;
+        }
+        
+        const response = await fetch(endpoint);
+        if (!response.ok) throw new Error('Export failed');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = isPortfolioActive ? `portfolio_${period}.xlsx` : `market_${period}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        
+        if (btnContent) btnContent.innerHTML = '<div class="export-icon">✅</div><div class="export-info"><h3>Downloaded!</h3></div>';
+        setTimeout(() => { 
+            if (btnContent) btnContent.innerHTML = originalHTML; 
+            if (typeof closeExportModal === 'function') closeExportModal(); 
+        }, 1500);
+    } catch (error) {
+        console.error('Export error:', error);
+        if (btnContent) btnContent.innerHTML = '<div class="export-icon">❌</div><div class="export-info"><h3>Failed</h3></div>';
+        setTimeout(() => { if (btnContent) btnContent.innerHTML = originalHTML; }, 2000);
+    }
+}
+
+// Ensure DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+});

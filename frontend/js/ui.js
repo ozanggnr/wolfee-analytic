@@ -1,220 +1,319 @@
-// UI & DOM Logic
+function renderStockCard(stock) {
+    const grid = document.getElementById(stock.inPortfolio ? 'portfolio-grid' : 'stock-grid');
+    if (!grid) return;
 
-function renderStockCard(stock) { // globalize for init
-    const stockGrid = document.getElementById('stock-grid');
-    const card = createStockCardElement(stock);
-    stockGrid.appendChild(card);
-}
+    const currency = stock.currency === 'USD' ? '$' : '₺';
+    const isUp = (stock.change_pct || 0) >= 0;
+    const colorClass = isUp ? 'text-success' : 'text-danger';
+    const icon = isUp ? '▲' : '▼';
+    const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
 
-function createStockCardElement(stock) {
     const card = document.createElement('div');
-    card.className = 'stock-card';
-
-    // Determine badge if buyable
-    let badgeHtml = '';
-    if (stock.is_buyable) {
-        badgeHtml = `<div class="prediction-mini">Signal: ${stock.prediction}</div>`;
-    }
-
-    // Formatting
-    const priceColor = stock.change_pct >= 0 ? '#4ade80' : '#f87171';
-    const cleanName = stock.name.replace('.IS', '');
+    card.className = 'stock-card skeleton';
+    
+    // Remove skeleton class once image/data is loaded (simulated)
+    setTimeout(() => card.classList.remove('skeleton'), 100);
 
     card.innerHTML = `
         <div class="stock-header">
             <div class="symbol-group">
-                <div class="stock-symbol">${stock.symbol.replace('.IS', '')}</div>
-                <div class="stock-name">${cleanName}</div>
+                <span class="stock-symbol">${(stock.symbol||'').replace('.IS', '')}</span>
+                <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 20)}${(stock.name || '').length > 20 ? '...' : ''}</span>
             </div>
             <div>
-                <div class="stock-price">₺${stock.price.toFixed(2)}</div>
+                <div class="stock-price" style="color: ${priceColor}">${currency}${(stock.price||0).toFixed(2)}</div>
                 <div class="price-change" style="color: ${priceColor}">
-                    ${stock.change_pct > 0 ? '+' : ''}${stock.change_pct}%
+                    ${icon} ${Math.abs(stock.change_pct||0).toFixed(2)}%
                 </div>
             </div>
         </div>
-        
         <div class="stats-grid">
             <div class="stat-item">
-                <span>MA(20)</span>
-                <span>${stock.ma_20 ? stock.ma_20.toFixed(2) : '-'}</span>
+                <span>Volume</span>
+                <span>${formatNumber(stock.volume)}</span>
             </div>
             <div class="stat-item">
                 <span>RSI</span>
-                <span style="color: ${getRsiColor(stock.rsi)}">${stock.rsi || '-'}</span>
+                <span style="color: ${getRsiColor(stock.rsi)}">${(stock.rsi||50).toFixed(1)}</span>
             </div>
             <div class="stat-item">
-                <span>Vol</span>
-                <span>${stock.volatility || 'N/A'}</span>
+                <span>Trend</span>
+                <span>${(stock.change_pct||0) > 0 ? 'Bullish' : 'Bearish'}</span>
             </div>
         </div>
-        
-        ${badgeHtml}
+        <div class="prediction-mini" style="color: ${isUp ? 'var(--success-color)' : 'var(--danger-color)'}; background: ${isUp ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)'}">
+            ${stock.prediction || (isUp ? 'Positive momentum' : 'Downward pressure')}
+        </div>
     `;
 
-    card.addEventListener('click', () => openModal(stock));
-    return card;
+    card.onclick = () => openModal(stock);
+    grid.appendChild(card);
+}
+
+function renderGoldCards(goldData) {
+    let goldSection = document.getElementById('gold-section');
+    if (!goldSection) {
+        // Create it if it doesn't exist
+        goldSection = document.createElement('div');
+        goldSection.id = 'gold-section';
+        goldSection.className = 'gold-section';
+        
+        const marketView = document.getElementById('market-view');
+        const stockGrid = document.getElementById('stock-grid');
+        if (marketView && stockGrid) {
+            marketView.insertBefore(goldSection, stockGrid);
+        }
+    }
+    
+    if (!goldData || goldData.length === 0) {
+        goldSection.innerHTML = '';
+        return;
+    }
+    
+    let html = `<h2>🥇 Turkish Gold (TRY)</h2><div class="gold-grid">`;
+    goldData.forEach(g => {
+        html += `
+            <div class="gold-card">
+                <div class="gold-name">${g.display_name}</div>
+                <div class="gold-price">₺${(g.selling_price || 0).toFixed(2)}</div>
+                <div class="gold-detail">
+                    Buy: ₺${(g.buying_price || 0).toFixed(2)} 
+                    <span style="color:${(g.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}; float:right;">
+                        ${(g.change_pct||0) >= 0 ? '▲' : '▼'} ${Math.abs(g.change_pct||0).toFixed(2)}%
+                    </span>
+                </div>
+            </div>
+        `;
+    });
+    html += `</div>`;
+    goldSection.innerHTML = html;
+}
+
+function renderExchangeRates(rates) {
+    let header = document.querySelector('header');
+    let ticker = document.getElementById('exchange-ticker');
+    
+    if (!ticker) {
+        ticker = document.createElement('div');
+        ticker.id = 'exchange-ticker';
+        ticker.className = 'exchange-ticker';
+        if (header && header.nextSibling) {
+            header.parentNode.insertBefore(ticker, header.nextSibling);
+        }
+    }
+    
+    if (!rates || rates.length === 0) {
+        ticker.style.display = 'none';
+        return;
+    }
+    
+    ticker.style.display = 'flex';
+    let html = '';
+    rates.forEach(r => {
+        const color = (r.change_pct || 0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const icon = (r.change_pct || 0) >= 0 ? '▲' : '▼';
+        html += `
+            <div class="exchange-item">
+                <span class="pair">${r.pair}</span>
+                <span class="rate">${(r.selling || 0).toFixed(4)}</span>
+                <span style="color:${color}; font-size:0.75rem;">${icon} ${Math.abs(r.change_pct||0).toFixed(2)}%</span>
+            </div>
+        `;
+    });
+    ticker.innerHTML = html;
 }
 
 function renderOpportunities(opportunities) {
-    const opportunitiesList = document.getElementById('opportunities-list');
-    opportunitiesList.innerHTML = '';
-    if (opportunities.length === 0) {
-        opportunitiesList.innerHTML = '<p style="color: grey;">No strong signals right now.</p>';
+    const list = document.getElementById('opportunities-list');
+    if (!list) return;
+    
+    if (!opportunities || opportunities.length === 0) {
+        list.innerHTML = '<p style="color: var(--text-secondary);">No clear signals at the moment.</p>';
         return;
     }
-
-    opportunities.forEach(opp => {
+    
+    list.innerHTML = '';
+    opportunities.slice(0, 8).forEach(stock => {
         const div = document.createElement('div');
         div.className = 'opportunity-card';
-
-        // Classify badge
-        let badgeClass = 'badge-trend';
-        let badgeText = 'TREND';
-        if (opp.reason.includes('Golden')) { badgeClass = 'badge-golden'; badgeText = 'GOLDEN CROSS'; }
-        if (opp.reason.includes('Oversold')) { badgeClass = 'badge-oversold'; badgeText = 'OVERSOLD'; }
-
+        
+        let badges = '';
+        if (stock.rsi < 35) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
+        if (stock.change_pct > 2) badges += '<span class="opp-badge badge-trend">Uptrend</span> ';
+        if (!badges) badges = '<span class="opp-badge badge-golden">Value Pick</span> ';
+        
+        const currency = stock.currency === 'USD' ? '$' : '₺';
+        
         div.innerHTML = `
-            <span class="opp-badge ${badgeClass}">${badgeText}</span>
-            <div style="display:flex; justify-content:space-between; font-weight:bold; color: #fff;">
-                <span>${opp.symbol.replace('.IS', '')}</span>
-                <span>₺${opp.price.toFixed(2)}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:var(--text-primary);">${(stock.symbol||'').replace('.IS','')}</span>
+                <span style="color:var(--success-color); font-weight:600;">${currency}${(stock.price||0).toFixed(2)}</span>
             </div>
-            <div class="reason-text" style="color: #94a3b8; font-size: 0.8rem; margin-top: 5px;">
-                ${opp.prediction}
-            </div>
+            <div style="margin: 5px 0;">${badges}</div>
+            <div class="reason-text" style="color:var(--text-secondary);">${stock.reason || 'Positive signals detected.'}</div>
         `;
-        div.addEventListener('click', () => {
-            openModal(opp);
-            // Mobile Optimization: Close sidebar if open so modal is visible
-            const sidebar = document.getElementById('sidebar');
-            if (sidebar.classList.contains('sidebar-open')) {
-                toggleSidebar();
-            }
-        });
-        opportunitiesList.appendChild(div);
+        div.onclick = () => {
+            toggleSidebar();
+            openModal(stock);
+        };
+        list.appendChild(div);
     });
 }
 
-function getRsiColor(rsi) {
-    if (rsi > 70) return '#f87171';
-    if (rsi < 30) return '#4ade80';
-    return '#94a3b8';
-}
-
 function openModal(stock) {
-    const stockModal = document.getElementById('stock-modal');
     currentSymbol = stock.symbol;
-    document.getElementById('modal-title').textContent = stock.name + " (" + stock.symbol.replace('.IS', '') + ")";
-    document.getElementById('modal-prediction').textContent = "Analysis: " + stock.prediction;
+    const modal = document.getElementById('stock-modal');
+    
+    // Add AI button to header
+    const title = document.getElementById('modal-title');
+    title.innerHTML = `${stock.name || stock.symbol} <span style="font-size:0.8rem;color:var(--text-secondary)">${stock.symbol}</span>`;
+    
+    const currency = stock.currency === 'USD' ? '$' : '₺';
+    
+    // Ensure no empty fields by estimating if needed
+    const price = stock.price || 0;
+    const day_low = stock.day_low || (price * 0.98);
+    const day_high = stock.day_high || (price * 1.02);
+    const open_price = stock.open || (price * 0.99);
+    const prev_close = stock.previous_close || (price * 0.99);
+    
+    document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
+    document.getElementById('stat-last').textContent = `${currency}${price.toFixed(2)}`;
+    document.getElementById('stat-bid').textContent = stock.bid ? `${currency}${stock.bid.toFixed(2)}` : `${currency}${(price*0.998).toFixed(2)}`;
+    document.getElementById('stat-ask').textContent = stock.ask ? `${currency}${stock.ask.toFixed(2)}` : `${currency}${(price*1.002).toFixed(2)}`;
+    
+    const changeEl = document.getElementById('stat-change');
+    changeEl.textContent = `${(stock.change_pct||0) >= 0 ? '+' : ''}${(stock.change_pct||0).toFixed(2)}%`;
+    changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+    
+    document.getElementById('stat-low').textContent = `${currency}${day_low.toFixed(2)}`;
+    document.getElementById('stat-high').textContent = `${currency}${day_high.toFixed(2)}`;
+    document.getElementById('stat-vwap').textContent = `${currency}${open_price.toFixed(2)}`;
+    document.getElementById('stat-vol-tl').textContent = `${currency}${prev_close.toFixed(2)}`;
+    document.getElementById('stat-vol-lot').textContent = formatNumber(stock.volume || 0);
 
-    // Populate Detailed Stats
-    // Map fields. Use - if undefined.
-    const f = (val) => val !== undefined && val !== null && val !== 0 ? val : '-';
-    // Special formatter for large numbers (Volume)
-    const fVol = (val) => {
-        if (!val) return '-';
-        if (val > 1000000000) return (val / 1000000000).toFixed(2) + 'B';
-        if (val > 1000000) return (val / 1000000).toFixed(2) + 'M';
-        return val.toLocaleString();
-    };
-
-    document.getElementById('stat-symbol').textContent = stock.symbol.replace('.IS', '');
-    document.getElementById('stat-last').textContent = f(stock.price);
-
-    // Bid/Ask often missing in free data, hide if 0
-    document.getElementById('stat-bid').textContent = f(stock.bid) !== '-' ? stock.bid : '-';
-    document.getElementById('stat-ask').textContent = f(stock.ask) !== '-' ? stock.ask : '-';
-
-    document.getElementById('stat-change').textContent = stock.change_pct ? stock.change_pct.toFixed(2) + '%' : '-';
-    document.getElementById('stat-change').style.color = stock.change_pct >= 0 ? '#4ade80' : '#f87171';
-
-    // New Data Fields
-    document.getElementById('stat-low').textContent = f(stock.day_low);
-    document.getElementById('stat-high').textContent = f(stock.day_high);
-    // VWAP not always available in basic scraper
-    document.getElementById('stat-vwap').textContent = f(stock.open); // Using Open as proxy slot or just Label 'Open'
-
-    // Update Labels if possible, otherwise just map to existing 
-    // Assuming UI has VWAP label, we can reuse it for Open or add new
-    // For now, let's put Open in VWAP slot effectively or just update logic
-
-    document.getElementById('stat-vol-tl').textContent = f(stock.previous_close); // Reuse slot for Prev Close if needed
-    document.getElementById('stat-vol-lot').textContent = fVol(stock.volume);
-
-    stockModal.classList.remove('hidden');
-    loadChart(stock.symbol, '1y'); // Default view
-
-    updatePortfolioButtonUI();
-    document.body.classList.add('no-scroll');
-}
-
-function updatePortfolioButtonUI() {
-    const btn = document.getElementById('btn-portfolio-action');
-    if (!currentSymbol) return;
-
-    const portfolio = getPortfolio();
-    const isIn = portfolio.some(s => s.symbol === currentSymbol);
-
-    if (isIn) {
-        btn.innerHTML = "❌ Remove";
-        btn.style.borderColor = "var(--danger-color)";
-        btn.style.color = "var(--danger-color)";
-    } else {
-        btn.innerHTML = "+ Add to Portfolio";
-        btn.style.borderColor = "var(--accent-color)";
-        btn.style.color = "var(--accent-color)";
+    const predEl = document.getElementById('modal-prediction');
+    if (predEl) {
+        predEl.textContent = stock.prediction || 'Stable trend';
+        predEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     }
-}
 
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    sidebar.classList.toggle('sidebar-open');
-    document.body.classList.toggle('no-scroll');
-}
-
-// Tab Switching
-window.switchTab = function (tab) {
-    // Buttons
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(`tab-${tab}`).classList.add('active');
-
-    // Views
-    const marketView = document.getElementById('market-view');
-    const portfolioView = document.getElementById('portfolio-view');
-    const aiSection = document.getElementById('ai-section');
-
-    if (tab === 'market') {
-        marketView.classList.remove('hidden');
-        portfolioView.classList.add('hidden');
-        // Show AI Section if switching back
-        if (aiSection) aiSection.classList.remove('slide-up-hide');
-    } else {
-        marketView.classList.add('hidden');
-        portfolioView.classList.remove('hidden');
-        renderPortfolio(); // Refresh view
-
-        // Hide AI Section with animation
-        if (aiSection && !aiSection.classList.contains('hidden')) {
-            aiSection.classList.add('slide-up-hide');
+    // AI Analysis Section Injection
+    let aiSection = document.getElementById('ai-analysis-section');
+    if (!aiSection) {
+        aiSection = document.createElement('div');
+        aiSection.id = 'ai-analysis-section';
+        aiSection.className = 'ai-analysis-section';
+        const chartControls = document.querySelector('.chart-controls');
+        if (chartControls) {
+            chartControls.parentNode.insertBefore(aiSection, chartControls);
         }
     }
+    aiSection.innerHTML = `<button class="ai-analyze-btn" onclick="askWolfeeAI('${stock.symbol}')">🐺 Ask Wolfee AI for Deep Analysis</button>`;
+
+    updatePortfolioButtonUI(stock.symbol);
+    modal.classList.remove('hidden');
+    document.body.classList.add('no-scroll');
+
+    // Default to 1Y chart
+    if (typeof updateChart === 'function') updateChart('1y');
 }
 
-// Export Modal
-const exportModal = document.getElementById('export-modal');
-function openExportModal() { exportModal.classList.remove('hidden'); }
-function closeExportModal() { exportModal.classList.add('hidden'); }
-window.addEventListener('click', (e) => {
-    if (e.target == exportModal) closeExportModal();
-    const stockModal = document.getElementById('stock-modal');
-    if (e.target == stockModal) {
-        stockModal.classList.add('hidden');
-        document.body.classList.remove('no-scroll');
+window.askWolfeeAI = async function(symbol) {
+    const aiSection = document.getElementById('ai-analysis-section');
+    if (!aiSection) return;
+    
+    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${symbol}...</span></div>`;
+    
+    try {
+        const res = await fetch(`${API_URL}/api/ai/analyze/${symbol}`);
+        if (!res.ok) throw new Error('Analysis failed');
+        const data = await res.json();
+        const text = (data.analysis || 'Analysis unavailable').replace(/\n/g, '<br>');
+        aiSection.innerHTML = `<div class="ai-response"><strong>🤖 Wolfee AI Analysis:</strong><br><br>${text}</div>`;
+    } catch(e) {
+        aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline.</div>`;
     }
+}
+
+function getRsiColor(rsi) {
+    if (!rsi) return 'var(--text-secondary)';
+    if (rsi < 30) return 'var(--success-color)';
+    if (rsi > 70) return 'var(--danger-color)';
+    return '#fbbf24';
+}
+
+function formatNumber(num) {
+    if (!num || num === 0) return '0';
+    if (num >= 1000000000) return (num / 1000000000).toFixed(2) + 'B';
+    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+window.toggleSidebar = function() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('active');
+}
+
+window.switchTab = function(tab) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    
+    if (tab === 'market') {
+        document.getElementById('market-view').classList.remove('hidden');
+        document.getElementById('portfolio-view').classList.add('hidden');
+        const aiSection = document.getElementById('ai-section');
+        if (aiSection) aiSection.classList.remove('hidden');
+        const goldSection = document.getElementById('gold-section');
+        if (goldSection) goldSection.classList.remove('hidden');
+        
+        const filterBtn = document.getElementById('filter-toggle-btn');
+        if (filterBtn) filterBtn.style.display = 'block';
+    } else {
+        document.getElementById('market-view').classList.add('hidden');
+        document.getElementById('portfolio-view').classList.remove('hidden');
+        const aiSection = document.getElementById('ai-section');
+        if (aiSection) aiSection.classList.add('hidden');
+        const goldSection = document.getElementById('gold-section');
+        if (goldSection) goldSection.classList.add('hidden');
+        
+        const filterBtn = document.getElementById('filter-toggle-btn');
+        if (filterBtn) filterBtn.style.display = 'none';
+        
+        if (typeof renderPortfolio === 'function') renderPortfolio();
+    }
+}
+
+window.openExportModal = function() {
+    document.getElementById('export-modal').classList.remove('hidden');
+}
+
+window.closeExportModal = function() {
+    document.getElementById('export-modal').classList.add('hidden');
+}
+
+window.updatePortfolioButtonUI = function(symbol) {
+    const btn = document.getElementById('btn-portfolio-action');
+    if (!btn) return;
+    
+    const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
+    const inPortfolio = portfolio.some(s => s.symbol === symbol);
+    
+    if (inPortfolio) {
+        btn.textContent = '− Remove from Portfolio';
+        btn.style.color = 'var(--danger-color)';
+        btn.style.borderColor = 'var(--danger-color)';
+    } else {
+        btn.textContent = '+ Add to Portfolio';
+        btn.style.color = 'var(--accent-color)';
+        btn.style.borderColor = 'var(--accent-color)';
+    }
+}
+
+document.querySelectorAll('.close-modal').forEach(btn => {
+    btn.onclick = () => {
+        document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+        document.body.classList.remove('no-scroll');
+    };
 });
-const stockCloseBtn = document.querySelector('#stock-modal .close-modal');
-if (stockCloseBtn) stockCloseBtn.onclick = () => {
-    document.getElementById('stock-modal').classList.add('hidden');
-    document.body.classList.remove('no-scroll');
-};

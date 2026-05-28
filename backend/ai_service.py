@@ -1,50 +1,134 @@
-import random
+import os
+import json
+import logging
+from datetime import datetime
 
-def get_market_insight(opportunities):
-    """
-    Generates a 'Daily Insight' focusing on 1-MONTH GROWTH POTENTIAL.
-    Filters for stocks likely to appreciate over the next 30 days.
-    """
+logger = logging.getLogger(__name__)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+def _get_model():
+    """Get Gemini model, returns None if not configured"""
+    try:
+        import google.generativeai as genai
+        if not GEMINI_API_KEY:
+            return None
+        genai.configure(api_key=GEMINI_API_KEY)
+        return genai.GenerativeModel("gemini-2.0-flash")
+    except Exception as e:
+        logger.error(f"Gemini init error: {e}")
+        return None
+
+def get_market_insight(market_data: list, opportunities: list = None) -> str:
+    """Generate daily market insight using Gemini AI."""
+    model = _get_model()
     
-    if not opportunities:
-        return "Market is quiet today. No strong buy signals detected yet. Keep cash ready for dips."
+    if not model or not market_data:
+        return _fallback_insight(market_data, opportunities)
+    
+    try:
+        # Prepare concise market summary
+        top_gainers = sorted(market_data, key=lambda x: x.get('change_pct', 0), reverse=True)[:5]
+        top_losers = sorted(market_data, key=lambda x: x.get('change_pct', 0))[:5]
+        
+        bist_stocks = [s for s in market_data if s.get('currency') == 'TRY' or str(s.get('symbol','')).endswith('.IS')]
+        global_stocks = [s for s in market_data if s.get('currency') == 'USD' and not str(s.get('symbol','')).endswith('.IS')]
+        
+        bist_avg = sum(s.get('change_pct', 0) for s in bist_stocks) / max(len(bist_stocks), 1)
+        global_avg = sum(s.get('change_pct', 0) for s in global_stocks) / max(len(global_stocks), 1)
+        
+        oversold = [s for s in market_data if s.get('rsi', 50) < 30]
+        overbought = [s for s in market_data if s.get('rsi', 50) > 70]
+        
+        prompt = f"""You are Wolfee AI 🐺, a sophisticated Turkish & Global stock market analyst. 
+Generate a brief, insightful daily market brief (max 3 paragraphs, use markdown bold for emphasis).
 
-    # Random "AI-like" templates
+Today's Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+Market Summary:
+- BIST Average Change: {bist_avg:.2f}% ({len(bist_stocks)} stocks tracked)
+- Global Average Change: {global_avg:.2f}% ({len(global_stocks)} stocks tracked)
+
+Top 5 Gainers: {json.dumps([{'s': s['symbol'], 'c': s.get('change_pct',0), 'p': s.get('price',0)} for s in top_gainers])}
+Top 5 Losers: {json.dumps([{'s': s['symbol'], 'c': s.get('change_pct',0), 'p': s.get('price',0)} for s in top_losers])}
+Oversold (RSI<30): {json.dumps([s['symbol'] for s in oversold[:5]])}
+Overbought (RSI>70): {json.dumps([s['symbol'] for s in overbought[:5]])}
+
+Provide:
+1. A brief market overview sentence
+2. Top 2-3 actionable insights or stock picks with reasoning
+3. A risk warning if needed
+
+Keep it concise, professional, and actionable. Use Turkish Lira (₺) for BIST stocks and $ for US stocks."""
+
+        response = model.generate_content(prompt)
+        return response.text if response.text else _fallback_insight(market_data, opportunities)
+        
+    except Exception as e:
+        logger.error(f"Gemini market insight error: {e}")
+        return _fallback_insight(market_data, opportunities)
+
+def get_stock_analysis(symbol: str, stock_data: dict) -> str:
+    """Get deep AI analysis for a single stock"""
+    model = _get_model()
+    
+    if not model or not stock_data:
+        return "AI analysis unavailable. Check back later."
+    
+    try:
+        prompt = f"""You are Wolfee AI 🐺, a professional stock analyst.
+Analyze this stock and provide a clear Buy/Hold/Sell recommendation.
+
+Stock: {stock_data.get('name', symbol)} ({symbol})
+Price: {stock_data.get('price', 0)}
+Change: {stock_data.get('change_pct', 0)}%
+RSI: {stock_data.get('rsi', 'N/A')}
+MA(20): {stock_data.get('ma_20', 'N/A')}
+Volatility: {stock_data.get('volatility', 'N/A')}
+Volume: {stock_data.get('volume', 0)}
+Day Range: {stock_data.get('day_low', 0)} - {stock_data.get('day_high', 0)}
+Previous Close: {stock_data.get('previous_close', 0)}
+Market: {'BIST (Turkish)' if str(symbol).endswith('.IS') else 'Global (US)'}
+
+Provide:
+1. **Recommendation**: Buy / Hold / Sell with confidence (High/Medium/Low)
+2. **Technical Analysis**: Brief RSI and trend interpretation
+3. **Key Levels**: Support and resistance estimates
+4. **Risk Assessment**: What could go wrong
+5. **1-Month Outlook**: Brief price direction expectation
+
+Keep it under 200 words. Be specific with numbers."""
+
+        response = model.generate_content(prompt)
+        return response.text if response.text else "AI analysis temporarily unavailable."
+        
+    except Exception as e:
+        logger.error(f"Gemini stock analysis error: {e}")
+        return "AI analysis temporarily unavailable."
+
+def _fallback_insight(market_data, opportunities=None):
+    """Template-based fallback when Gemini is unavailable"""
+    import random
+    if not market_data:
+        return "🐺 **Wolfee AI**: Market is quiet. No strong signals detected. Keeping cash ready for dips."
+    
+    gainers = [s for s in market_data if s.get('change_pct', 0) > 1]
+    losers = [s for s in market_data if s.get('change_pct', 0) < -1]
+    
     templates = [
-        "🐺 **Wolfee AI Protocol**: I've detected medium-term opportunities. Patience pays.",
-        "🚀 **Market Scan Complete**: Building positions for 30-day gains.",
-        "🤖 **Algorithmic Insight**: Smart accumulation phase detected."
-    ]
-
-    selected_intro = random.choice(templates)
-    
-    # Filter for 1-MONTH GROWTH opportunities
-    # Criteria:
-    # - Golden Cross (sustained uptrend momentum)
-    # - RSI 30-45 (accumulation zone, not overbought)
-    # - Strong trend following signals (not immediate buys)
-    medium_term_growth = [
-        opp for opp in opportunities 
-        if (
-            'Golden Cross' in opp.get('buy_signal', '') or  # Sustained momentum
-            (30 <= opp.get('rsi', 100) <= 45) or  # Sweet spot: recovering but not overbought
-            'Trend Follow' in opp.get('buy_signal', '') or  # Established uptrend
-            'Oversold Rebound' in opp.get('buy_signal', '')  # Value recovery play
-        )
+        f"🐺 **Wolfee AI Protocol**: Tracking {len(market_data)} instruments. {len(gainers)} showing gains, {len(losers)} declining. ",
+        f"🚀 **Market Scan Complete**: Analyzed {len(market_data)} stocks across BIST & Global markets. ",
+        f"🤖 **Algorithmic Insight**: Processing {len(market_data)} data points for patterns. "
     ]
     
-    # Pick random from medium-term opportunities (quality + variety)
-    if medium_term_growth:
-        top_pick = random.choice(medium_term_growth)
-    else:
-        # Fallback: Any opportunity with RSI < 60 (not overbought)
-        decent_picks = [opp for opp in opportunities if opp.get('rsi', 100) < 60]
-        top_pick = random.choice(decent_picks) if decent_picks else random.choice(opportunities)
+    text = random.choice(templates)
     
-    symbol = top_pick['symbol'].replace('.IS', '')
-    advice = f"Consider looking at **{symbol}**. It's showing a **{top_pick['prediction']}** signal. "
+    if gainers:
+        top = max(gainers, key=lambda x: x.get('change_pct', 0))
+        text += f"Top performer: **{top['symbol'].replace('.IS', '')}** at +{top.get('change_pct',0):.1f}%. "
     
-    if len(opportunities) > 3:
-        advice += f"There are {len(opportunities)} other signals to check in the sidebar."
+    if losers:
+        worst = min(losers, key=lambda x: x.get('change_pct', 0))
+        text += f"Watch out for **{worst['symbol'].replace('.IS', '')}** at {worst.get('change_pct',0):.1f}%."
     
-    return f"{selected_intro}\n\n{advice}"
+    return text

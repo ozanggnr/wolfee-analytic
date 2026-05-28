@@ -1093,7 +1093,99 @@ input:checked+.slider:before {
     border-radius: 4px;
 }
 
-.row-inputs {
+}
+
+/* Exchange Rate Ticker */
+.exchange-ticker {
     display: flex;
+    gap: 2rem;
+    padding: 0.5rem 2rem;
+    background: rgba(15, 23, 42, 0.9);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    overflow-x: auto;
+    font-size: 0.85rem;
+}
+.exchange-item {
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
+    white-space: nowrap;
+}
+.exchange-item .pair { color: var(--text-secondary); font-weight: 600; }
+.exchange-item .rate { color: var(--text-primary); font-weight: 700; }
+
+/* Gold Cards */
+.gold-section {
+    margin-bottom: 1.5rem;
+}
+.gold-section h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    color: #fbbf24;
+}
+.gold-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+.gold-card {
+    background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(245,158,11,0.05));
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all 0.3s;
+}
+.gold-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 16px rgba(251,191,36,0.15);
+}
+.gold-card .gold-name { font-size: 0.85rem; color: #fbbf24; font-weight: 600; }
+.gold-card .gold-price { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); margin-top: 0.5rem; }
+.gold-card .gold-detail { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+/* AI Analysis Panel */
+.ai-analysis-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(56, 189, 248, 0.05);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 12px;
+}
+.ai-analyze-btn {
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    border: none;
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all 0.3s;
+    width: 100%;
+    font-size: 0.9rem;
+}
+.ai-analyze-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+}
+.ai-response {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(30, 41, 59, 0.8);
+    border-radius: 8px;
+    line-height: 1.6;
+    font-size: 0.9rem;
+    color: #e2e8f0;
+}
+
+/* Skeleton Loading */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+.skeleton {
+    background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 8px;
 }

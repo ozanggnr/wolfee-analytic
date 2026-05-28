@@ -1,7 +1,5 @@
-// -------------------------------------------------------------------------
-// [DEPLOYMENT CONFIG]
-// 1. LOCAL (Testing):
-// const API_URL = "http://127.0.0.1:8000";
-// 2. PRODUCTION (Render):
-const API_URL = "https://wolfee-backend.onrender.com";
-// -------------------------------------------------------------------------
+// Wolfee Analytics Configuration
+// When served from FastAPI, API is at same origin
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://127.0.0.1:8000'
+    : '';  // Same origin in production

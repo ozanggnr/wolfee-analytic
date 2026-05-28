@@ -8,8 +8,6 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-    <script src="js/mock-data.js"></script>
-    <script src="js/yahoo-client.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
 
@@ -28,7 +26,7 @@
         <!-- Search Bar -->
         <div class="search-container">
             <input type="text" id="search-input" placeholder="🔍 Search stocks..." autocomplete="off">
-            <button id="filter-toggle-btn" class="icon-btn" onclick="toggleFilterPopover()"
+            <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()"
                 style="background:rgba(255,255,255,0.1); border:none; color:var(--text-secondary);">
                 ⚙️
             </button>
@@ -64,10 +62,10 @@
                     </div>
                 </div>
                 <div style="margin-top:1rem; display: flex; gap: 0.5rem;">
-                    <button onclick="applyFilters()"
+                    <button onclick="if(typeof applyFilters === 'function') applyFilters()"
                         style="flex:1; padding: 0.5rem; background: var(--accent-color); border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">Apply
                         Filters</button>
-                    <button onclick="clearFilters()"
+                    <button onclick="if(typeof clearFilters === 'function') clearFilters()"
                         style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white; cursor: pointer;">Clear</button>
                 </div>
             </div>
@@ -95,6 +93,8 @@
         </div>
     </header>
 
+    <div id="exchange-ticker" class="exchange-ticker" style="display:none;"></div>
+
     <div class="container">
         <main>
             <!-- AI Section -->
@@ -105,6 +105,8 @@
                 </div>
                 <p id="ai-text">Analyzing market data...</p>
             </div>
+
+            <div id="gold-section" class="gold-section"></div>
 
             <div id="market-view">
                 <div id="stock-grid">
@@ -139,9 +141,6 @@
                     <p style="color: grey;">Scanning market...</p>
                 </div>
             </div>
-
-            <!-- Filter Section -->
-
         </aside>
     </div>
 
@@ -188,7 +187,7 @@
             <div class="modal-header-actions">
                 <h2 id="modal-title" style="margin:0;">Stock Name</h2>
                 <div style="display:flex; gap:0.5rem;">
-                    <button id="btn-portfolio-action" class="secondary-btn" onclick="togglePortfolioItem()">+ Add to
+                    <button id="btn-portfolio-action" class="secondary-btn" onclick="if(typeof togglePortfolioItem === 'function') togglePortfolioItem()">+ Add to
                         Portfolio</button>
                 </div>
             </div>
@@ -219,6 +218,8 @@
                 Best Entry: Loading...
             </div>
 
+            <div id="ai-analysis-section" class="ai-analysis-section"></div>
+
             <div class="chart-controls">
                 <button onclick="updateChart('1d')">1 Day</button>
                 <button onclick="updateChart('1mo')">1 Month</button>
@@ -231,8 +232,6 @@
             </div>
         </div>
     </div>
-
-
 
     <!-- Modular Scripts -->
     <script src="js/config.js"></script>
