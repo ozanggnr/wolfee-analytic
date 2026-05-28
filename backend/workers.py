@@ -226,7 +226,7 @@ async def refresh_ai_insight() -> bool:
             } for s in stocks]
             
             from ai_service import get_market_insight
-            insight_text = get_market_insight(market_data)
+            insight_text = await asyncio.to_thread(get_market_insight, market_data)
             
             # Save to DB
             insight = AIInsight(
