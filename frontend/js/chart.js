@@ -83,5 +83,6 @@ function renderCandlestickChart(history) {
 }
 
 window.updateChart = function(period) {
-    if (currentChartSymbol) loadChart(currentChartSymbol, period);
+    const symbolToLoad = currentChartSymbol || (typeof currentSymbol !== 'undefined' ? currentSymbol : null);
+    if (symbolToLoad) loadChart(symbolToLoad, period);
 }

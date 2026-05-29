@@ -216,7 +216,8 @@ function openModal(stock) {
     document.body.classList.add('no-scroll');
 
     // Default to 1Y chart
-    if (typeof updateChart === 'function') updateChart('1y');
+    if (typeof loadChart === 'function') loadChart(stock.symbol, '1y');
+    else if (typeof updateChart === 'function') updateChart('1y');
 }
 
 window.askWolfeeAI = async function(symbol) {
