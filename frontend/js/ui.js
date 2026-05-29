@@ -311,9 +311,34 @@ window.updatePortfolioButtonUI = function(symbol) {
     }
 }
 
-document.querySelectorAll('.close-modal').forEach(btn => {
-    btn.onclick = () => {
-        document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+function closeModalWithAnim() {
+    const activeModals = document.querySelectorAll('.modal:not(.hidden)');
+    activeModals.forEach(m => {
+        const content = m.querySelector('.modal-content');
+        if (content) {
+            content.style.animation = 'slideUp 0.25s ease-in forwards';
+        }
+    });
+    
+    setTimeout(() => {
+        activeModals.forEach(m => {
+            m.classList.add('hidden');
+            const content = m.querySelector('.modal-content');
+            if (content) content.style.animation = '';
+        });
         document.body.classList.remove('no-scroll');
-    };
+    }, 240);
+}
+
+document.querySelectorAll('.close-modal').forEach(btn => {
+    btn.onclick = () => closeModalWithAnim();
 });
+
+window.onclick = function(event) {
+    const modals = document.querySelectorAll('.modal:not(.hidden)');
+    modals.forEach(m => {
+        if (event.target === m) {
+            closeModalWithAnim();
+        }
+    });
+};
