@@ -2,20 +2,19 @@
 // PORTFOLIO LOGIC
 // -------------------------------------------------------------------------
 
-function getPortfolio() {
+window.getPortfolio = function() {
     const raw = sessionStorage.getItem('wolfee_portfolio');
     return raw ? JSON.parse(raw) : [];
 }
 
-function savePortfolio(list) {
+window.savePortfolio = function(list) {
     sessionStorage.setItem('wolfee_portfolio', JSON.stringify(list));
 }
 
 window.togglePortfolioItem = function () {
     if (!currentSymbol) return;
 
-    // Find full stock object from cache (using global allStocks from ui.js context)
-    // Note: allStocks needs to be accessible. We'll populate it in ui.js/api.js or make it global in main.js
+    // Find full stock object from cache
     const stock = window.allStocks.find(s => s.symbol === currentSymbol);
     if (!stock) return;
 
@@ -31,17 +30,25 @@ window.togglePortfolioItem = function () {
     }
 
     savePortfolio(list);
-    updatePortfolioButtonUI();
-    renderPortfolio(); // Update grid in background
+    
+    // Update the button UI using the newly saved portfolio state
+    if (typeof updatePortfolioButtonUI === 'function') {
+        updatePortfolioButtonUI(currentSymbol);
+    }
+    
+    // Update the portfolio tab grid if it's currently loaded
+    renderPortfolio(); 
 }
 
-function loadPortfolio() {
+window.loadPortfolio = function() {
     renderPortfolio();
 }
 
-function renderPortfolio() {
+window.renderPortfolio = function() {
     const portfolioGrid = document.getElementById('portfolio-grid');
     const portfolioEmpty = document.getElementById('portfolio-empty');
+    if (!portfolioGrid || !portfolioEmpty) return;
+    
     const list = getPortfolio();
 
     portfolioGrid.innerHTML = '';
@@ -54,8 +61,10 @@ function renderPortfolio() {
     portfolioEmpty.classList.add('hidden');
 
     list.forEach(stock => {
-        // Reuse render logic but append to portfolio grid
-        const card = createStockCardElement(stock);
-        portfolioGrid.appendChild(card);
+        // Render it into the portfolio grid using the global render function
+        stock.inPortfolio = true;
+        if (typeof renderStockCard === 'function') {
+            renderStockCard(stock);
+        }
     });
 }
