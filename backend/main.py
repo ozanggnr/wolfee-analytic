@@ -363,7 +363,8 @@ async def get_ai_stock_analysis(symbol: str):
             if not stock_data:
                 raise HTTPException(status_code=404, detail="Stock not found")
 
-            analysis = get_stock_analysis(symbol, stock_data)
+            import asyncio
+            analysis = await asyncio.to_thread(get_stock_analysis, symbol, stock_data)
             return {"symbol": symbol, "analysis": analysis}
 
     except HTTPException:
