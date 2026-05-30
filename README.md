@@ -1,8 +1,10 @@
 # Wolfee Analytics
 
+**Live Demo:** [https://wolfee-analytics.up.railway.app/](https://wolfee-analytics.up.railway.app/)
+
 Wolfee Analytics is a sophisticated financial data analysis platform designed to provide real-time insights, comprehensive market tracking, and intelligent stock evaluation for both BIST (Borsa Istanbul) and Global markets.
 
-The system bridges the gap between raw market data and actionable financial intelligence, offering a unified dashboard for tracking stocks, commodities, and market trends.
+The system bridges the gap between raw market data and actionable financial intelligence, offering a unified dashboard for tracking stocks, commodities, Turkish Gold, and Exchange Rates. It now leverages AI to provide daily market insights and deep stock analysis.
 
 ## 🚀 Key Features
 

@@ -489,59 +489,6 @@ async def export_analysis(period: str):
         raise HTTPException(status_code=404, detail="No data available for export.")
 
     return _create_excel_response(data, f"wolfee_market_{period}", period.capitalize())
-        if period not in ["daily", "weekly", "monthly"]:
-            raise HTTPException(status_code=400, detail="Invalid period")
-
-        symbol_list = [s.strip() for s in symbols.split(',')]
-        if not symbol_list:
-            raise HTTPException(status_code=400, detail="No symbols provided")
-
-        results = []
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        for symbol in symbol_list:
-            data = analyze_stock(symbol, is_commodity="=" in symbol)
-            if data:
-                price = data.get('price', 0)
-                change_p = data.get('change_pct', 0)
-                change_amt = price * (change_p / 100) if price else 0
-                start_price = data.get('previous_close') or (price - change_amt)
-
-                rsi = data.get('rsi', 0)
-                rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
-
-                results.append({
-                    "Symbol": data.get('symbol', ''),
-                    "Name": data.get('name', ''),
-                    "Report Period": "Session Snapshot",
-                    "Analysis Date": today,
-                    "Trend": data.get('prediction', ''),
-                    "Current Price": round(price, 2),
-                    "Start Price": round(start_price, 2),
-                    "Change %": round(change_p, 2),
-                    "Change Amt": round(change_amt, 2),
-                    "Period High": data.get('day_high', 0),
-                    "High Date": today,
-                    "Period Low": data.get('day_low', 0),
-                    "Low Date": today,
-                    "RSI (14)": round(rsi, 2),
-                    "RSI Status": rsi_status,
-                    "Volatility %": data.get('volatility', 'MEDIUM'),
-                    "MA(20)": data.get('ma_20', 0),
-                    "Volume (Period)": data.get('volume', 0),
-                })
-
-        if not results:
-            raise HTTPException(status_code=404, detail="No data found for provided symbols")
-
-        return _create_excel_response(results, f"portfolio_{period}", f"Portfolio {period.capitalize()}")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Portfolio export error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 def _create_excel_response(data: list, filename: str, sheet_name: str) -> Response:
     """Create a professionally formatted Excel file."""
