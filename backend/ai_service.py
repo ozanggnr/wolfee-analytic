@@ -73,7 +73,7 @@ def get_stock_analysis(symbol: str, stock_data: dict) -> str:
     model = _get_model()
     
     if not model or not stock_data:
-        return "AI analysis unavailable. Check back later."
+        return _fallback_stock_analysis(symbol, stock_data)
     
     try:
         prompt = f"""You are Wolfee AI 🐺, a professional stock analyst.
@@ -100,11 +100,48 @@ Provide:
 Keep it under 200 words. Be specific with numbers."""
 
         response = model.generate_content(prompt)
-        return response.text if response.text else "AI analysis temporarily unavailable."
+        return response.text if response.text else _fallback_stock_analysis(symbol, stock_data)
         
     except Exception as e:
         logger.error(f"Gemini stock analysis error: {e}")
-        return "AI analysis temporarily unavailable."
+        return _fallback_stock_analysis(symbol, stock_data)
+
+def _fallback_stock_analysis(symbol: str, stock_data: dict) -> str:
+    """Template-based fallback for individual stock analysis."""
+    if not stock_data:
+        return "🐺 **Wolfee AI**: Data is currently missing for this asset."
+    
+    price = stock_data.get('price', 0)
+    change = stock_data.get('change_pct', 0)
+    rsi = stock_data.get('rsi', 50)
+    
+    analysis = f"🐺 **Wolfee AI Basic Analysis for {symbol}**:\n\n"
+    
+    # Trend
+    if change > 2:
+        analysis += f"**Trend**: Positive momentum detected (+{change}%). The asset is showing strength in the current session.\n"
+    elif change < -2:
+        analysis += f"**Trend**: Downward pressure observed ({change}%). Exercise caution as sellers currently dominate.\n"
+    else:
+        analysis += f"**Trend**: Neutral price action. The asset is consolidating around {price}.\n"
+        
+    # RSI
+    if rsi > 70:
+        analysis += f"**Momentum (RSI)**: High ({rsi:.1f}). Approaching overbought territory, suggesting limited upside in the short term without a pullback.\n"
+    elif rsi < 30:
+        analysis += f"**Momentum (RSI)**: Low ({rsi:.1f}). Approaching oversold territory. Watch for potential reversal or bounce opportunities.\n"
+    else:
+        analysis += f"**Momentum (RSI)**: Neutral ({rsi:.1f}). Neither overbought nor oversold, typical of ranging markets.\n"
+        
+    # Conclusion
+    if change > 0 and rsi < 65:
+        analysis += "\n**Recommendation**: Potential Buy. Favorable risk-reward profile."
+    elif change < 0 and rsi > 50:
+        analysis += "\n**Recommendation**: Hold/Sell. Trend is weakening."
+    else:
+        analysis += "\n**Recommendation**: Hold. Wait for clearer signals."
+        
+    return analysis
 
 def _fallback_insight(market_data, opportunities=None):
     """Template-based fallback when Gemini is unavailable"""

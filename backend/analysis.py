@@ -332,7 +332,10 @@ def get_market_opportunities(cached_data=None):
                         stock['reason'] = stock.get('prediction', 'Positive Trend')
                     opportunities.append(stock)
 
-    opportunities.sort(key=lambda x: x.get('change_pct', 0), reverse=True)
+    opportunities.sort(key=lambda x: (
+        x.get('currency', '') == 'TRY' or x.get('market_type', '') == 'BIST' or str(x.get('symbol', '')).endswith('.IS'),
+        x.get('change_pct', 0)
+    ), reverse=True)
     return opportunities[:15]
 
 

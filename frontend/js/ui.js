@@ -113,7 +113,7 @@ function renderExchangeRates(rates) {
         const color = (r.change_pct || 0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         const icon = (r.change_pct || 0) >= 0 ? '▲' : '▼';
         html += `
-            <div class="exchange-item">
+            <div class="exchange-item" style="cursor: pointer;" onclick="openExchangeModal('${r.pair}', ${r.selling || 0}, ${r.change_pct || 0})">
                 <span class="pair">${r.pair}</span>
                 <span class="rate">${(r.selling || 0).toFixed(4)}</span>
                 <span style="color:${color}; font-size:0.75rem;">${icon} ${Math.abs(r.change_pct||0).toFixed(2)}%</span>
@@ -122,6 +122,29 @@ function renderExchangeRates(rates) {
     });
     ticker.innerHTML = html;
 }
+
+window.openExchangeModal = function(pair, price, change_pct) {
+    const symbol = pair.replace('/', '') + '=X'; // e.g. USDTRY=X
+    const stock = {
+        symbol: symbol,
+        name: pair,
+        price: price,
+        change_pct: change_pct,
+        currency: 'TRY',
+        market_type: 'CURRENCY',
+        rsi: 50,
+        ma_20: price,
+        volatility: 'LOW',
+        prediction: 'Currency pair tracking',
+        reason: 'Currency pair tracking',
+        day_low: price * 0.99,
+        day_high: price * 1.01,
+        open: price,
+        previous_close: price,
+        volume: 0
+    };
+    if (typeof openModal === 'function') openModal(stock);
+};
 
 function renderOpportunities(opportunities) {
     const list = document.getElementById('opportunities-list');
