@@ -21,7 +21,7 @@ function renderStockCard(stock) {
                 <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 20)}${(stock.name || '').length > 20 ? '...' : ''}</span>
             </div>
             <div>
-                <div class="stock-price" style="color: ${priceColor}">${currency}${(stock.price||0).toFixed(2)}</div>
+                <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
                 <div class="price-change" style="color: ${priceColor}">
                     ${icon} ${Math.abs(stock.change_pct||0).toFixed(2)}%
                 </div>
@@ -75,9 +75,9 @@ function renderGoldCards(goldData) {
         html += `
             <div class="gold-card">
                 <div class="gold-name">${g.display_name}</div>
-                <div class="gold-price">₺${(g.selling_price || 0).toFixed(2)}</div>
+                <div class="gold-price">${(g.selling_price || 0).toFixed(2)} ₺</div>
                 <div class="gold-detail">
-                    Buy: ₺${(g.buying_price || 0).toFixed(2)} 
+                    Buy: ${(g.buying_price || 0).toFixed(2)} ₺ 
                     <span style="color:${(g.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}; float:right;">
                         ${(g.change_pct||0) >= 0 ? '▲' : '▼'} ${Math.abs(g.change_pct||0).toFixed(2)}%
                     </span>
@@ -170,7 +170,7 @@ function renderOpportunities(opportunities) {
         div.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:700; color:var(--text-primary);">${(stock.symbol||'').replace('.IS','')}</span>
-                <span style="color:var(--success-color); font-weight:600;">${currency}${(stock.price||0).toFixed(2)}</span>
+                <span style="color:var(--success-color); font-weight:600;">${(stock.price||0).toFixed(2)} ${currency}</span>
             </div>
             <div style="margin: 5px 0;">${badges}</div>
             <div class="reason-text" style="color:var(--text-secondary);">${stock.reason || 'Positive signals detected.'}</div>
@@ -201,18 +201,18 @@ function openModal(stock) {
     const prev_close = stock.previous_close || (price * 0.99);
     
     document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
-    document.getElementById('stat-last').textContent = `${currency}${price.toFixed(2)}`;
-    document.getElementById('stat-bid').textContent = stock.bid ? `${currency}${stock.bid.toFixed(2)}` : `${currency}${(price*0.998).toFixed(2)}`;
-    document.getElementById('stat-ask').textContent = stock.ask ? `${currency}${stock.ask.toFixed(2)}` : `${currency}${(price*1.002).toFixed(2)}`;
+    document.getElementById('stat-last').textContent = `${price.toFixed(2)} ${currency}`;
+    document.getElementById('stat-bid').textContent = stock.bid ? `${stock.bid.toFixed(2)} ${currency}` : `${(price*0.998).toFixed(2)} ${currency}`;
+    document.getElementById('stat-ask').textContent = stock.ask ? `${stock.ask.toFixed(2)} ${currency}` : `${(price*1.002).toFixed(2)} ${currency}`;
     
     const changeEl = document.getElementById('stat-change');
     changeEl.textContent = `${(stock.change_pct||0) >= 0 ? '+' : ''}${(stock.change_pct||0).toFixed(2)}%`;
     changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     
-    document.getElementById('stat-low').textContent = `${currency}${day_low.toFixed(2)}`;
-    document.getElementById('stat-high').textContent = `${currency}${day_high.toFixed(2)}`;
-    document.getElementById('stat-vwap').textContent = `${currency}${open_price.toFixed(2)}`;
-    document.getElementById('stat-vol-tl').textContent = `${currency}${prev_close.toFixed(2)}`;
+    document.getElementById('stat-low').textContent = `${day_low.toFixed(2)} ${currency}`;
+    document.getElementById('stat-high').textContent = `${day_high.toFixed(2)} ${currency}`;
+    document.getElementById('stat-vwap').textContent = `${open_price.toFixed(2)} ${currency}`;
+    document.getElementById('stat-vol-tl').textContent = `${prev_close.toFixed(2)} ${currency}`;
     document.getElementById('stat-vol-lot').textContent = formatNumber(stock.volume || 0);
 
     const predEl = document.getElementById('modal-prediction');

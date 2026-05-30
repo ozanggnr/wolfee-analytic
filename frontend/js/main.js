@@ -139,7 +139,7 @@ function initSearch() {
                         <div class="result-name">${stock.name || stock.symbol}</div>
                     </div>
                     <div class="result-price" style="color:${(stock.change_pct||0) >= 0 ? '#4ade80' : '#f87171'}">
-                        ${currency}${(stock.price||0).toFixed(2)}
+                        ${(stock.price||0).toFixed(2)} ${currency}
                     </div>
                 `;
                 div.onclick = () => { openModal(stock); searchResults.classList.add('hidden'); newInput.value = ''; };

@@ -284,8 +284,10 @@ async def get_chart_data(symbol: str, period: str):
             from data_sources.global_market import fetch_global_history
             data = fetch_global_history(symbol, period)
 
-        if not data or not data.get('history'):
+        if not data:
             raise HTTPException(status_code=404, detail="No chart data available")
+
+        return {"history": data}
 
         return data
 
