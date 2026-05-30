@@ -1114,9 +1114,14 @@ input:checked+.slider:before {
     gap: 2rem;
     padding: 0.5rem 2rem;
     background: rgba(15, 23, 42, 0.9);
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-top: none;
+    border-radius: 0 0 16px 16px;
     overflow-x: auto;
     font-size: 0.85rem;
+    width: fit-content;
+    margin: 0 auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 .exchange-item {
     display: flex;

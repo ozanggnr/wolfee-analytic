@@ -358,8 +358,17 @@ def fetch_exchange_rates() -> Optional[list[dict]]:
             except ValueError:
                 selling = 0.0
 
-            # Calculate mid-rate based change (TCMB does not provide change directly)
+            # Calculate change using yfinance
             change_pct = 0.0
+            try:
+                yf_symbol = f"{code}TRY=X"
+                fi = yf.Ticker(yf_symbol).fast_info
+                yf_price = float(fi.last_price) if fi.last_price else 0.0
+                yf_prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+                if yf_prev_close > 0 and yf_price > 0:
+                    change_pct = round((yf_price - yf_prev_close) / yf_prev_close * 100, 2)
+            except Exception:
+                pass
 
             results.append({
                 "pair": pair,
