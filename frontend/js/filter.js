@@ -59,7 +59,23 @@ window.getFilteredStocks = function(baseStocks, query = '') {
 
         if (query) {
             const lowerQuery = query.toLowerCase().trim();
-            if (!sym.toLowerCase().includes(lowerQuery) && !(stock.name || '').toLowerCase().includes(lowerQuery)) {
+            
+            const symMatch = sym.toLowerCase().includes(lowerQuery);
+            const nameMatch = (stock.name || '').toLowerCase().includes(lowerQuery);
+            const predMatch = (stock.prediction || '').toLowerCase().includes(lowerQuery);
+            const reasonMatch = (stock.reason || '').toLowerCase().includes(lowerQuery);
+            
+            const priceStr = (stock.price || 0).toFixed(2);
+            const changeStr = (stock.change_pct || 0).toFixed(2);
+            const volStr = (stock.volume || 0).toString();
+            const rsiStr = (stock.rsi || 0).toFixed(2);
+            
+            const numMatch = priceStr.includes(lowerQuery) || 
+                             changeStr.includes(lowerQuery) || 
+                             volStr.includes(lowerQuery) || 
+                             rsiStr.includes(lowerQuery);
+
+            if (!symMatch && !nameMatch && !predMatch && !reasonMatch && !numMatch) {
                 return false;
             }
         }
