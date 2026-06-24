@@ -156,7 +156,8 @@ function renderOpportunities(opportunities) {
     }
     
     list.innerHTML = '';
-    opportunities.slice(0, 8).forEach(stock => {
+    const validOpps = opportunities.filter(stock => stock.price && stock.price > 0);
+    validOpps.slice(0, 8).forEach(stock => {
         const div = document.createElement('div');
         div.className = 'opportunity-card';
         

@@ -28,64 +28,60 @@ document.addEventListener('click', (e) => {
 
 function getNumVal(id, defaultVal) {
     const el = document.getElementById(id);
-    if (!el || el.value.trim() === '') return defaultVal;
+    if (!el || !el.value || el.value.trim() === '') return defaultVal;
     const parsed = parseFloat(el.value);
     return isNaN(parsed) ? defaultVal : parsed;
 }
 
-function applyFilters() {
+window.getFilteredStocks = function(baseStocks, query = '') {
     const priceMin = getNumVal('filter-price-min', 0);
     const priceMax = getNumVal('filter-price-max', Infinity);
     const rsiMin = getNumVal('filter-rsi-min', 0);
     const rsiMax = getNumVal('filter-rsi-max', 100);
-
-    // New parameters
     const changeMin = getNumVal('filter-change-min', -Infinity);
     const changeMax = getNumVal('filter-change-max', Infinity);
     const volMin = getNumVal('filter-vol-min', 0);
 
-    // Get current region from switch
     const toggle = document.getElementById('region-toggle');
-    const isGlobalMode = toggle ? toggle.checked : false; // true = GLOBAL
+    const isGlobalMode = toggle ? toggle.checked : false;
 
+    return baseStocks.filter(stock => {
+        if (!stock.price || stock.price <= 0) return false;
+
+        const sym = stock.symbol || '';
+        const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
+        if (isGlobalMode !== isStockGlobal) return false;
+
+        if (stock.price < priceMin || stock.price > priceMax) return false;
+        if (stock.rsi < rsiMin || stock.rsi > rsiMax) return false;
+        if (stock.change_pct < changeMin || stock.change_pct > changeMax) return false;
+        if (stock.volume < volMin) return false;
+
+        if (query) {
+            const lowerQuery = query.toLowerCase().trim();
+            if (!sym.toLowerCase().includes(lowerQuery) && !(stock.name || '').toLowerCase().includes(lowerQuery)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+};
+
+function applyFilters() {
     const stockGrid = document.getElementById('stock-grid');
     if (!stockGrid) return;
     stockGrid.innerHTML = '';
 
     if (!window.allStocks) return;
 
-    // 1. Filter by Region
-    let filtered = window.allStocks.filter(stock => {
-        const isStockGlobal = !stock.symbol.endsWith('.IS');
+    let filtered = window.getFilteredStocks(window.allStocks);
 
-        if (isGlobalMode) {
-            return isStockGlobal;
-        } else {
-            return !isStockGlobal;
-        }
-    });
-
-    // 2. Filter by Values
-    filtered = filtered.filter(stock => {
-        // Must have valid price
-        if (!stock.price || stock.price <= 0) return false;
-        // Price
-        if (stock.price < priceMin || stock.price > priceMax) return false;
-        // RSI
-        if (stock.rsi < rsiMin || stock.rsi > rsiMax) return false;
-        // Change %
-        if (stock.change_pct < changeMin || stock.change_pct > changeMax) return false;
-        // Volume
-        if (stock.volume < volMin) return false;
-
-        return true;
-    });
-
-    // 3. Sort
+    const toggle = document.getElementById('region-toggle');
+    const isGlobalMode = toggle ? toggle.checked : false;
+    
     if (isGlobalMode) {
-        filtered.sort((a, b) => a.symbol.localeCompare(b.symbol));
-    } else {
-        // Keep default server sort
+        filtered.sort((a, b) => (a.symbol||'').localeCompare(b.symbol||''));
     }
 
     if (filtered.length === 0) {
@@ -97,7 +93,6 @@ function applyFilters() {
         renderStockCard(stock);
     });
 
-    // Close popover after applying
     const popover = document.getElementById('filter-popover');
     if (popover) popover.classList.add('hidden');
 }

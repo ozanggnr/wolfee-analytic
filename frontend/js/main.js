@@ -117,16 +117,20 @@ function initSearch() {
         const query = e.target.value.toLowerCase().trim();
         if (!query) { searchResults.classList.add('hidden'); return; }
         
-        const toggle = document.getElementById('region-toggle');
-        const isGlobalModeVal = toggle ? toggle.checked : false;
-        
-        const matches = allStocks.filter(stock => {
-            if (!stock.price || stock.price <= 0) return false;
-            const sym = stock.symbol || '';
-            const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
-            if (isGlobalModeVal !== isStockGlobal) return false;
-            return sym.toLowerCase().includes(query) || (stock.name || '').toLowerCase().includes(query);
-        });
+        let matches = [];
+        if (typeof window.getFilteredStocks === 'function') {
+            matches = window.getFilteredStocks(allStocks, query);
+        } else {
+            const toggle = document.getElementById('region-toggle');
+            const isGlobalModeVal = toggle ? toggle.checked : false;
+            matches = allStocks.filter(stock => {
+                if (!stock.price || stock.price <= 0) return false;
+                const sym = stock.symbol || '';
+                const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
+                if (isGlobalModeVal !== isStockGlobal) return false;
+                return sym.toLowerCase().includes(query) || (stock.name || '').toLowerCase().includes(query);
+            });
+        }
         
         if (matches.length > 0) {
             searchResults.classList.remove('hidden');
