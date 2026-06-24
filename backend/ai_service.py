@@ -41,7 +41,7 @@ def get_market_insight(market_data: list, opportunities: list = None) -> str:
         overbought = [s for s in market_data if s.get('rsi', 50) > 70]
         
         prompt = f"""You are Wolfee AI 🐺, a sophisticated Turkish & Global stock market analyst. 
-Generate a brief, insightful daily market brief (max 3 paragraphs, use markdown bold for emphasis).
+Generate a brief, insightful daily market brief (max 3 paragraphs, do NOT use markdown formatting like ** or ###, write plain professional text).
 
 Today's Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
@@ -91,11 +91,11 @@ Previous Close: {stock_data.get('previous_close', 0)}
 Market: {'BIST (Turkish)' if str(symbol).endswith('.IS') else 'Global (US)'}
 
 Provide:
-1. **Recommendation**: Buy / Hold / Sell with confidence (High/Medium/Low)
-2. **Technical Analysis**: Brief RSI and trend interpretation
-3. **Key Levels**: Support and resistance estimates
-4. **Risk Assessment**: What could go wrong
-5. **1-Month Outlook**: Brief price direction expectation
+1. Recommendation: Buy / Hold / Sell with confidence (High/Medium/Low)
+2. Technical Analysis: Brief RSI and trend interpretation
+3. Key Levels: Support and resistance estimates
+4. Risk Assessment: What could go wrong
+5. 1-Month Outlook: Brief price direction expectation
 
 Keep it under 200 words. Be specific with numbers."""
 
@@ -109,37 +109,38 @@ Keep it under 200 words. Be specific with numbers."""
 def _fallback_stock_analysis(symbol: str, stock_data: dict) -> str:
     """Template-based fallback for individual stock analysis."""
     if not stock_data:
-        return "🐺 **Wolfee AI**: Data is currently missing for this asset."
+        return "🐺 Wolfee AI: Data is currently missing for this asset."
     
     price = stock_data.get('price', 0)
     change = stock_data.get('change_pct', 0)
     rsi = stock_data.get('rsi', 50)
+    name = stock_data.get('name', symbol.replace('.IS', ''))
     
-    analysis = f"🐺 **Wolfee AI Basic Analysis for {symbol}**:\n\n"
+    analysis = f"🐺 Wolfee AI Analysis for {name} ({symbol.replace('.IS', '')})\n\n"
     
     # Trend
     if change > 2:
-        analysis += f"**Trend**: Positive momentum detected (+{change}%). The asset is showing strength in the current session.\n"
+        analysis += f"Trend: Positive momentum detected (+{change}%). The asset is showing strength in the current session.\n"
     elif change < -2:
-        analysis += f"**Trend**: Downward pressure observed ({change}%). Exercise caution as sellers currently dominate.\n"
+        analysis += f"Trend: Downward pressure observed ({change}%). Exercise caution as sellers currently dominate.\n"
     else:
-        analysis += f"**Trend**: Neutral price action. The asset is consolidating around {price}.\n"
+        analysis += f"Trend: Neutral price action. The asset is consolidating around {price}.\n"
         
     # RSI
     if rsi > 70:
-        analysis += f"**Momentum (RSI)**: High ({rsi:.1f}). Approaching overbought territory, suggesting limited upside in the short term without a pullback.\n"
+        analysis += f"Momentum (RSI): High ({rsi:.1f}). Approaching overbought territory, suggesting limited upside in the short term without a pullback.\n"
     elif rsi < 30:
-        analysis += f"**Momentum (RSI)**: Low ({rsi:.1f}). Approaching oversold territory. Watch for potential reversal or bounce opportunities.\n"
+        analysis += f"Momentum (RSI): Low ({rsi:.1f}). Approaching oversold territory. Watch for potential reversal or bounce opportunities.\n"
     else:
-        analysis += f"**Momentum (RSI)**: Neutral ({rsi:.1f}). Neither overbought nor oversold, typical of ranging markets.\n"
+        analysis += f"Momentum (RSI): Neutral ({rsi:.1f}). Neither overbought nor oversold, typical of ranging markets.\n"
         
     # Conclusion
     if change > 0 and rsi < 65:
-        analysis += "\n**Recommendation**: Potential Buy. Favorable risk-reward profile."
+        analysis += "\nRecommendation: Potential Buy. Favorable risk-reward profile."
     elif change < 0 and rsi > 50:
-        analysis += "\n**Recommendation**: Hold/Sell. Trend is weakening."
+        analysis += "\nRecommendation: Hold/Sell. Trend is weakening."
     else:
-        analysis += "\n**Recommendation**: Hold. Wait for clearer signals."
+        analysis += "\nRecommendation: Hold. Wait for clearer signals."
         
     return analysis
 
@@ -147,25 +148,27 @@ def _fallback_insight(market_data, opportunities=None):
     """Template-based fallback when Gemini is unavailable"""
     import random
     if not market_data:
-        return "🐺 **Wolfee AI**: Market is quiet. No strong signals detected. Keeping cash ready for dips."
+        return "🐺 Wolfee AI: Market is quiet. No strong signals detected. Keeping cash ready for dips."
     
     gainers = [s for s in market_data if s.get('change_pct', 0) > 1]
     losers = [s for s in market_data if s.get('change_pct', 0) < -1]
     
     templates = [
-        f"🐺 **Wolfee AI Protocol**: Tracking {len(market_data)} instruments. {len(gainers)} showing gains, {len(losers)} declining. ",
-        f"🚀 **Market Scan Complete**: Analyzed {len(market_data)} stocks across BIST & Global markets. ",
-        f"🤖 **Algorithmic Insight**: Processing {len(market_data)} data points for patterns. "
+        f"🐺 Wolfee AI: Tracking {len(market_data)} instruments. {len(gainers)} showing gains, {len(losers)} declining. ",
+        f"📊 Market Overview: Analyzed {len(market_data)} stocks across BIST and Global markets. ",
+        f"📈 Market Intelligence: Processing {len(market_data)} data points for patterns. "
     ]
     
     text = random.choice(templates)
     
     if gainers:
         top = max(gainers, key=lambda x: x.get('change_pct', 0))
-        text += f"Top performer: **{top['symbol'].replace('.IS', '')}** at +{top.get('change_pct',0):.1f}%. "
+        name = top.get('name', top['symbol'].replace('.IS', ''))
+        text += f"Top performer: {name} at +{top.get('change_pct',0):.1f}%. "
     
     if losers:
         worst = min(losers, key=lambda x: x.get('change_pct', 0))
-        text += f"Watch out for **{worst['symbol'].replace('.IS', '')}** at {worst.get('change_pct',0):.1f}%."
+        name = worst.get('name', worst['symbol'].replace('.IS', ''))
+        text += f"Watch out for {name} at {worst.get('change_pct',0):.1f}%."
     
     return text

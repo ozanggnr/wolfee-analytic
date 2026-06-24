@@ -80,28 +80,41 @@ function processData(data) {
     window.allStocks = allStocks;
     
     const toggle = document.getElementById('region-toggle');
-    const isGlobalMode = toggle ? !toggle.checked : false; // Default TR is checked? Wait, let's look at logic: checked means TR or Global?
-    // Let's assume toggle checked means Global mode
     const isGlobalModeVal = toggle ? toggle.checked : false;
     
     const stockGrid = document.getElementById('stock-grid');
     if (!stockGrid) return;
-    stockGrid.innerHTML = '';
     
-    let displayStocks = allStocks.filter(stock => {
-        if (!stock.price || stock.price <= 0) return false;
-        const sym = stock.symbol || '';
-        const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
-        return isGlobalModeVal ? isStockGlobal : !isStockGlobal;
-    });
+    // Fade out existing cards
+    stockGrid.classList.add('switching');
     
-    if (displayStocks.length === 0) {
-        stockGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">No stocks found. Data is loading...</p>';
-        return;
-    }
-    
-    displayStocks.forEach(stock => renderStockCard(stock));
-    if (typeof initSearch === 'function') initSearch();
+    setTimeout(() => {
+        stockGrid.innerHTML = '';
+        
+        let displayStocks = allStocks.filter(stock => {
+            if (!stock.price || stock.price <= 0) return false;
+            const sym = stock.symbol || '';
+            const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
+            return isGlobalModeVal ? isStockGlobal : !isStockGlobal;
+        });
+        
+        if (displayStocks.length === 0) {
+            stockGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">No stocks found. Data is loading...</p>';
+            stockGrid.classList.remove('switching');
+            return;
+        }
+        
+        stockGrid.classList.remove('switching');
+        displayStocks.forEach((stock, i) => {
+            renderStockCard(stock);
+            const card = stockGrid.lastElementChild;
+            if (card) {
+                card.classList.add('card-animate-in');
+                card.style.animationDelay = `${i * 0.03}s`;
+            }
+        });
+        if (typeof initSearch === 'function') initSearch();
+    }, 150);
 }
 
 function initSearch() {

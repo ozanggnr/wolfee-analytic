@@ -36,8 +36,7 @@ function getNumVal(id, defaultVal) {
 window.getFilteredStocks = function(baseStocks, query = '') {
     const priceMin = getNumVal('filter-price-min', 0);
     const priceMax = getNumVal('filter-price-max', Infinity);
-    const rsiMin = getNumVal('filter-rsi-min', 0);
-    const rsiMax = getNumVal('filter-rsi-max', 100);
+
     const changeMin = getNumVal('filter-change-min', -Infinity);
     const changeMax = getNumVal('filter-change-max', Infinity);
     const volMin = getNumVal('filter-vol-min', 0);
@@ -53,7 +52,7 @@ window.getFilteredStocks = function(baseStocks, query = '') {
         if (isGlobalMode !== isStockGlobal) return false;
 
         if (stock.price < priceMin || stock.price > priceMax) return false;
-        if (stock.rsi < rsiMin || stock.rsi > rsiMax) return false;
+
         if (stock.change_pct < changeMin || stock.change_pct > changeMax) return false;
         if (stock.volume < volMin) return false;
 
@@ -105,8 +104,13 @@ function applyFilters() {
         return;
     }
 
-    filtered.forEach(stock => {
+    filtered.forEach((stock, i) => {
         renderStockCard(stock);
+        const card = stockGrid.lastElementChild;
+        if (card) {
+            card.classList.add('card-animate-in');
+            card.style.animationDelay = `${i * 0.03}s`;
+        }
     });
 
     const popover = document.getElementById('filter-popover');
@@ -116,8 +120,7 @@ function applyFilters() {
 function clearFilters() {
     document.getElementById('filter-price-min').value = '';
     document.getElementById('filter-price-max').value = '';
-    document.getElementById('filter-rsi-min').value = '';
-    document.getElementById('filter-rsi-max').value = '';
+
     document.getElementById('filter-change-min').value = '';
     document.getElementById('filter-change-max').value = '';
     document.getElementById('filter-vol-min').value = '';
@@ -139,7 +142,9 @@ window.toggleRegion = function () {
         label.style.color = "#38bdf8"; // Blue
     }
 
-    applyFilters();
+    const stockGrid = document.getElementById('stock-grid');
+    if (stockGrid) stockGrid.classList.add('switching');
+    setTimeout(() => applyFilters(), 150);
 
     // Reset search
     const searchInput = document.getElementById('search-input');

@@ -33,40 +33,33 @@
 
             <!-- Filter Popover -->
             <div id="filter-popover" class="filter-popover hidden">
-                <h3>Filter Market</h3>
+                <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--accent-color);">Filter Market</h3>
                 <div class="filter-grid-layout">
                     <div class="filter-group">
-                        <label>Price</label>
-                        <div class="row-inputs">
+                        <label>Price Range (₺)</label>
+                        <div class="row-inputs" style="display:flex; gap:0.5rem;">
                             <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
                             <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
                         </div>
                     </div>
                     <div class="filter-group">
-                        <label>RSI</label>
-                        <div class="row-inputs">
-                            <input type="number" id="filter-rsi-min" class="filter-input-small" placeholder="Min">
-                            <input type="number" id="filter-rsi-max" class="filter-input-small" placeholder="Max">
-                        </div>
-                    </div>
-                    <div class="filter-group">
-                        <label>Change %</label>
-                        <div class="row-inputs">
-                            <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min">
-                            <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max">
+                        <label>Change % Range</label>
+                        <div class="row-inputs" style="display:flex; gap:0.5rem;">
+                            <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
+                            <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
                         </div>
                     </div>
                     <div class="filter-group">
                         <label>Min Volume</label>
-                        <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="100000">
+                        <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
                     </div>
                 </div>
-                <div style="margin-top:1rem; display: flex; gap: 0.5rem;">
+                <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
                     <button onclick="if(typeof applyFilters === 'function') applyFilters()"
-                        style="flex:1; padding: 0.5rem; background: var(--accent-color); border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">Apply
+                        style="flex:1; padding: 0.5rem; background: var(--accent-color); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all 0.2s;">Apply
                         Filters</button>
                     <button onclick="if(typeof clearFilters === 'function') clearFilters()"
-                        style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white; cursor: pointer;">Clear</button>
+                        style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: white; cursor: pointer; font-size: 0.85rem;">Clear</button>
                 </div>
             </div>
 
@@ -234,13 +227,13 @@
     </div>
 
     <!-- Modular Scripts -->
-    <script src="js/config.js?v=2.0"></script>
-    <script src="js/api.js?v=2.0"></script>
-    <script src="js/ui.js?v=2.0"></script>
-    <script src="js/filter.js?v=2.0"></script>
-    <script src="js/chart.js?v=2.0"></script>
-    <script src="js/portfolio.js?v=2.0"></script>
-    <script src="js/main.js?v=2.0"></script>
+    <script src="js/config.js?v=3.0"></script>
+    <script src="js/api.js?v=3.0"></script>
+    <script src="js/ui.js?v=3.0"></script>
+    <script src="js/filter.js?v=3.0"></script>
+    <script src="js/chart.js?v=3.0"></script>
+    <script src="js/portfolio.js?v=3.0"></script>
+    <script src="js/main.js?v=3.0"></script>
 </body>
 
 </html>
