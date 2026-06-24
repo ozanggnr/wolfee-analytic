@@ -26,16 +26,23 @@ document.addEventListener('click', (e) => {
     }
 });
 
+function getNumVal(id, defaultVal) {
+    const el = document.getElementById(id);
+    if (!el || el.value.trim() === '') return defaultVal;
+    const parsed = parseFloat(el.value);
+    return isNaN(parsed) ? defaultVal : parsed;
+}
+
 function applyFilters() {
-    const priceMin = parseFloat(document.getElementById('filter-price-min')?.value) || 0;
-    const priceMax = parseFloat(document.getElementById('filter-price-max')?.value) || Infinity;
-    const rsiMin = parseFloat(document.getElementById('filter-rsi-min')?.value) || 0;
-    const rsiMax = parseFloat(document.getElementById('filter-rsi-max')?.value) || 100;
+    const priceMin = getNumVal('filter-price-min', 0);
+    const priceMax = getNumVal('filter-price-max', Infinity);
+    const rsiMin = getNumVal('filter-rsi-min', 0);
+    const rsiMax = getNumVal('filter-rsi-max', 100);
 
     // New parameters
-    const changeMin = parseFloat(document.getElementById('filter-change-min')?.value) || -Infinity;
-    const changeMax = parseFloat(document.getElementById('filter-change-max')?.value) || Infinity;
-    const volMin = parseFloat(document.getElementById('filter-vol-min')?.value) || 0;
+    const changeMin = getNumVal('filter-change-min', -Infinity);
+    const changeMax = getNumVal('filter-change-max', Infinity);
+    const volMin = getNumVal('filter-vol-min', 0);
 
     // Get current region from switch
     const toggle = document.getElementById('region-toggle');
@@ -60,6 +67,8 @@ function applyFilters() {
 
     // 2. Filter by Values
     filtered = filtered.filter(stock => {
+        // Must have valid price
+        if (!stock.price || stock.price <= 0) return false;
         // Price
         if (stock.price < priceMin || stock.price > priceMax) return false;
         // RSI

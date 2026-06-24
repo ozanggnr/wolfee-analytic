@@ -89,6 +89,7 @@ function processData(data) {
     stockGrid.innerHTML = '';
     
     let displayStocks = allStocks.filter(stock => {
+        if (!stock.price || stock.price <= 0) return false;
         const sym = stock.symbol || '';
         const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
         return isGlobalModeVal ? isStockGlobal : !isStockGlobal;
@@ -120,6 +121,7 @@ function initSearch() {
         const isGlobalModeVal = toggle ? toggle.checked : false;
         
         const matches = allStocks.filter(stock => {
+            if (!stock.price || stock.price <= 0) return false;
             const sym = stock.symbol || '';
             const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
             if (isGlobalModeVal !== isStockGlobal) return false;
