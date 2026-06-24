@@ -138,7 +138,7 @@ async def get_quick_market_data(background_tasks: BackgroundTasks):
                 background_tasks.add_task(_sync_refresh)
                 return {"stocks": [], "status": "loading", "message": "First load — data is being fetched. Refresh in 30 seconds."}
 
-            stock_list = [_stock_to_dict(s) for s in stocks]
+            stock_list = [_stock_to_dict(s) for s in stocks if s.price and s.price > 0]
             return {"stocks": stock_list}
 
     except Exception as e:
@@ -155,7 +155,7 @@ async def get_full_market_data():
                 select(StockData).order_by(StockData.market_type, StockData.symbol)
             )
             stocks = result.scalars().all()
-            return {"stocks": [_stock_to_dict(s) for s in stocks]}
+            return {"stocks": [_stock_to_dict(s) for s in stocks if s.price and s.price > 0]}
     except Exception as e:
         logger.error(f"Full market data error: {e}")
         return {"stocks": []}
