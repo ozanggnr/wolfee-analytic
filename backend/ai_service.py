@@ -22,153 +22,220 @@ def _get_model():
 def get_market_insight(market_data: list, opportunities: list = None) -> str:
     """Generate daily market insight using Gemini AI."""
     model = _get_model()
-    
+
     if not model or not market_data:
         return _fallback_insight(market_data, opportunities)
-    
+
     try:
-        # Prepare concise market summary
         top_gainers = sorted(market_data, key=lambda x: x.get('change_pct', 0), reverse=True)[:5]
         top_losers = sorted(market_data, key=lambda x: x.get('change_pct', 0))[:5]
-        
-        bist_stocks = [s for s in market_data if s.get('currency') == 'TRY' or str(s.get('symbol','')).endswith('.IS')]
-        global_stocks = [s for s in market_data if s.get('currency') == 'USD' and not str(s.get('symbol','')).endswith('.IS')]
-        
+
+        bist_stocks = [s for s in market_data if s.get('currency') == 'TRY' or str(s.get('symbol', '')).endswith('.IS')]
+        global_stocks = [s for s in market_data if s.get('currency') == 'USD' and not str(s.get('symbol', '')).endswith('.IS')]
+
         bist_avg = sum(s.get('change_pct', 0) for s in bist_stocks) / max(len(bist_stocks), 1)
         global_avg = sum(s.get('change_pct', 0) for s in global_stocks) / max(len(global_stocks), 1)
-        
+
         oversold = [s for s in market_data if s.get('rsi', 50) < 30]
-        overbought = [s for s in market_data if s.get('rsi', 50) > 70]
-        
-        prompt = f"""You are Wolfee AI 🐺, a sophisticated Turkish & Global stock market analyst. 
-Generate a brief, insightful daily market brief (max 3 paragraphs, do NOT use markdown formatting like ** or ###, write plain professional text).
 
-Today's Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        # Build readable gainer/loser summaries
+        gainer_lines = "\n".join(
+            f"- {s.get('name', s['symbol'])}: +{s.get('change_pct', 0):.1f}% at {s.get('price', 0):.2f}"
+            for s in top_gainers
+        )
+        loser_lines = "\n".join(
+            f"- {s.get('name', s['symbol'])}: {s.get('change_pct', 0):.1f}% at {s.get('price', 0):.2f}"
+            for s in top_losers
+        )
+        oversold_names = ", ".join(s.get('name', s['symbol']) for s in oversold[:4]) if oversold else "None"
 
-Market Summary:
-- BIST Average Change: {bist_avg:.2f}% ({len(bist_stocks)} stocks tracked)
-- Global Average Change: {global_avg:.2f}% ({len(global_stocks)} stocks tracked)
+        prompt = f"""You are Wolfee AI, a friendly and professional stock market analyst for Turkish and global markets.
 
-Top 5 Gainers: {json.dumps([{'s': s['symbol'], 'c': s.get('change_pct',0), 'p': s.get('price',0)} for s in top_gainers])}
-Top 5 Losers: {json.dumps([{'s': s['symbol'], 'c': s.get('change_pct',0), 'p': s.get('price',0)} for s in top_losers])}
-Oversold (RSI<30): {json.dumps([s['symbol'] for s in oversold[:5]])}
-Overbought (RSI>70): {json.dumps([s['symbol'] for s in overbought[:5]])}
+Write a short, clear daily market summary for investors. Write in plain English — no bullet points with dashes, no markdown symbols like **, no technical abbreviations.
+Instead of "RSI" write "momentum indicator". Instead of "MA" write "average price trend". Keep it conversational but professional.
 
-Provide:
-1. A brief market overview sentence
-2. Top 2-3 actionable insights or stock picks with reasoning
-3. A risk warning if needed
+Date: {datetime.now().strftime('%B %d, %Y at %H:%M')}
 
-Keep it concise, professional, and actionable. Use Turkish Lira (₺) for BIST stocks and $ for US stocks."""
+Turkish Market (BIST) average movement today: {bist_avg:+.2f}%
+Global Market (US stocks) average movement today: {global_avg:+.2f}%
+
+Today's top gaining stocks:
+{gainer_lines}
+
+Today's biggest decliners:
+{loser_lines}
+
+Stocks that may be oversold and worth watching (momentum is low, potential bounce):
+{oversold_names}
+
+Instructions:
+Write exactly 2 to 3 short paragraphs. 
+First paragraph: describe how the overall market is moving today in simple terms.
+Second paragraph: highlight 1 or 2 specific stocks that look interesting to buy today and clearly explain WHY — what is happening with the company, why the price moved, and why now could be a good entry point.
+Third paragraph (optional): mention any caution or risk if the market looks uncertain.
+
+Do not use abbreviations. Do not use symbols like ** or ##. Write full stock names. Speak like a trusted financial advisor explaining to a client."""
 
         response = model.generate_content(prompt)
         return response.text if response.text else _fallback_insight(market_data, opportunities)
-        
+
     except Exception as e:
         logger.error(f"Gemini market insight error: {e}")
         return _fallback_insight(market_data, opportunities)
 
+
 def get_stock_analysis(symbol: str, stock_data: dict) -> str:
     """Get deep AI analysis for a single stock"""
     model = _get_model()
-    
+
     if not model or not stock_data:
         return _fallback_stock_analysis(symbol, stock_data)
-    
+
     try:
-        prompt = f"""You are Wolfee AI 🐺, a professional stock analyst.
-Analyze this stock and provide a clear Buy/Hold/Sell recommendation.
+        name = stock_data.get('name', symbol.replace('.IS', ''))
+        price = stock_data.get('price', 0)
+        change = stock_data.get('change_pct', 0)
+        rsi = stock_data.get('rsi', 50)
+        ma_20 = stock_data.get('ma_20', 0)
+        volume = stock_data.get('volume', 0)
+        day_low = stock_data.get('day_low', 0)
+        day_high = stock_data.get('day_high', 0)
+        prev_close = stock_data.get('previous_close', 0)
+        market = 'Turkish (BIST)' if str(symbol).endswith('.IS') else 'Global (US)'
+        currency = '₺' if str(symbol).endswith('.IS') else '$'
 
-Stock: {stock_data.get('name', symbol)} ({symbol})
-Price: {stock_data.get('price', 0)}
-Change: {stock_data.get('change_pct', 0)}%
-RSI: {stock_data.get('rsi', 'N/A')}
-MA(20): {stock_data.get('ma_20', 'N/A')}
-Volatility: {stock_data.get('volatility', 'N/A')}
-Volume: {stock_data.get('volume', 0)}
-Day Range: {stock_data.get('day_low', 0)} - {stock_data.get('day_high', 0)}
-Previous Close: {stock_data.get('previous_close', 0)}
-Market: {'BIST (Turkish)' if str(symbol).endswith('.IS') else 'Global (US)'}
+        # Interpret RSI in plain language
+        if rsi > 70:
+            rsi_plain = f"{rsi:.0f} — the stock has been rising strongly and may be getting expensive short-term"
+        elif rsi < 30:
+            rsi_plain = f"{rsi:.0f} — the stock has been sold off heavily and may be undervalued, a potential bounce opportunity"
+        else:
+            rsi_plain = f"{rsi:.0f} — the stock is in a balanced zone, neither overpriced nor overly cheap"
 
-Provide:
-1. Recommendation: Buy / Hold / Sell with confidence (High/Medium/Low)
-2. Technical Analysis: Brief RSI and trend interpretation
-3. Key Levels: Support and resistance estimates
-4. Risk Assessment: What could go wrong
-5. 1-Month Outlook: Brief price direction expectation
+        prompt = f"""You are Wolfee AI, a professional stock analyst. Write a clear investment analysis for the following stock.
 
-Keep it under 200 words. Be specific with numbers."""
+Stock: {name} (ticker: {symbol.replace('.IS', '')})
+Market: {market}
+Current Price: {currency}{price:.2f}
+Today's Change: {change:+.2f}%
+Today's Range: {currency}{day_low:.2f} — {currency}{day_high:.2f}
+Previous Close: {currency}{prev_close:.2f}
+20-day Average Price: {currency}{ma_20:.2f}
+Momentum Indicator (RSI): {rsi_plain}
+Trading Volume Today: {int(volume):,}
+
+Write a clear analysis in plain English. Do NOT use abbreviations like RSI, MA, EMA, MACD. Do NOT use markdown formatting. Write full sentences only.
+
+Structure your response as follows:
+
+Decision: State clearly whether this stock is a BUY, HOLD, or SELL right now. One sentence.
+
+Why this decision: Explain in 2-3 sentences what is happening with this stock right now. Mention the price movement, whether the stock is above or below its recent average price, and what the momentum indicator tells us in plain words.
+
+Why someone should buy it (or why to wait): Explain specifically what makes this an opportunity or what risk exists. Mention the price level, what a good entry point looks like, or what the investor is waiting for.
+
+Risk to watch: In 1-2 sentences, state what could go wrong — what news, market conditions, or price levels would change this recommendation.
+
+Keep it under 200 words total. Write as if explaining to someone who is not a finance expert but wants to make a smart investment decision."""
 
         response = model.generate_content(prompt)
         return response.text if response.text else _fallback_stock_analysis(symbol, stock_data)
-        
+
     except Exception as e:
         logger.error(f"Gemini stock analysis error: {e}")
         return _fallback_stock_analysis(symbol, stock_data)
 
+
 def _fallback_stock_analysis(symbol: str, stock_data: dict) -> str:
     """Template-based fallback for individual stock analysis."""
     if not stock_data:
-        return "🐺 Wolfee AI: Data is currently missing for this asset."
-    
+        return "🐺 Wolfee AI: Data is currently missing for this stock. Please try again in a moment."
+
     price = stock_data.get('price', 0)
     change = stock_data.get('change_pct', 0)
     rsi = stock_data.get('rsi', 50)
+    ma_20 = stock_data.get('ma_20', 0)
     name = stock_data.get('name', symbol.replace('.IS', ''))
-    
-    analysis = f"🐺 Wolfee AI Analysis for {name} ({symbol.replace('.IS', '')})\n\n"
-    
-    # Trend
-    if change > 2:
-        analysis += f"Trend: Positive momentum detected (+{change}%). The asset is showing strength in the current session.\n"
-    elif change < -2:
-        analysis += f"Trend: Downward pressure observed ({change}%). Exercise caution as sellers currently dominate.\n"
+    currency = '₺' if str(symbol).endswith('.IS') else '$'
+
+    analysis = f"🐺 Wolfee AI — {name}\n\n"
+
+    # Decision
+    if change > 2 and rsi < 65:
+        decision = "BUY"
+        decision_reason = f"{name} is gaining momentum today with a {change:+.1f}% increase and still has room to move higher."
+    elif change < -2 and rsi > 55:
+        decision = "SELL / AVOID"
+        decision_reason = f"{name} is under selling pressure today, dropping {change:.1f}%. The trend is weakening."
+    elif rsi < 35:
+        decision = "WATCH / BUY"
+        decision_reason = f"{name} has been heavily sold off recently and may be approaching a value zone worth entering."
+    elif rsi > 70:
+        decision = "HOLD / WAIT"
+        decision_reason = f"{name} has risen significantly and may be getting expensive. Waiting for a small pullback could offer a better entry."
     else:
-        analysis += f"Trend: Neutral price action. The asset is consolidating around {price}.\n"
-        
-    # RSI
-    if rsi > 70:
-        analysis += f"Momentum (RSI): High ({rsi:.1f}). Approaching overbought territory, suggesting limited upside in the short term without a pullback.\n"
-    elif rsi < 30:
-        analysis += f"Momentum (RSI): Low ({rsi:.1f}). Approaching oversold territory. Watch for potential reversal or bounce opportunities.\n"
+        decision = "HOLD"
+        decision_reason = f"{name} is moving sideways without a clear direction. There is no strong reason to buy or sell right now."
+
+    analysis += f"Decision: {decision}\n\n"
+    analysis += f"What is happening: {decision_reason}\n\n"
+
+    # Price vs average context
+    if ma_20 and price:
+        if price > ma_20 * 1.03:
+            analysis += f"The stock is currently trading {((price/ma_20 - 1)*100):.1f}% above its 20-day average price of {currency}{ma_20:.2f}, which means it has been in a sustained uptrend recently.\n\n"
+        elif price < ma_20 * 0.97:
+            analysis += f"The stock is trading {((1 - price/ma_20)*100):.1f}% below its 20-day average price of {currency}{ma_20:.2f}, suggesting it has been underperforming recently and may be approaching a support level.\n\n"
+        else:
+            analysis += f"The stock is trading close to its 20-day average price of {currency}{ma_20:.2f}, indicating it is in a consolidation phase.\n\n"
+
+    # Risk
+    if rsi > 65:
+        analysis += "Risk to watch: If the stock cannot maintain this price level, a quick pullback is possible. Consider setting a stop-loss just below today's low."
+    elif rsi < 35:
+        analysis += "Risk to watch: The stock may continue falling before reversing. Do not rush into a full position — consider buying in stages."
     else:
-        analysis += f"Momentum (RSI): Neutral ({rsi:.1f}). Neither overbought nor oversold, typical of ranging markets.\n"
-        
-    # Conclusion
-    if change > 0 and rsi < 65:
-        analysis += "\nRecommendation: Potential Buy. Favorable risk-reward profile."
-    elif change < 0 and rsi > 50:
-        analysis += "\nRecommendation: Hold/Sell. Trend is weakening."
-    else:
-        analysis += "\nRecommendation: Hold. Wait for clearer signals."
-        
+        analysis += "Risk to watch: Broader market conditions and macroeconomic news could push this stock in either direction regardless of its individual performance."
+
     return analysis
+
 
 def _fallback_insight(market_data, opportunities=None):
     """Template-based fallback when Gemini is unavailable"""
-    import random
     if not market_data:
-        return "🐺 Wolfee AI: Market is quiet. No strong signals detected. Keeping cash ready for dips."
-    
+        return "🐺 Wolfee AI: Market data is being collected. Check back in a moment for today's market summary."
+
     gainers = [s for s in market_data if s.get('change_pct', 0) > 1]
     losers = [s for s in market_data if s.get('change_pct', 0) < -1]
-    
-    templates = [
-        f"🐺 Wolfee AI: Tracking {len(market_data)} instruments. {len(gainers)} showing gains, {len(losers)} declining. ",
-        f"📊 Market Overview: Analyzed {len(market_data)} stocks across BIST and Global markets. ",
-        f"📈 Market Intelligence: Processing {len(market_data)} data points for patterns. "
-    ]
-    
-    text = random.choice(templates)
-    
+
+    bist = [s for s in market_data if str(s.get('symbol', '')).endswith('.IS')]
+    global_s = [s for s in market_data if not str(s.get('symbol', '')).endswith('.IS')]
+    bist_avg = sum(s.get('change_pct', 0) for s in bist) / max(len(bist), 1)
+    global_avg = sum(s.get('change_pct', 0) for s in global_s) / max(len(global_s), 1)
+
+    direction_bist = "gaining" if bist_avg > 0 else "declining"
+    direction_global = "gaining" if global_avg > 0 else "declining"
+
+    text = (
+        f"🐺 Wolfee AI — Today's Market Overview. "
+        f"The Turkish stock market (BIST) is broadly {direction_bist} with an average movement of {bist_avg:+.2f}% across {len(bist)} tracked stocks. "
+        f"Global markets are {direction_global} with an average of {global_avg:+.2f}% across {len(global_s)} stocks. "
+    )
+
     if gainers:
         top = max(gainers, key=lambda x: x.get('change_pct', 0))
-        name = top.get('name', top['symbol'].replace('.IS', ''))
-        text += f"Top performer: {name} at +{top.get('change_pct',0):.1f}%. "
-    
+        top_name = top.get('name', top['symbol'].replace('.IS', ''))
+        text += (
+            f"The strongest performer today is {top_name}, up {top.get('change_pct', 0):.1f}%, "
+            f"which may indicate strong investor interest or a positive company development. "
+        )
+
     if losers:
         worst = min(losers, key=lambda x: x.get('change_pct', 0))
-        name = worst.get('name', worst['symbol'].replace('.IS', ''))
-        text += f"Watch out for {name} at {worst.get('change_pct',0):.1f}%."
-    
+        worst_name = worst.get('name', worst['symbol'].replace('.IS', ''))
+        text += (
+            f"On the downside, {worst_name} is showing weakness at {worst.get('change_pct', 0):.1f}%, "
+            f"which warrants caution before entering a position."
+        )
+
     return text

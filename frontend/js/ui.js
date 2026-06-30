@@ -248,16 +248,27 @@ window.askWolfeeAI = async function(symbol) {
     const aiSection = document.getElementById('ai-analysis-section');
     if (!aiSection) return;
     
-    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${symbol}...</span></div>`;
+    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${symbol.replace('.IS','')}...</span></div>`;
     
     try {
         const res = await fetch(`${API_URL}/api/ai/analyze/${symbol}`);
         if (!res.ok) throw new Error('Analysis failed');
         const data = await res.json();
-        const text = (data.analysis || 'Analysis unavailable').replace(/\n/g, '<br>');
-        aiSection.innerHTML = `<div class="ai-response"><strong>🤖 Wolfee AI Analysis:</strong><br><br>${text}</div>`;
+        let raw = data.analysis || 'Analysis unavailable';
+        // Strip residual markdown
+        raw = raw
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/#{1,6}\s/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+        // Highlight section labels like "Decision:", "Risk to watch:" etc.
+        raw = raw.replace(/^(Decision|Why this decision|Why someone should buy it|Why to wait|Risk to watch):/gm,
+            '<span style="color:var(--accent-color);font-weight:600;">$1:</span>');
+        const text = raw.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+        aiSection.innerHTML = `<div class="ai-response">${text}</div>`;
     } catch(e) {
-        aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline.</div>`;
+        aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline. Please try again in a moment.</div>`;
     }
 }
 

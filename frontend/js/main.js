@@ -166,7 +166,15 @@ async function loadAIInsight() {
     try {
         const res = await fetch(`${API_URL}/api/insight`);
         const data = await res.json();
-        const text = (data.insight || 'Analyzing market...').replace(/\n/g, '<br>');
+        let raw = data.insight || 'Analyzing market data...';
+        // Strip any residual markdown formatting Gemini may emit
+        raw = raw
+            .replace(/\*\*(.*?)\*\*/g, '$1')   // remove **bold**
+            .replace(/\*(.*?)\*/g, '$1')         // remove *italic*
+            .replace(/#{1,6}\s/g, '')            // remove # headings
+            .replace(/\n{3,}/g, '\n\n')          // collapse triple blank lines
+            .trim();
+        const text = raw.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) aiTextEl.innerHTML = text;
     } catch (e) {
