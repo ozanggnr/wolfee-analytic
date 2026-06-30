@@ -297,15 +297,24 @@ async def _upsert_stock(session, data: dict):
     existing = result.scalar_one_or_none()
     
     if existing:
-        for key in ['name', 'price', 'change_pct', 'volume', 'day_high', 'day_low',
-                     'open_price', 'previous_close', 'bid', 'ask', 'rsi', 'ma_20',
-                     'volatility', 'currency', 'market_type', 'prediction', 'reason',
-                     'is_favorable', 'is_buyable', 'market_cap']:
-            if key in data and data[key] is not None:
-                # Map 'open' to 'open_price' for the model
-                db_key = 'open_price' if key == 'open' else key
+        # Only update if new price is valid (non-zero)
+        if not data.get('price') or data['price'] <= 0:
+            return  # Skip update with bad data
+        field_map = {
+            'name': 'name', 'price': 'price', 'change_pct': 'change_pct',
+            'volume': 'volume', 'day_high': 'day_high', 'day_low': 'day_low',
+            'open': 'open_price', 'open_price': 'open_price',
+            'previous_close': 'previous_close', 'bid': 'bid', 'ask': 'ask',
+            'rsi': 'rsi', 'ma_20': 'ma_20', 'volatility': 'volatility',
+            'currency': 'currency', 'market_type': 'market_type',
+            'prediction': 'prediction', 'reason': 'reason',
+            'is_favorable': 'is_favorable', 'is_buyable': 'is_buyable',
+            'market_cap': 'market_cap'
+        }
+        for src_key, db_key in field_map.items():
+            if src_key in data and data[src_key] is not None:
                 if hasattr(existing, db_key):
-                    setattr(existing, db_key, data[key])
+                    setattr(existing, db_key, data[src_key])
         existing.updated_at = datetime.utcnow()
     else:
         # Map field names

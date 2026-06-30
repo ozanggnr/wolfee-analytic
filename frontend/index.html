@@ -81,8 +81,11 @@
                 <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">Market</button>
                 <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">My Portfolio</button>
             </div>
-            <button id="refresh-btn" onclick="refreshMarket()">↻ Refresh Market</button>
             <button id="export-btn" class="secondary-btn" onclick="openExportModal()">📊 Export Excel</button>
+            <div id="live-status" style="display:flex; align-items:center; gap:0.4rem; font-size:0.75rem; color:var(--text-secondary);">
+                <span id="live-dot" style="width:8px; height:8px; border-radius:50%; background:#4ade80; display:inline-block; animation: pulse 2s infinite;"></span>
+                <span id="live-label">Live</span>
+            </div>
         </div>
     </header>
 
@@ -227,13 +230,13 @@
     </div>
 
     <!-- Modular Scripts -->
-    <script src="js/config.js?v=3.0"></script>
-    <script src="js/api.js?v=3.0"></script>
-    <script src="js/ui.js?v=3.0"></script>
-    <script src="js/filter.js?v=3.0"></script>
-    <script src="js/chart.js?v=3.0"></script>
-    <script src="js/portfolio.js?v=3.0"></script>
-    <script src="js/main.js?v=3.0"></script>
+    <script src="js/config.js?v=4.0"></script>
+    <script src="js/api.js?v=4.0"></script>
+    <script src="js/ui.js?v=4.0"></script>
+    <script src="js/filter.js?v=4.0"></script>
+    <script src="js/chart.js?v=4.0"></script>
+    <script src="js/portfolio.js?v=4.0"></script>
+    <script src="js/main.js?v=4.0"></script>
 </body>
 
 </html>

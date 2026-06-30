@@ -1,6 +1,8 @@
 // Main App Logic
 let allStocks = [];
 let currentSymbol = null;
+let _pollInterval = null;
+const POLL_INTERVAL_MS = 60000; // 60 seconds
 
 async function init() {
     const loader = document.getElementById('loader');
@@ -17,6 +19,9 @@ async function init() {
         // Load these after main data
         loadAIInsight();
         loadOpportunities();
+
+        // Start background auto-polling
+        startAutoPoll();
         
     } catch (error) {
         console.error('Init error:', error);
@@ -25,6 +30,109 @@ async function init() {
     } finally {
         loader.classList.add('hidden');
     }
+}
+
+function startAutoPoll() {
+    if (_pollInterval) clearInterval(_pollInterval);
+    _pollInterval = setInterval(async () => {
+        await pollForUpdates();
+    }, POLL_INTERVAL_MS);
+}
+
+async function pollForUpdates() {
+    const dot = document.getElementById('live-dot');
+    const label = document.getElementById('live-label');
+    try {
+        if (dot) dot.style.background = '#fbbf24'; // yellow = fetching
+        const response = await fetch(`${API_URL}/api/market-data/quick`);
+        if (!response.ok) throw new Error('Poll failed');
+        const data = await response.json();
+        const newStocks = data.stocks || [];
+
+        // Find changed stocks and update only those cards
+        let changedCount = 0;
+        newStocks.forEach(newStock => {
+            if (!newStock.price || newStock.price <= 0) return;
+            const old = allStocks.find(s => s.symbol === newStock.symbol);
+            if (!old || old.price !== newStock.price || old.change_pct !== newStock.change_pct) {
+                changedCount++;
+            }
+        });
+
+        if (changedCount > 0) {
+            // Update allStocks and re-render changed cards in-place
+            updateChangedCards(newStocks);
+            allStocks = newStocks;
+            window.allStocks = allStocks;
+            loadOpportunities();
+            loadExchangeRates();
+        }
+
+        // Update live label
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        if (label) label.textContent = `Updated ${timeStr}`;
+        if (dot) dot.style.background = '#4ade80'; // green = live
+    } catch (e) {
+        console.warn('Poll error:', e);
+        if (dot) dot.style.background = '#f87171'; // red = error
+        if (label) label.textContent = 'Reconnecting...';
+    }
+}
+
+function updateChangedCards(newStocks) {
+    const toggle = document.getElementById('region-toggle');
+    const isGlobalMode = toggle ? toggle.checked : false;
+    const stockGrid = document.getElementById('stock-grid');
+    if (!stockGrid) return;
+
+    newStocks.forEach(newStock => {
+        if (!newStock.price || newStock.price <= 0) return;
+        const old = allStocks.find(s => s.symbol === newStock.symbol);
+        if (old && old.price === newStock.price && old.change_pct === newStock.change_pct) return;
+
+        // Check if this card is visible in the current region
+        const sym = newStock.symbol || '';
+        const isStockGlobal = !sym.endsWith('.IS') && newStock.market_type !== 'BIST';
+        if (isGlobalMode !== isStockGlobal) return;
+
+        // Find and replace the card in the DOM
+        const cards = stockGrid.querySelectorAll('.stock-card');
+        cards.forEach(card => {
+            const symbolEl = card.querySelector('.stock-symbol');
+            if (symbolEl && symbolEl.textContent.trim() === sym.replace('.IS', '')) {
+                // Flash the card to indicate update
+                card.style.transition = 'box-shadow 0.4s ease';
+                card.style.boxShadow = newStock.change_pct >= 0
+                    ? '0 0 18px rgba(74,222,128,0.5)'
+                    : '0 0 18px rgba(248,113,113,0.5)';
+                setTimeout(() => { card.style.boxShadow = ''; }, 1200);
+
+                // Update price and change
+                const priceEl = card.querySelector('.stock-price');
+                const changeEl = card.querySelector('.price-change');
+                const predEl = card.querySelector('.prediction-mini');
+                const currency = newStock.currency === 'USD' ? '$' : '₺';
+                const isUp = (newStock.change_pct || 0) >= 0;
+                const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
+                const icon = isUp ? '▲' : '▼';
+
+                if (priceEl) {
+                    priceEl.style.color = color;
+                    priceEl.textContent = `${(newStock.price || 0).toFixed(2)} ${currency}`;
+                }
+                if (changeEl) {
+                    changeEl.style.color = color;
+                    changeEl.textContent = `${icon} ${Math.abs(newStock.change_pct || 0).toFixed(2)}%`;
+                }
+                if (predEl) {
+                    predEl.textContent = newStock.prediction || '';
+                    predEl.style.background = isUp ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)';
+                    predEl.style.color = color;
+                }
+            }
+        });
+    });
 }
 
 async function fetchMarketData() {
