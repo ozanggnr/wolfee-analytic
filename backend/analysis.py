@@ -234,8 +234,11 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False):
         change_pct = data.get('change_pct', 0)
         prev_close = data.get('previous_close', 0)
 
-        # Currency
-        currency = "TRY" if symbol.endswith('.IS') else "USD"
+        # Currency — use actual currency from data source (yfinance reports EUR for European stocks, etc.)
+        if symbol.endswith('.IS'):
+            currency = "TRY"
+        else:
+            currency = data.get('currency', 'USD') or 'USD'
 
         # RSI estimate (improved)
         rsi = data.get('rsi', 0)
@@ -374,6 +377,14 @@ def get_bulk_analysis(period: str):
             if hist.empty or len(hist) < 30:
                 continue
 
+            # Detect actual currency (EUR for European stocks, GBP for UK, etc.)
+            bulk_currency = "TRY" if symbol.endswith('.IS') else "USD"
+            try:
+                info = ticker.info
+                bulk_currency = info.get("currency", bulk_currency) or bulk_currency
+            except Exception:
+                pass
+
             df = hist.copy()
             df['MA_5'] = df['Close'].rolling(window=5).mean()
             df['MA_20'] = df['Close'].rolling(window=20).mean()
@@ -435,6 +446,7 @@ def get_bulk_analysis(period: str):
             results.append({
                 "Symbol": symbol,
                 "Name": name,
+                "Currency": bulk_currency,
                 "Report Period": period.capitalize(),
                 "Analysis Date": current_date,
                 "Trend": trend_icon,

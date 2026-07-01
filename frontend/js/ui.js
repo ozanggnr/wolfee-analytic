@@ -1,8 +1,19 @@
+function getCurrencySymbol(code) {
+    const map = {
+        'USD': '$', 'EUR': '\u20ac', 'GBP': '\u00a3', 'TRY': '\u20ba',
+        'JPY': '\u00a5', 'CHF': 'CHF', 'CAD': 'CA$', 'AUD': 'A$',
+        'HKD': 'HK$', 'SGD': 'S$', 'CNY': '\u00a5', 'KRW': '\u20a9',
+        'INR': '\u20b9', 'BRL': 'R$', 'MXN': 'MX$', 'NOK': 'kr',
+        'SEK': 'kr', 'DKK': 'kr',
+    };
+    return map[code] || code || '$';
+}
+
 function renderStockCard(stock) {
     const grid = document.getElementById(stock.inPortfolio ? 'portfolio-grid' : 'stock-grid');
     if (!grid) return;
 
-    const currency = stock.currency === 'USD' ? '$' : '₺';
+    const currency = getCurrencySymbol(stock.currency);
     const isUp = (stock.change_pct || 0) >= 0;
     const colorClass = isUp ? 'text-success' : 'text-danger';
     const icon = isUp ? '▲' : '▼';
@@ -166,7 +177,7 @@ function renderOpportunities(opportunities) {
         if (stock.change_pct > 2) badges += '<span class="opp-badge badge-trend">Uptrend</span> ';
         if (!badges) badges = '<span class="opp-badge badge-golden">Value Pick</span> ';
         
-        const currency = stock.currency === 'USD' ? '$' : '₺';
+        const currency = getCurrencySymbol(stock.currency);
         
         div.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -192,7 +203,7 @@ function openModal(stock) {
     const title = document.getElementById('modal-title');
     title.innerHTML = `${stock.name || stock.symbol} <span style="font-size:0.8rem;color:var(--text-secondary)">${stock.symbol}</span>`;
     
-    const currency = stock.currency === 'USD' ? '$' : '₺';
+    const currency = getCurrencySymbol(stock.currency);
     
     // Ensure no empty fields by estimating if needed
     const price = stock.price || 0;

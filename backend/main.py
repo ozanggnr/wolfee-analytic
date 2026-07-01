@@ -462,6 +462,7 @@ async def export_portfolio_post(payload: dict = Body(...)):
 
             results.append({
                 "Symbol": stock.get('symbol', ''),
+                "Currency": stock.get('currency', 'USD') or 'USD',
                 "Name": stock.get('name', stock.get('symbol', '')),
                 "Report Period": period.capitalize(),
                 "Analysis Date": today,
@@ -518,6 +519,7 @@ async def export_portfolio_get(symbols: str, period: str):
                 rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
                 results.append({
                     "Symbol": data.get('symbol', symbol),
+                    "Currency": data.get('currency', 'USD') or 'USD',
                     "Name": data.get('name', symbol),
                     "Report Period": period.capitalize(),
                     "Analysis Date": today,
@@ -541,6 +543,7 @@ async def export_portfolio_get(symbols: str, period: str):
                 logger.warning(f"Could not fetch live data for {symbol}, using stub row")
                 results.append({
                     "Symbol": symbol,
+                    "Currency": "N/A",
                     "Name": symbol,
                     "Report Period": period.capitalize(),
                     "Analysis Date": today,
@@ -593,7 +596,7 @@ def _create_excel_response(data: list, filename: str, sheet_name: str) -> Respon
     df = pd.DataFrame(data)
 
     columns_order = [
-        "Symbol", "Name", "Report Period", "Analysis Date", "Trend",
+        "Symbol", "Currency", "Name", "Report Period", "Analysis Date", "Trend",
         "Current Price", "Start Price", "Change %", "Change Amt",
         "Period High", "High Date", "Period Low", "Low Date",
         "RSI (14)", "RSI Status", "Volatility %", "MA(20)", "Volume (Period)"

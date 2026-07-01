@@ -102,7 +102,7 @@ async def refresh_global_stocks() -> int:
                 if not data:
                     continue
                 
-                data = _enrich_stock_data(data, market_type='GLOBAL', currency='USD')
+                data = _enrich_stock_data(data, market_type='GLOBAL', currency=data.get('currency', 'USD') or 'USD')
                 await _upsert_stock(session, data)
                 count += 1
                 
