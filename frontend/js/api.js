@@ -85,31 +85,33 @@ async function loadOpportunities() {
 
 async function triggerExport(period) {
     const btnContent = document.querySelector(`.export-card[onclick="triggerExport('${period}')"]`);
-    const originalHTML = btnContent.innerHTML;
-    btnContent.innerHTML = '<div class="export-icon">⏳</div><div class="export-info"><h3>Exporting...</h3></div>';
+    const originalHTML = btnContent ? btnContent.innerHTML : '';
+    if (btnContent) btnContent.innerHTML = '<div class="export-icon">⏳</div><div class="export-info"><h3>Exporting...</h3></div>';
 
     try {
         // Check if we're on Portfolio tab
         const portfolioView = document.getElementById('portfolio-view');
         const isPortfolioActive = portfolioView && !portfolioView.classList.contains('hidden');
 
-        let endpoint = `${API_URL}/api/export/${period}`;
+        let response;
 
         if (isPortfolioActive) {
-            // Export only portfolio stocks
-            const portfolio = getPortfolio(); // from portfolio.js
+            // Export only portfolio stocks — send full stock objects via POST
+            const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
             if (portfolio.length === 0) {
                 alert('Your portfolio is empty! Add some stocks first.');
-                btnContent.innerHTML = originalHTML;
+                if (btnContent) btnContent.innerHTML = originalHTML;
                 return;
             }
 
-            // Get symbols from portfolio
-            const symbols = portfolio.map(s => s.symbol).join(',');
-            endpoint = `${API_URL}/api/export/portfolio?symbols=${encodeURIComponent(symbols)}&period=${period}`;
+            response = await fetch(`${API_URL}/api/export/portfolio`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ period, stocks: portfolio })
+            });
+        } else {
+            response = await fetch(`${API_URL}/api/export/${period}`);
         }
-
-        const response = await fetch(endpoint);
 
         if (!response.ok) throw new Error('Export failed');
 
@@ -123,15 +125,15 @@ async function triggerExport(period) {
         a.remove();
         window.URL.revokeObjectURL(url);
 
-        btnContent.innerHTML = '<div class="export-icon">✅</div><div class="export-info"><h3>Downloaded!</h3></div>';
+        if (btnContent) btnContent.innerHTML = '<div class="export-icon">✅</div><div class="export-info"><h3>Downloaded!</h3></div>';
         setTimeout(() => {
-            btnContent.innerHTML = originalHTML;
-            closeExportModal();
+            if (btnContent) btnContent.innerHTML = originalHTML;
+            if (typeof closeExportModal === 'function') closeExportModal();
         }, 1500);
     } catch (error) {
         console.error('Export error:', error);
-        btnContent.innerHTML = '<div class="export-icon">❌</div><div class="export-info"><h3>Failed</h3></div>';
-        setTimeout(() => btnContent.innerHTML = originalHTML, 2000);
+        if (btnContent) btnContent.innerHTML = '<div class="export-icon">❌</div><div class="export-info"><h3>Failed</h3></div>';
+        setTimeout(() => { if (btnContent) btnContent.innerHTML = originalHTML; }, 2000);
     }
 }
 

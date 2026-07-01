@@ -330,20 +330,26 @@ window.triggerExport = async function(period) {
     try {
         const portfolioView = document.getElementById('portfolio-view');
         const isPortfolioActive = portfolioView && !portfolioView.classList.contains('hidden');
-        let endpoint = `${API_URL}/api/export/${period}`;
-        
+
+        let response;
+
         if (isPortfolioActive) {
+            // Send full cached stock objects via POST — avoids backend re-fetching live data
             const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
             if (portfolio.length === 0) { 
                 alert('Portfolio is empty!'); 
                 if (btnContent) btnContent.innerHTML = originalHTML; 
                 return; 
             }
-            const symbols = portfolio.map(s => s.symbol).join(',');
-            endpoint = `${API_URL}/api/export/portfolio?symbols=${encodeURIComponent(symbols)}&period=${period}`;
+            response = await fetch(`${API_URL}/api/export/portfolio`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ period, stocks: portfolio })
+            });
+        } else {
+            response = await fetch(`${API_URL}/api/export/${period}`);
         }
-        
-        const response = await fetch(endpoint);
+
         if (!response.ok) throw new Error('Export failed');
         
         const blob = await response.blob();

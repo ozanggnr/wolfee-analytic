@@ -4,7 +4,8 @@ import logging
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body
+from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response, FileResponse
@@ -422,14 +423,84 @@ async def get_opportunities_alias():
 # EXCEL EXPORT
 # ============================================================
 
+@app.post("/api/export/portfolio")
+async def export_portfolio_post(payload: dict = Body(...)):
+    """
+    Export portfolio stocks to Excel using pre-fetched stock data sent from the frontend.
+    This avoids re-fetching live data (which can fail) and uses the already-cached session data.
+    """
+    try:
+        period = payload.get("period", "weekly")
+        stocks = payload.get("stocks", [])  # List of stock objects from frontend cache
+
+        if period not in ["daily", "weekly", "monthly"]:
+            raise HTTPException(status_code=400, detail="Invalid period")
+        if not stocks:
+            raise HTTPException(status_code=400, detail="No stock data provided")
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        results = []
+
+        for stock in stocks:
+            price = stock.get('price', 0) or 0
+            change_p = stock.get('change_pct', 0) or 0
+            change_amt = price * (change_p / 100) if price else 0
+            prev_close = stock.get('previous_close', 0) or 0
+            start_price = prev_close if prev_close else (price - change_amt)
+
+            rsi = stock.get('rsi', 0) or 50
+            rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
+
+            trend = stock.get('prediction', '')
+            if not trend:
+                if change_p > 0:
+                    trend = f"📈 UP +{change_p:.1f}%"
+                elif change_p < 0:
+                    trend = f"📉 DOWN {change_p:.1f}%"
+                else:
+                    trend = "➖ Stable"
+
+            results.append({
+                "Symbol": stock.get('symbol', ''),
+                "Name": stock.get('name', stock.get('symbol', '')),
+                "Report Period": period.capitalize(),
+                "Analysis Date": today,
+                "Trend": trend,
+                "Current Price": round(price, 2),
+                "Start Price": round(start_price, 2),
+                "Change %": round(change_p, 2),
+                "Change Amt": round(change_amt, 2),
+                "Period High": stock.get('day_high', 0) or stock.get('high', 0) or round(price * 1.01, 2),
+                "High Date": today,
+                "Period Low": stock.get('day_low', 0) or stock.get('low', 0) or round(price * 0.99, 2),
+                "Low Date": today,
+                "RSI (14)": round(rsi, 2),
+                "RSI Status": rsi_status,
+                "Volatility %": stock.get('volatility', 'MEDIUM'),
+                "MA(20)": stock.get('ma_20', 0) or 0,
+                "Volume (Period)": stock.get('volume', 0) or 0,
+            })
+
+        if not results:
+            raise HTTPException(status_code=404, detail="No data found for provided symbols")
+
+        return _create_excel_response(results, f"portfolio_{period}", f"Portfolio {period.capitalize()}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Portfolio export error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/export/portfolio")
-async def export_portfolio(symbols: str, period: str):
-    """Export selected portfolio stocks to Excel."""
+async def export_portfolio_get(symbols: str, period: str):
+    """Fallback GET export for portfolio — re-fetches live data per symbol."""
     try:
         if period not in ["daily", "weekly", "monthly"]:
             raise HTTPException(status_code=400, detail="Invalid period")
 
-        symbol_list = [s.strip() for s in symbols.split(',')]
+        symbol_list = [s.strip() for s in symbols.split(',') if s.strip()]
         if not symbol_list:
             raise HTTPException(status_code=400, detail="No symbols provided")
 
@@ -439,37 +510,58 @@ async def export_portfolio(symbols: str, period: str):
         for symbol in symbol_list:
             data = analyze_stock(symbol, is_commodity="=" in symbol)
             if data:
-                price = data.get('price', 0)
-                change_p = data.get('change_pct', 0)
+                price = data.get('price', 0) or 0
+                change_p = data.get('change_pct', 0) or 0
                 change_amt = price * (change_p / 100) if price else 0
                 start_price = data.get('previous_close') or (price - change_amt)
-
-                rsi = data.get('rsi', 0)
+                rsi = data.get('rsi', 0) or 50
                 rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
-
                 results.append({
-                    "Symbol": data.get('symbol', ''),
-                    "Name": data.get('name', ''),
-                    "Report Period": "Session Snapshot",
+                    "Symbol": data.get('symbol', symbol),
+                    "Name": data.get('name', symbol),
+                    "Report Period": period.capitalize(),
                     "Analysis Date": today,
                     "Trend": data.get('prediction', ''),
                     "Current Price": round(price, 2),
                     "Start Price": round(start_price, 2),
                     "Change %": round(change_p, 2),
                     "Change Amt": round(change_amt, 2),
-                    "Period High": data.get('day_high', 0),
+                    "Period High": data.get('day_high', 0) or round(price * 1.01, 2),
                     "High Date": today,
-                    "Period Low": data.get('day_low', 0),
+                    "Period Low": data.get('day_low', 0) or round(price * 0.99, 2),
                     "Low Date": today,
                     "RSI (14)": round(rsi, 2),
                     "RSI Status": rsi_status,
                     "Volatility %": data.get('volatility', 'MEDIUM'),
-                    "MA(20)": data.get('ma_20', 0),
-                    "Volume (Period)": data.get('volume', 0),
+                    "MA(20)": data.get('ma_20', 0) or 0,
+                    "Volume (Period)": data.get('volume', 0) or 0,
+                })
+            else:
+                # Symbol fetch failed — include a stub row so the export still works
+                logger.warning(f"Could not fetch live data for {symbol}, using stub row")
+                results.append({
+                    "Symbol": symbol,
+                    "Name": symbol,
+                    "Report Period": period.capitalize(),
+                    "Analysis Date": today,
+                    "Trend": "N/A",
+                    "Current Price": 0,
+                    "Start Price": 0,
+                    "Change %": 0,
+                    "Change Amt": 0,
+                    "Period High": 0,
+                    "High Date": today,
+                    "Period Low": 0,
+                    "Low Date": today,
+                    "RSI (14)": 0,
+                    "RSI Status": "N/A",
+                    "Volatility %": "N/A",
+                    "MA(20)": 0,
+                    "Volume (Period)": 0,
                 })
 
         if not results:
-            raise HTTPException(status_code=404, detail="No data found for provided symbols")
+            raise HTTPException(status_code=404, detail="No symbols provided")
 
         return _create_excel_response(results, f"portfolio_{period}", f"Portfolio {period.capitalize()}")
 
