@@ -2,7 +2,7 @@
 let allStocks = [];
 let currentSymbol = null;
 let _pollInterval = null;
-const POLL_INTERVAL_MS = 60000; // 60 seconds
+const POLL_INTERVAL_MS = 30000; // 30 seconds
 
 async function init() {
     const loader = document.getElementById('loader');
@@ -48,6 +48,7 @@ async function pollForUpdates() {
         if (!response.ok) throw new Error('Poll failed');
         const data = await response.json();
         const newStocks = data.stocks || [];
+        const serverUpdatedAt = data.updated_at ? new Date(data.updated_at) : null;
 
         // Find changed stocks and update only those cards
         let changedCount = 0;
@@ -68,10 +69,18 @@ async function pollForUpdates() {
             loadExchangeRates();
         }
 
-        // Update live label
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        if (label) label.textContent = `Updated ${timeStr}`;
+        // Update live label with data age
+        if (serverUpdatedAt) {
+            const ageSeconds = Math.round((Date.now() - serverUpdatedAt.getTime()) / 1000);
+            const ageStr = ageSeconds < 60
+                ? `${ageSeconds}s ago`
+                : `${Math.round(ageSeconds / 60)}m ago`;
+            if (label) label.textContent = `Updated ${ageStr}`;
+        } else {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            if (label) label.textContent = `Updated ${timeStr}`;
+        }
         if (dot) dot.style.background = '#4ade80'; // green = live
     } catch (e) {
         console.warn('Poll error:', e);
@@ -112,7 +121,9 @@ function updateChangedCards(newStocks) {
                 const priceEl = card.querySelector('.stock-price');
                 const changeEl = card.querySelector('.price-change');
                 const predEl = card.querySelector('.prediction-mini');
-                const currency = newStock.currency === 'USD' ? '$' : '₺';
+                const currency = typeof getCurrencySymbol === 'function'
+                    ? getCurrencySymbol(newStock.currency)
+                    : (newStock.currency === 'USD' ? '$' : '₺');
                 const isUp = (newStock.change_pct || 0) >= 0;
                 const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
                 const icon = isUp ? '▲' : '▼';

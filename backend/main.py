@@ -40,9 +40,9 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ Database initialized")
 
-    # Start background refresh worker (10 min interval)
-    refresh_task = asyncio.create_task(start_periodic_refresh(interval_minutes=10))
-    logger.info("✅ Background refresh worker started (every 10 min)")
+    # Start background refresh worker (2 min interval for near-live prices)
+    refresh_task = asyncio.create_task(start_periodic_refresh(interval_minutes=2))
+    logger.info("✅ Background refresh worker started (every 2 min)")
 
     yield
 
@@ -140,7 +140,12 @@ async def get_quick_market_data(background_tasks: BackgroundTasks):
                 return {"stocks": [], "status": "loading", "message": "First load — data is being fetched. Refresh in 30 seconds."}
 
             stock_list = [_stock_to_dict(s) for s in stocks if s.price and s.price > 0]
-            return {"stocks": stock_list}
+            # Include the most recent update timestamp so the frontend can show data age
+            latest_update = max((s.updated_at for s in stocks if s.updated_at), default=None)
+            return {
+                "stocks": stock_list,
+                "updated_at": latest_update.isoformat() if latest_update else None
+            }
 
     except Exception as e:
         logger.error(f"Quick market data error: {e}")
@@ -234,6 +239,50 @@ async def get_stock_analysis_endpoint(symbol: str):
     if not data:
         raise HTTPException(status_code=404, detail="Stock data not found")
     return data
+
+
+@app.get("/api/live-price/{symbol}")
+async def get_live_price(symbol: str, background_tasks: BackgroundTasks):
+    """
+    Fetch a real-time price directly from yfinance (bypasses DB cache).
+    Used when a user opens a stock detail modal to show the freshest possible price.
+    Also queues a background DB update so the next poll sees fresh data.
+    """
+    # Resolve symbol
+    if "=" not in symbol and not symbol.endswith(".IS"):
+        if symbol.upper() not in [s.upper() for s in GLOBAL_SYMBOLS]:
+            symbol += ".IS"
+
+    is_commodity = "=" in symbol
+
+    try:
+        data = analyze_stock(symbol, is_commodity, detailed=True)
+        if not data:
+            raise HTTPException(status_code=404, detail="Live price unavailable")
+
+        # Queue background DB update so next poll benefits from fresh data
+        async def _update_db(sym, d):
+            try:
+                from workers import _enrich_stock_data, _upsert_stock
+                async with AsyncSessionLocal() as sess:
+                    enriched = _enrich_stock_data(
+                        d.copy(),
+                        market_type=d.get("market_type", "GLOBAL"),
+                        currency=d.get("currency", "USD")
+                    )
+                    await _upsert_stock(sess, enriched)
+                    await sess.commit()
+            except Exception as ex:
+                logger.warning(f"Live-price DB update failed for {sym}: {ex}")
+
+        background_tasks.add_task(_update_db, symbol, data)
+        return data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Live price error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/history/{symbol}")

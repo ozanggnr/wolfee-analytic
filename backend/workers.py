@@ -11,13 +11,20 @@ logger = logging.getLogger(__name__)
 # Import will be done lazily to avoid circular imports
 _refresh_running = False
 _last_refresh_time = 0
+MIN_REFRESH_INTERVAL_SECONDS = 90  # Don't refresh more than once per 90s
 
 async def refresh_all_data():
     """Master refresh function — called every 10 minutes or on manual refresh"""
     global _refresh_running, _last_refresh_time
-    
+
     if _refresh_running:
         logger.info("Refresh already in progress, skipping...")
+        return False
+
+    # Throttle: don't allow refreshes faster than MIN_REFRESH_INTERVAL_SECONDS
+    now = time.time()
+    if now - _last_refresh_time < MIN_REFRESH_INTERVAL_SECONDS:
+        logger.info(f"Refresh throttled — last refresh was {now - _last_refresh_time:.0f}s ago")
         return False
     
     _refresh_running = True
@@ -81,7 +88,7 @@ async def refresh_bist_stocks() -> int:
                 count += 1
                 
                 # Small delay to avoid rate limits
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.1)
                 
             except Exception as e:
                 logger.error(f"BIST refresh error {symbol}: {e}")
@@ -106,7 +113,7 @@ async def refresh_global_stocks() -> int:
                 await _upsert_stock(session, data)
                 count += 1
                 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.1)
                 
             except Exception as e:
                 logger.error(f"Global refresh error {symbol}: {e}")
@@ -343,7 +350,7 @@ async def _upsert_stock(session, data: dict):
         )
         session.add(stock)
 
-async def start_periodic_refresh(interval_minutes: int = 10):
+async def start_periodic_refresh(interval_minutes: int = 2):
     """Start the periodic refresh loop"""
     logger.info(f"Starting periodic refresh every {interval_minutes} minutes")
     

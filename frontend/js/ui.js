@@ -205,33 +205,8 @@ function openModal(stock) {
     
     const currency = getCurrencySymbol(stock.currency);
     
-    // Ensure no empty fields by estimating if needed
-    const price = stock.price || 0;
-    const day_low = stock.day_low || (price * 0.98);
-    const day_high = stock.day_high || (price * 1.02);
-    const open_price = stock.open || (price * 0.99);
-    const prev_close = stock.previous_close || (price * 0.99);
-    
-    document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
-    document.getElementById('stat-last').textContent = `${price.toFixed(2)} ${currency}`;
-    document.getElementById('stat-bid').textContent = stock.bid ? `${stock.bid.toFixed(2)} ${currency}` : `${(price*0.998).toFixed(2)} ${currency}`;
-    document.getElementById('stat-ask').textContent = stock.ask ? `${stock.ask.toFixed(2)} ${currency}` : `${(price*1.002).toFixed(2)} ${currency}`;
-    
-    const changeEl = document.getElementById('stat-change');
-    changeEl.textContent = `${(stock.change_pct||0) >= 0 ? '+' : ''}${(stock.change_pct||0).toFixed(2)}%`;
-    changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-    
-    document.getElementById('stat-low').textContent = `${day_low.toFixed(2)} ${currency}`;
-    document.getElementById('stat-high').textContent = `${day_high.toFixed(2)} ${currency}`;
-    document.getElementById('stat-vwap').textContent = `${open_price.toFixed(2)} ${currency}`;
-    document.getElementById('stat-vol-tl').textContent = `${prev_close.toFixed(2)} ${currency}`;
-    document.getElementById('stat-vol-lot').textContent = formatNumber(stock.volume || 0);
-
-    const predEl = document.getElementById('modal-prediction');
-    if (predEl) {
-        predEl.textContent = stock.prediction || 'Stable trend';
-        predEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-    }
+    // Show cached data immediately for instant modal open
+    _applyStockToModal(stock, currency, false);
 
     // AI Analysis Section Injection
     let aiSection = document.getElementById('ai-analysis-section');
@@ -253,6 +228,77 @@ function openModal(stock) {
     // Default to 1Y chart
     if (typeof loadChart === 'function') loadChart(stock.symbol, '1y');
     else if (typeof updateChart === 'function') updateChart('1y');
+
+    // Silently fetch live price and update modal fields once it arrives
+    _fetchLivePriceForModal(stock.symbol);
+}
+
+function _applyStockToModal(stock, currency, isLive) {
+    if (!currency) currency = getCurrencySymbol(stock.currency);
+    const price = stock.price || 0;
+    const day_low = stock.day_low || (price * 0.98);
+    const day_high = stock.day_high || (price * 1.02);
+    const open_price = stock.open || stock.open_price || (price * 0.99);
+    const prev_close = stock.previous_close || (price * 0.99);
+
+    const lastEl = document.getElementById('stat-last');
+    if (lastEl) {
+        lastEl.textContent = `${price.toFixed(2)} ${currency}`;
+        if (isLive) {
+            // Flash green to indicate live price just arrived
+            lastEl.style.transition = 'color 0.3s';
+            lastEl.style.color = 'var(--success-color)';
+            setTimeout(() => { lastEl.style.color = ''; }, 1500);
+        }
+    }
+
+    document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
+    const bidEl = document.getElementById('stat-bid');
+    if (bidEl) bidEl.textContent = stock.bid ? `${stock.bid.toFixed(2)} ${currency}` : `${(price*0.998).toFixed(2)} ${currency}`;
+    const askEl = document.getElementById('stat-ask');
+    if (askEl) askEl.textContent = stock.ask ? `${stock.ask.toFixed(2)} ${currency}` : `${(price*1.002).toFixed(2)} ${currency}`;
+
+    const changeEl = document.getElementById('stat-change');
+    if (changeEl) {
+        changeEl.textContent = `${(stock.change_pct||0) >= 0 ? '+' : ''}${(stock.change_pct||0).toFixed(2)}%`;
+        changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+    }
+
+    const lowEl = document.getElementById('stat-low');
+    if (lowEl) lowEl.textContent = `${day_low.toFixed(2)} ${currency}`;
+    const highEl = document.getElementById('stat-high');
+    if (highEl) highEl.textContent = `${day_high.toFixed(2)} ${currency}`;
+    const vwapEl = document.getElementById('stat-vwap');
+    if (vwapEl) vwapEl.textContent = `${open_price.toFixed(2)} ${currency}`;
+    const volTlEl = document.getElementById('stat-vol-tl');
+    if (volTlEl) volTlEl.textContent = `${prev_close.toFixed(2)} ${currency}`;
+    const volLotEl = document.getElementById('stat-vol-lot');
+    if (volLotEl) volLotEl.textContent = formatNumber(stock.volume || 0);
+
+    const predEl = document.getElementById('modal-prediction');
+    if (predEl) {
+        predEl.textContent = stock.prediction || 'Stable trend';
+        predEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+    }
+}
+
+async function _fetchLivePriceForModal(symbol) {
+    try {
+        const res = await fetch(`${API_URL}/api/live-price/${encodeURIComponent(symbol)}`);
+        if (!res.ok) return;
+        const liveData = await res.json();
+        // Only update if the modal is still showing the same stock
+        if (currentSymbol !== symbol) return;
+        const currency = getCurrencySymbol(liveData.currency);
+        _applyStockToModal(liveData, currency, true);
+        // Also update the in-memory cache so portfolio exports use fresh data
+        if (window.allStocks) {
+            const idx = window.allStocks.findIndex(s => s.symbol === symbol);
+            if (idx >= 0) window.allStocks[idx] = { ...window.allStocks[idx], ...liveData };
+        }
+    } catch (e) {
+        // Silent fail — cached data is still shown
+    }
 }
 
 window.askWolfeeAI = async function(symbol) {

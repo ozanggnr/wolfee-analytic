@@ -68,18 +68,10 @@ async function loadAIInsight() {
 }
 
 async function loadOpportunities() {
-    // check cache
-    const cachedOpps = sessionStorage.getItem('wolfee_opportunities');
-    if (cachedOpps) {
-        renderOpportunities(JSON.parse(cachedOpps));
-        return;
-    }
-
     try {
         const res = await fetch(`${API_URL}/opportunities`);
         const data = await res.json();
         renderOpportunities(data.opportunities);
-        sessionStorage.setItem('wolfee_opportunities', JSON.stringify(data.opportunities));
     } catch (e) { console.error(e); }
 }
 
