@@ -297,18 +297,19 @@ async def get_stock_history(symbol: str, period: str = "1y"):
     try:
         if symbol.endswith(".IS"):
             from data_sources.turkish_market import fetch_bist_history
-            data = fetch_bist_history(symbol, period)
+            data = await asyncio.to_thread(fetch_bist_history, symbol, period)
         else:
             from data_sources.global_market import fetch_global_history
-            data = fetch_global_history(symbol, period)
+            data = await asyncio.to_thread(fetch_global_history, symbol, period)
 
-        if not data or not data.get('history'):
+        # data is a list of OHLCV dicts (not a dict with 'history' key)
+        if not data:
             raise HTTPException(status_code=404, detail="No history found")
 
         return {
             "symbol": symbol,
             "name": symbol,
-            "history": data["history"]
+            "history": data
         }
     except HTTPException:
         raise
@@ -329,23 +330,49 @@ async def get_chart_data(symbol: str, period: str):
     try:
         if symbol.endswith(".IS"):
             from data_sources.turkish_market import fetch_bist_history
-            data = fetch_bist_history(symbol, period)
+            data = await asyncio.to_thread(fetch_bist_history, symbol, period)
         else:
             from data_sources.global_market import fetch_global_history
-            data = fetch_global_history(symbol, period)
+            data = await asyncio.to_thread(fetch_global_history, symbol, period)
+
+        # If wrapper returned None, try a direct yfinance fetch as fallback
+        if not data:
+            import yfinance as yf
+            from data_sources.turkish_market import PERIOD_MAP as BIST_PERIOD_MAP
+            from data_sources.global_market import PERIOD_MAP as GLOBAL_PERIOD_MAP
+            period_map = BIST_PERIOD_MAP if symbol.endswith(".IS") else GLOBAL_PERIOD_MAP
+            yf_period, yf_interval = period_map.get(period, ("1y", "1d"))
+
+            def _direct_yf_fetch():
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period=yf_period, interval=yf_interval)
+                if hist.empty:
+                    return None
+                rows = []
+                for idx, row in hist.iterrows():
+                    time_str = idx.strftime("%Y-%m-%d %H:%M") if hasattr(idx, "strftime") else str(idx)
+                    rows.append({
+                        "time": time_str,
+                        "open": round(float(row.get("Open", 0)), 4),
+                        "high": round(float(row.get("High", 0)), 4),
+                        "low": round(float(row.get("Low", 0)), 4),
+                        "close": round(float(row.get("Close", 0)), 4),
+                        "volume": int(row.get("Volume", 0)),
+                    })
+                return rows
+
+            data = await asyncio.to_thread(_direct_yf_fetch)
 
         if not data:
             raise HTTPException(status_code=404, detail="No chart data available")
 
         return {"history": data}
 
-        return data
-
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Chart error for {symbol}: {e}")
-        raise HTTPException(status_code=404, detail="Chart data unavailable")
+        raise HTTPException(status_code=500, detail="Chart data unavailable")
 
 
 # ============================================================
