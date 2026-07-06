@@ -322,7 +322,6 @@ async def get_stock_history(symbol: str, period: str = "1y"):
 async def get_chart_data(symbol: str, period: str):
     """Chart data endpoint for frontend."""
     is_global = symbol.upper() in [s.upper() for s in GLOBAL_SYMBOLS]
-    is_commodity = "=" in symbol
 
     if not symbol.endswith('.IS') and not is_global and "=" not in symbol:
         symbol += '.IS'
@@ -335,33 +334,58 @@ async def get_chart_data(symbol: str, period: str):
             from data_sources.global_market import fetch_global_history
             data = await asyncio.to_thread(fetch_global_history, symbol, period)
 
-        # If wrapper returned None, try a direct yfinance fetch as fallback
+        # Last-resort: call Yahoo Finance chart API directly in the endpoint itself
         if not data:
-            import yfinance as yf
+            import httpx as _httpx
             from data_sources.turkish_market import PERIOD_MAP as BIST_PERIOD_MAP
             from data_sources.global_market import PERIOD_MAP as GLOBAL_PERIOD_MAP
             period_map = BIST_PERIOD_MAP if symbol.endswith(".IS") else GLOBAL_PERIOD_MAP
             yf_period, yf_interval = period_map.get(period, ("1y", "1d"))
 
-            def _direct_yf_fetch():
-                ticker = yf.Ticker(symbol)
-                hist = ticker.history(period=yf_period, interval=yf_interval)
-                if hist.empty:
+            def _direct_chart_fetch():
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                params = {
+                    "range": yf_period, "interval": yf_interval,
+                    "includePrePost": "false", "events": "div,splits",
+                }
+                hdrs = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept": "application/json",
+                    "Referer": "https://finance.yahoo.com/",
+                }
+                with _httpx.Client(timeout=20, headers=hdrs, follow_redirects=True) as c:
+                    r = c.get(url, params=params)
+                    r.raise_for_status()
+                    body = r.json()
+                result = body.get("chart", {}).get("result", [])
+                if not result:
                     return None
+                rec = result[0]
+                timestamps = rec.get("timestamp", [])
+                quote = rec.get("indicators", {}).get("quote", [{}])[0]
+                closes  = quote.get("close",  [])
+                opens   = quote.get("open",   [])
+                highs   = quote.get("high",   [])
+                lows    = quote.get("low",    [])
+                volumes = quote.get("volume", [])
+                from datetime import datetime as _dt
                 rows = []
-                for idx, row in hist.iterrows():
-                    time_str = idx.strftime("%Y-%m-%d %H:%M") if hasattr(idx, "strftime") else str(idx)
+                for i, ts in enumerate(timestamps):
+                    c_val = closes[i] if i < len(closes) else None
+                    if c_val is None:
+                        continue
                     rows.append({
-                        "time": time_str,
-                        "open": round(float(row.get("Open", 0)), 4),
-                        "high": round(float(row.get("High", 0)), 4),
-                        "low": round(float(row.get("Low", 0)), 4),
-                        "close": round(float(row.get("Close", 0)), 4),
-                        "volume": int(row.get("Volume", 0)),
+                        "time":   _dt.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
+                        "open":   round(float(opens[i])   if i < len(opens)   and opens[i]   else c_val, 4),
+                        "high":   round(float(highs[i])   if i < len(highs)   and highs[i]   else c_val, 4),
+                        "low":    round(float(lows[i])    if i < len(lows)    and lows[i]    else c_val, 4),
+                        "close":  round(float(c_val), 4),
+                        "volume": int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
                     })
-                return rows
+                return rows or None
 
-            data = await asyncio.to_thread(_direct_yf_fetch)
+            data = await asyncio.to_thread(_direct_chart_fetch)
 
         if not data:
             raise HTTPException(status_code=404, detail="No chart data available")
