@@ -102,15 +102,23 @@ function renderGoldCards(goldData) {
 
 function renderExchangeRates(rates) {
     let header = document.querySelector('header');
+    let wrapper = document.getElementById('exchange-ticker-wrapper');
     let ticker = document.getElementById('exchange-ticker');
     
+    // Create wrapper + ticker if they don't exist (fallback)
+    if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.id = 'exchange-ticker-wrapper';
+        wrapper.className = 'exchange-ticker-wrapper';
+        if (header && header.nextSibling) {
+            header.parentNode.insertBefore(wrapper, header.nextSibling);
+        }
+    }
     if (!ticker) {
         ticker = document.createElement('div');
         ticker.id = 'exchange-ticker';
         ticker.className = 'exchange-ticker';
-        if (header && header.nextSibling) {
-            header.parentNode.insertBefore(ticker, header.nextSibling);
-        }
+        wrapper.appendChild(ticker);
     }
     
     if (!rates || rates.length === 0) {
@@ -443,11 +451,10 @@ window.onclick = function(event) {
 // AI Protocol Collapse/Expand
 window.toggleAICollapse = function() {
     const body = document.getElementById('ai-body');
-    const btn = document.getElementById('ai-collapse-btn');
+    const chevron = document.getElementById('ai-chevron');
+    const header = document.querySelector('.ai-header-toggle');
     if (!body) return;
     const isCollapsed = body.classList.toggle('collapsed');
-    if (btn) {
-        btn.textContent = isCollapsed ? '▼' : '▲';
-        btn.title = isCollapsed ? 'Expand' : 'Collapse';
-    }
+    if (chevron) chevron.classList.toggle('rotated', isCollapsed);
+    if (header) header.setAttribute('aria-expanded', String(!isCollapsed));
 };
