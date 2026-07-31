@@ -21,6 +21,7 @@
             <img src="logo.png" alt="Wolfee Logo"
                 style="height: 50px; width: 50px; border-radius: 50%; object-fit: cover;">
             <h1>Wolfee Analytics</h1>
+            <span class="alpha-badge">Alpha</span>
         </a>
 
         <!-- Search Bar -->
@@ -97,9 +98,14 @@
             <div id="ai-section" class="ai-card hidden">
                 <div class="ai-header">
                     <span>🐺 Wolfee AI Protocol</span>
-                    <span class="ai-badge">LIVE INSIGHT</span>
+                    <div style="display:flex; align-items:center; gap:0.75rem;">
+                        <span class="ai-badge">LIVE INSIGHT</span>
+                        <button id="ai-collapse-btn" class="ai-collapse-btn" onclick="toggleAICollapse()" title="Collapse">▲</button>
+                    </div>
                 </div>
-                <p id="ai-text">Analyzing market data...</p>
+                <div id="ai-body">
+                    <p id="ai-text">Analyzing market data...</p>
+                </div>
             </div>
 
             <div id="gold-section" class="gold-section"></div>
@@ -127,6 +133,8 @@
         </main>
 
         <aside id="sidebar">
+            <!-- Backdrop for mobile drawer -->
+            <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebar()"></div>
             <span id="sidebar-close" class="close-sidebar" onclick="toggleSidebar()">&times;</span>
             <div class="sidebar-section">
                 <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
@@ -230,13 +238,13 @@
     </div>
 
     <!-- Modular Scripts -->
-    <script src="js/config.js?v=4.3"></script>
-    <script src="js/api.js?v=4.3"></script>
-    <script src="js/ui.js?v=4.3"></script>
-    <script src="js/filter.js?v=4.3"></script>
-    <script src="js/chart.js?v=4.3"></script>
-    <script src="js/portfolio.js?v=4.3"></script>
-    <script src="js/main.js?v=4.3"></script>
+    <script src="js/config.js?v=4.4"></script>
+    <script src="js/api.js?v=4.4"></script>
+    <script src="js/ui.js?v=4.4"></script>
+    <script src="js/filter.js?v=4.4"></script>
+    <script src="js/chart.js?v=4.4"></script>
+    <script src="js/portfolio.js?v=4.4"></script>
+    <script src="js/main.js?v=4.4"></script>
 </body>
 
 </html>

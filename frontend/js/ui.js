@@ -346,7 +346,11 @@ function formatNumber(num) {
 
 window.toggleSidebar = function() {
     const sidebar = document.getElementById('sidebar');
-    if (sidebar) sidebar.classList.toggle('active');
+    if (sidebar) {
+        sidebar.classList.toggle('sidebar-open');
+        // Lock body scroll when sidebar is open on mobile
+        document.body.classList.toggle('no-scroll', sidebar.classList.contains('sidebar-open'));
+    }
 }
 
 window.switchTab = function(tab) {
@@ -434,4 +438,16 @@ window.onclick = function(event) {
             closeModalWithAnim();
         }
     });
+};
+
+// AI Protocol Collapse/Expand
+window.toggleAICollapse = function() {
+    const body = document.getElementById('ai-body');
+    const btn = document.getElementById('ai-collapse-btn');
+    if (!body) return;
+    const isCollapsed = body.classList.toggle('collapsed');
+    if (btn) {
+        btn.textContent = isCollapsed ? '▼' : '▲';
+        btn.title = isCollapsed ? 'Expand' : 'Collapse';
+    }
 };
