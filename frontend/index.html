@@ -5,101 +5,172 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="Wolfee Analytics — Real-time stock market analysis, AI-powered insights, and portfolio tracking for TR and global markets.">
-    <meta name="theme-color" content="#060b14">
+    <meta name="theme-color" content="#0C0C0C">
     <title>Wolfee Analytics — Real-Time Market Intelligence</title>
+
+    <!-- Google Fonts: Kanit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
 
 <body>
+    <!-- ===== LOADER ===== -->
     <div id="loader">
-        <div class="spinner"></div>
+        <div class="loader-inner">
+            <div class="spinner"></div>
+            <span class="loader-text">WOLFEE<span class="loader-dot">.</span></span>
+        </div>
     </div>
 
-    <header>
-        <a href="./index.html" style="text-decoration: none; display: flex; align-items: center; gap: 1rem;">
-            <img src="logo.png" alt="Wolfee Logo"
-                style="height: 50px; width: 50px; border-radius: 50%; object-fit: cover;">
-            <h1>Wolfee Analytics</h1>
-            <span class="alpha-badge">Alpha</span>
-        </a>
+    <!-- ===== FLOATING NAVBAR (NexaCore style) ===== -->
+    <div id="navbar-wrapper">
+        <nav id="main-nav">
+            <!-- Logo -->
+            <a href="./index.html" class="nav-logo" style="text-decoration: none;">
+                <img src="logo.png" alt="Wolfee Logo" class="nav-logo-img">
+                <span class="nav-logo-text">Wolfee<span class="nav-logo-accent">.</span></span>
+                <span class="alpha-badge">Alpha</span>
+            </a>
 
-        <!-- Search Bar -->
-        <div class="search-container">
-            <input type="text" id="search-input" placeholder="🔍 Search stocks..." autocomplete="off">
-            <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()"
-                style="background:rgba(255,255,255,0.1); border:none; color:var(--text-secondary);">
-                ⚙️
+            <!-- Desktop Nav Links -->
+            <div class="nav-links hidden-mobile">
+                <button class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
+                <button class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Portfolio</button>
+                <button class="nav-link" onclick="document.getElementById('sidebar').classList.toggle('sidebar-open'); document.body.classList.toggle('no-scroll', document.getElementById('sidebar').classList.contains('sidebar-open'))">Opportunities</button>
+            </div>
+
+            <!-- Desktop Right Controls -->
+            <div class="nav-right hidden-mobile">
+                <!-- Search -->
+                <div class="search-container">
+                    <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                    <input type="text" id="search-input" placeholder="Search stocks..." autocomplete="off">
+                    <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    </button>
+                    <!-- Filter Popover -->
+                    <div id="filter-popover" class="filter-popover hidden">
+                        <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--nexa-accent);">Filter Market</h3>
+                        <div class="filter-grid-layout">
+                            <div class="filter-group">
+                                <label>Price Range (₺)</label>
+                                <div class="row-inputs" style="display:flex; gap:0.5rem;">
+                                    <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
+                                    <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
+                                </div>
+                            </div>
+                            <div class="filter-group">
+                                <label>Change % Range</label>
+                                <div class="row-inputs" style="display:flex; gap:0.5rem;">
+                                    <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
+                                    <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
+                                </div>
+                            </div>
+                            <div class="filter-group">
+                                <label>Min Volume</label>
+                                <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
+                            </div>
+                        </div>
+                        <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
+                            <button onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply Filters</button>
+                            <button onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
+                        </div>
+                    </div>
+                    <div id="search-results" class="hidden"></div>
+                </div>
+
+                <!-- Region Toggle -->
+                <div class="region-toggle-wrapper">
+                    <span id="region-label" class="region-label">TR</span>
+                    <label class="switch">
+                        <input type="checkbox" id="region-toggle" onchange="toggleRegion()">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+
+                <!-- Live Status -->
+                <div id="live-status" class="live-status">
+                    <span id="live-dot" class="live-dot"></span>
+                    <span id="live-label">Live</span>
+                </div>
+
+                <!-- Export Button (gradient pill) -->
+                <button id="export-btn" class="gradient-btn" onclick="openExportModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export
+                </button>
+            </div>
+
+            <!-- Mobile Right: hamburger only -->
+            <div class="nav-mobile-right hidden-desktop">
+                <!-- Hamburger -->
+                <button class="hamburger-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Open menu" aria-expanded="false">
+                    <span></span><span></span><span></span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Mobile Menu Drawer -->
+    <div id="mobile-menu" class="mobile-menu" aria-hidden="true">
+        <div class="mobile-menu-inner">
+            <button class="mobile-menu-close" onclick="toggleMobileMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
-
-            <!-- Filter Popover -->
-            <div id="filter-popover" class="filter-popover hidden">
-                <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--accent-color);">Filter Market</h3>
-                <div class="filter-grid-layout">
-                    <div class="filter-group">
-                        <label>Price Range (₺)</label>
-                        <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                            <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
-                            <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
-                        </div>
-                    </div>
-                    <div class="filter-group">
-                        <label>Change % Range</label>
-                        <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                            <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
-                            <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
-                        </div>
-                    </div>
-                    <div class="filter-group">
-                        <label>Min Volume</label>
-                        <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
-                    </div>
+            <div class="mobile-menu-logo">
+                <img src="logo.png" alt="Wolfee Logo" style="height:36px;width:36px;border-radius:50%;object-fit:cover;">
+                <span>Wolfee<span style="color:var(--nexa-accent)">.</span></span>
+            </div>
+            <!-- Mobile Search -->
+            <div class="mobile-menu-search-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                <input type="text" id="mobile-menu-search" placeholder="Search stocks..." autocomplete="off" class="mobile-menu-search-input">
+            </div>
+            <nav class="mobile-nav-links">
+                <button class="mobile-nav-link tab-btn active" id="tab-market-m" onclick="switchTab('market'); toggleMobileMenu()">📈 Market</button>
+                <button class="mobile-nav-link tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio'); toggleMobileMenu()">💼 Portfolio</button>
+                <button class="mobile-nav-link" onclick="toggleSidebar(); toggleMobileMenu()">🎯 Opportunities</button>
+                <button class="mobile-nav-link" onclick="openExportModal(); toggleMobileMenu()">📊 Export Excel</button>
+            </nav>
+            <div class="mobile-menu-controls">
+                <div class="region-toggle-wrapper">
+                    <span id="region-label-m" class="region-label">TR</span>
+                    <label class="switch">
+                        <input type="checkbox" id="region-toggle-m" onchange="document.getElementById('region-toggle').checked = this.checked; toggleRegion()">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
-                <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
-                    <button onclick="if(typeof applyFilters === 'function') applyFilters()"
-                        style="flex:1; padding: 0.5rem; background: var(--accent-color); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all 0.2s;">Apply
-                        Filters</button>
-                    <button onclick="if(typeof clearFilters === 'function') clearFilters()"
-                        style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: white; cursor: pointer; font-size: 0.85rem;">Clear</button>
+                <div id="live-status-m" class="live-status">
+                    <span class="live-dot"></span>
+                    <span id="live-label-m">Live</span>
                 </div>
             </div>
-
-            <div id="search-results" class="hidden"></div>
         </div>
+    </div>
+    <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" onclick="toggleMobileMenu()"></div>
 
-        <div class="header-right">
-            <!-- Region Toggle -->
-            <div class="region-toggle-wrapper">
-                <span id="region-label" style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">TR</span>
-                <label class="switch">
-                    <input type="checkbox" id="region-toggle" onchange="toggleRegion()">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            <button id="mobile-opp-btn" class="secondary-btn hidden-desktop" onclick="toggleSidebar()">📈
-                Opportunities</button>
-            <div class="view-tabs">
-                <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">Market</button>
-                <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">My Portfolio</button>
-            </div>
-            <button id="export-btn" class="secondary-btn" onclick="openExportModal()">📊 Export Excel</button>
-            <div id="live-status" style="display:flex; align-items:center; gap:0.4rem; font-size:0.75rem; color:var(--text-secondary);">
-                <span id="live-dot" style="width:8px; height:8px; border-radius:50%; background:#4ade80; display:inline-block; animation: pulse 2s infinite;"></span>
-                <span id="live-label">Live</span>
-            </div>
-        </div>
-    </header>
-
+    <!-- ===== EXCHANGE TICKER (marquee strip) ===== -->
     <div id="exchange-ticker-wrapper" class="exchange-ticker-wrapper">
         <div id="exchange-ticker" class="exchange-ticker" style="display:none;"></div>
     </div>
 
+    <!-- ===== MAIN CONTENT ===== -->
     <div class="container">
         <main>
+            <!-- Section Label -->
+            <div class="section-header">
+                <div class="section-badge">
+                    <span class="section-badge-dot"></span>
+                    Real-Time Intelligence
+                </div>
+                <h2 class="section-heading hero-heading">Market<br>Intelligence</h2>
+            </div>
+
             <!-- AI Section -->
             <div id="ai-section" class="ai-card hidden">
                 <div class="ai-header ai-header-toggle" onclick="toggleAICollapse()" role="button" tabindex="0" aria-expanded="true">
@@ -120,54 +191,56 @@
                 </div>
             </div>
 
+            <!-- Gold Section -->
             <div id="gold-section" class="gold-section"></div>
 
+            <!-- Market View -->
             <div id="market-view">
                 <div id="stock-grid">
                     <!-- Stock cards injected here -->
                 </div>
             </div>
 
+            <!-- Portfolio View -->
             <div id="portfolio-view" class="hidden">
                 <div class="portfolio-header">
                     <h2>Your Session Portfolio</h2>
-                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Items here persist only for this
-                        session.</p>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Items here persist only for this session.</p>
                 </div>
                 <div id="portfolio-grid" class="stock-grid-style">
                     <!-- Portfolio cards injected here -->
                 </div>
                 <div id="portfolio-empty" class="hidden"
-                    style="text-align:center; padding: 2rem; color: var(--text-secondary);">
-                    <p>Your portfolio is empty. Add stocks from the Market view!</p>
+                    style="text-align:center; padding: 3rem; color: var(--text-secondary);">
+                    <p style="font-size: 1.1rem;">Your portfolio is empty.<br>Add stocks from the Market view!</p>
                 </div>
             </div>
         </main>
 
+        <!-- ===== SIDEBAR (Opportunities) ===== -->
         <aside id="sidebar">
             <!-- Backdrop for mobile drawer -->
             <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebar()"></div>
             <span id="sidebar-close" class="close-sidebar" onclick="toggleSidebar()">&times;</span>
             <div class="sidebar-section">
-                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
-
-                    <h2>📈 Buy Opportunities</h2>
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.25rem;">
+                    <div class="sidebar-icon">🎯</div>
+                    <h2>Buy Opportunities</h2>
                 </div>
                 <div id="opportunities-list">
-                    <p style="color: grey;">Scanning market...</p>
+                    <p style="color: var(--text-secondary);">Scanning market...</p>
                 </div>
             </div>
         </aside>
     </div>
 
-    <!-- Export Modal -->
+    <!-- ===== EXPORT MODAL ===== -->
     <div id="export-modal" class="modal hidden">
         <div class="modal-content export-content">
             <span class="close-modal" onclick="closeExportModal()">&times;</span>
-            <h2>📊 Export Market Analysis</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem;">Select a time period for your detailed Excel
-                export:</p>
-
+            <div class="modal-header-badge">📊 Export</div>
+            <h2 style="margin: 0.5rem 0 0.5rem;">Market Analysis Export</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.9rem;">Select a time period for your detailed Excel export:</p>
             <div class="export-options">
                 <button class="export-card" onclick="triggerExport('daily')">
                     <div class="export-icon">📅</div>
@@ -176,7 +249,6 @@
                         <p>Last 5 trading days analysis</p>
                     </div>
                 </button>
-
                 <button class="export-card" onclick="triggerExport('weekly')">
                     <div class="export-icon">🗓️</div>
                     <div class="export-info">
@@ -184,7 +256,6 @@
                         <p>Past week performance</p>
                     </div>
                 </button>
-
                 <button class="export-card" onclick="triggerExport('monthly')">
                     <div class="export-icon">📆</div>
                     <div class="export-info">
@@ -196,43 +267,32 @@
         </div>
     </div>
 
-    <!-- Modal for detailed view -->
+    <!-- ===== STOCK DETAIL MODAL ===== -->
     <div id="stock-modal" class="modal hidden">
         <div class="modal-content">
             <span class="close-modal">&times;</span>
             <div class="modal-header-actions">
                 <h2 id="modal-title" style="margin:0;">Stock Name</h2>
                 <div style="display:flex; gap:0.5rem;">
-                    <button id="btn-portfolio-action" class="secondary-btn" onclick="if(typeof togglePortfolioItem === 'function') togglePortfolioItem()">+ Add to
-                        Portfolio</button>
+                    <button id="btn-portfolio-action" class="secondary-btn" onclick="if(typeof togglePortfolioItem === 'function') togglePortfolioItem()">+ Add to Portfolio</button>
                 </div>
             </div>
 
             <!-- Detailed Info Grid -->
             <div class="detailed-stats-grid">
-                <div class="ds-item"><span class="ds-label">Symbol</span><span class="ds-val" id="stat-symbol">-</span>
-                </div>
-                <div class="ds-item"><span class="ds-label">Last</span><span class="ds-val" id="stat-last">-</span>
-                </div>
+                <div class="ds-item"><span class="ds-label">Symbol</span><span class="ds-val" id="stat-symbol">-</span></div>
+                <div class="ds-item"><span class="ds-label">Last</span><span class="ds-val" id="stat-last">-</span></div>
                 <div class="ds-item"><span class="ds-label">Bid</span><span class="ds-val" id="stat-bid">-</span></div>
                 <div class="ds-item"><span class="ds-label">Ask</span><span class="ds-val" id="stat-ask">-</span></div>
-                <div class="ds-item"><span class="ds-label">Change</span><span class="ds-val" id="stat-change">-</span>
-                </div>
-
+                <div class="ds-item"><span class="ds-label">Change</span><span class="ds-val" id="stat-change">-</span></div>
                 <div class="ds-item"><span class="ds-label">Low</span><span class="ds-val" id="stat-low">-</span></div>
-                <div class="ds-item"><span class="ds-label">High</span><span class="ds-val" id="stat-high">-</span>
-                </div>
-                <div class="ds-item"><span class="ds-label">Open</span><span class="ds-val" id="stat-vwap">-</span>
-                </div>
-                <div class="ds-item"><span class="ds-label">Prev Close</span><span class="ds-val"
-                        id="stat-vol-tl">-</span></div>
-                <div class="ds-item"><span class="ds-label">Volume</span><span class="ds-val" id="stat-vol-lot">-</span>
-                </div>
+                <div class="ds-item"><span class="ds-label">High</span><span class="ds-val" id="stat-high">-</span></div>
+                <div class="ds-item"><span class="ds-label">Open</span><span class="ds-val" id="stat-vwap">-</span></div>
+                <div class="ds-item"><span class="ds-label">Prev Close</span><span class="ds-val" id="stat-vol-tl">-</span></div>
+                <div class="ds-item"><span class="ds-label">Volume</span><span class="ds-val" id="stat-vol-lot">-</span></div>
             </div>
 
-            <div class="modal-prediction" id="modal-prediction">
-                Best Entry: Loading...
-            </div>
+            <div class="modal-prediction" id="modal-prediction">Best Entry: Loading...</div>
 
             <div id="ai-analysis-section" class="ai-analysis-section"></div>
 
@@ -249,14 +309,67 @@
         </div>
     </div>
 
-    <!-- Modular Scripts -->
-    <script src="js/config.js?v=4.5"></script>
-    <script src="js/api.js?v=4.5"></script>
-    <script src="js/ui.js?v=4.5"></script>
-    <script src="js/filter.js?v=4.5"></script>
-    <script src="js/chart.js?v=4.5"></script>
-    <script src="js/portfolio.js?v=4.5"></script>
-    <script src="js/main.js?v=4.5"></script>
+    <!-- ===== MODULAR SCRIPTS ===== -->
+    <script src="js/config.js?v=5.0"></script>
+    <script src="js/api.js?v=5.0"></script>
+    <script src="js/ui.js?v=5.0"></script>
+    <script src="js/filter.js?v=5.0"></script>
+    <script src="js/chart.js?v=5.0"></script>
+    <script src="js/portfolio.js?v=5.0"></script>
+    <script src="js/main.js?v=5.0"></script>
+
+    <script>
+        // Mobile Menu Toggle
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const btn = document.getElementById('mobile-menu-btn');
+            const backdrop = document.getElementById('mobile-menu-backdrop');
+            const isOpen = menu.classList.toggle('mobile-menu-open');
+            btn.setAttribute('aria-expanded', String(isOpen));
+            menu.setAttribute('aria-hidden', String(!isOpen));
+            backdrop.classList.toggle('active', isOpen);
+            document.body.classList.toggle('no-scroll', isOpen);
+        }
+
+        // Mobile search inside the mobile menu forwards to desktop search-input
+        document.addEventListener('DOMContentLoaded', () => {
+            const mobileSearch = document.getElementById('mobile-menu-search');
+            if (mobileSearch) {
+                mobileSearch.addEventListener('input', (e) => {
+                    const desktopInput = document.getElementById('search-input');
+                    if (desktopInput) {
+                        desktopInput.value = e.target.value;
+                        desktopInput.dispatchEvent(new Event('input'));
+                    }
+                });
+            }
+        });
+
+        // Override toggleRegion to also sync mobile region label
+        const _origToggleRegion = window.toggleRegion;
+        window.toggleRegion = function() {
+            if (_origToggleRegion) _origToggleRegion();
+            // Also sync the mobile toggle label
+            const toggle = document.getElementById('region-toggle');
+            const mLabel = document.getElementById('region-label-m');
+            const mToggle = document.getElementById('region-toggle-m');
+            if (toggle && mLabel) {
+                mLabel.innerText = toggle.checked ? 'GLOBAL' : 'TR';
+                mLabel.style.color = toggle.checked ? '#f87171' : '';
+            }
+            if (toggle && mToggle) mToggle.checked = toggle.checked;
+        };
+
+        // Navbar scroll effect
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('main-nav');
+            if (window.scrollY > 10) {
+                nav.classList.add('nav-scrolled');
+            } else {
+                nav.classList.remove('nav-scrolled');
+            }
+        }, { passive: true });
+    </script>
 </body>
 
 </html>
