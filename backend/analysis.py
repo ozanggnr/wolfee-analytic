@@ -254,19 +254,31 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False):
         # Volatility
         volatility = 'HIGH' if abs(change_pct) > 5 else 'MEDIUM' if abs(change_pct) > 2 else 'LOW'
 
-        # Prediction
-        if change_pct > 5:
-            prediction = f"Strong momentum with +{change_pct:.1f}% gain"
-        elif change_pct > 2:
-            prediction = f"Positive trend with +{change_pct:.1f}% gain"
-        elif change_pct > 0:
-            prediction = "Slight upward movement"
-        elif change_pct < -5:
-            prediction = f"Strong decline with {change_pct:.1f}% loss"
+        # Smart prediction label — uses both change_pct and RSI for accuracy
+        if change_pct > 5 and rsi < 70:
+            prediction = f"PURCHASABLE — strong momentum +{change_pct:.1f}%"
+        elif change_pct > 2 and rsi < 65:
+            prediction = f"PURCHASABLE — positive trend +{change_pct:.1f}%"
+        elif change_pct > 0.5 and rsi < 60:
+            prediction = f"PURCHASABLE — rising +{change_pct:.1f}%"
+        elif rsi < 35:
+            prediction = "ACCUMULATE — oversold, potential bounce"
+        elif change_pct >= 0 and rsi < 55:
+            prediction = "ACCUMULATE — steady upward movement"
+        elif change_pct >= 0 and rsi < 65:
+            prediction = "WATCH TO BUY — conditions improving"
+        elif rsi > 72 and change_pct > 3:
+            prediction = f"TAKE PROFITS — up {change_pct:.1f}%, overbought"
+        elif rsi > 65:
+            prediction = "WATCH TO BUY — slightly overbought, wait for pullback"
         elif change_pct < -2:
-            prediction = f"Downward trend with {change_pct:.1f}% loss"
+            prediction = f"AVOID FOR NOW — declining {change_pct:.1f}%"
+        elif change_pct < 0 and rsi > 40:
+            prediction = "WATCH TO BUY — minor dip, monitor closely"
+        elif change_pct < 0 and rsi < 40:
+            prediction = "ACCUMULATE — dip into value zone"
         else:
-            prediction = "Stable price action"
+            prediction = "WATCH TO BUY — neutral, awaiting direction"
 
         # Ensure no empty fields — estimate from price if missing
         day_high = data.get('day_high', 0) or data.get('high', 0)

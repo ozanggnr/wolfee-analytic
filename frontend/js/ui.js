@@ -9,27 +9,85 @@ function getCurrencySymbol(code) {
     return map[code] || code || '$';
 }
 
+function getSignalStyle(prediction) {
+    const p = (prediction || '').toUpperCase();
+    if (p.includes('PURCHASABLE')) {
+        return {
+            color: '#10f5a8',
+            bg: 'rgba(16,245,168,0.1)',
+            border: 'rgba(16,245,168,0.25)',
+            icon: '🟢',
+            label: prediction
+        };
+    }
+    if (p.includes('ACCUMULATE')) {
+        return {
+            color: '#43e6fc',
+            bg: 'rgba(67,230,252,0.09)',
+            border: 'rgba(67,230,252,0.22)',
+            icon: '🔵',
+            label: prediction
+        };
+    }
+    if (p.includes('WATCH TO BUY')) {
+        return {
+            color: '#fbbf24',
+            bg: 'rgba(251,191,36,0.09)',
+            border: 'rgba(251,191,36,0.22)',
+            icon: '🟡',
+            label: prediction
+        };
+    }
+    if (p.includes('TAKE PROFITS')) {
+        return {
+            color: '#c86fff',
+            bg: 'rgba(200,111,255,0.1)',
+            border: 'rgba(200,111,255,0.25)',
+            icon: '🟣',
+            label: prediction
+        };
+    }
+    if (p.includes('AVOID')) {
+        return {
+            color: '#ff4f6e',
+            bg: 'rgba(255,79,110,0.09)',
+            border: 'rgba(255,79,110,0.22)',
+            icon: '🔴',
+            label: prediction
+        };
+    }
+    // Fallback: derive from change direction
+    const isUp = !p.includes('DECLIN') && !p.includes('DOWN') && !p.includes('LOSS');
+    return {
+        color: isUp ? '#10f5a8' : '#ff4f6e',
+        bg: isUp ? 'rgba(16,245,168,0.08)' : 'rgba(255,79,110,0.08)',
+        border: isUp ? 'rgba(16,245,168,0.2)' : 'rgba(255,79,110,0.2)',
+        icon: isUp ? '🟢' : '🔴',
+        label: prediction || (isUp ? 'Positive momentum' : 'Downward pressure')
+    };
+}
+
 function renderStockCard(stock) {
     const grid = document.getElementById(stock.inPortfolio ? 'portfolio-grid' : 'stock-grid');
     if (!grid) return;
 
     const currency = getCurrencySymbol(stock.currency);
     const isUp = (stock.change_pct || 0) >= 0;
-    const colorClass = isUp ? 'text-success' : 'text-danger';
     const icon = isUp ? '▲' : '▼';
     const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
+    const sig = getSignalStyle(stock.prediction);
 
     const card = document.createElement('div');
     card.className = 'stock-card skeleton';
-    
-    // Remove skeleton class once image/data is loaded (simulated)
+
+    // Remove skeleton class once data is loaded
     setTimeout(() => card.classList.remove('skeleton'), 100);
 
     card.innerHTML = `
         <div class="stock-header">
             <div class="symbol-group">
                 <span class="stock-symbol">${(stock.symbol||'').replace('.IS', '')}</span>
-                <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 20)}${(stock.name || '').length > 20 ? '...' : ''}</span>
+                <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 22)}${(stock.name || '').length > 22 ? '...' : ''}</span>
             </div>
             <div>
                 <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
@@ -49,11 +107,11 @@ function renderStockCard(stock) {
             </div>
             <div class="stat-item">
                 <span>Trend</span>
-                <span>${(stock.change_pct||0) > 0 ? 'Bullish' : 'Bearish'}</span>
+                <span style="color: ${priceColor}">${isUp ? 'Bullish' : 'Bearish'}</span>
             </div>
         </div>
-        <div class="prediction-mini" style="color: ${isUp ? 'var(--success-color)' : 'var(--danger-color)'}; background: ${isUp ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)'}">
-            ${stock.prediction || (isUp ? 'Positive momentum' : 'Downward pressure')}
+        <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
+            ${sig.icon} ${sig.label}
         </div>
     `;
 

@@ -112,6 +112,9 @@ def get_stock_analysis(symbol: str, stock_data: dict) -> str:
         else:
             rsi_plain = f"{rsi:.0f} — the stock is in a balanced zone, neither overpriced nor overly cheap"
 
+        # Pre-compute the signal to guide the model
+        signal = _compute_signal(change, rsi, price, ma_20)
+
         prompt = f"""You are Wolfee AI, a professional stock analyst. Write a clear investment analysis for the following stock.
 
 Stock: {name} (ticker: {symbol.replace('.IS', '')})
@@ -123,18 +126,28 @@ Previous Close: {currency}{prev_close:.2f}
 20-day Average Price: {currency}{ma_20:.2f}
 Momentum Indicator (RSI): {rsi_plain}
 Trading Volume Today: {int(volume):,}
+Computed Signal: {signal}
 
 Write a clear analysis in plain English. Do NOT use abbreviations like RSI, MA, EMA, MACD. Do NOT use markdown formatting. Write full sentences only.
 
 Structure your response as follows:
 
-Decision: State clearly whether this stock is a BUY, HOLD, or SELL right now. One sentence.
+Decision: State the signal label "{signal}" and one sentence explaining what it means for this stock right now.
 
 Why this decision: Explain in 2-3 sentences what is happening with this stock right now. Mention the price movement, whether the stock is above or below its recent average price, and what the momentum indicator tells us in plain words.
 
 Why someone should buy it (or why to wait): Explain specifically what makes this an opportunity or what risk exists. Mention the price level, what a good entry point looks like, or what the investor is waiting for.
 
 Risk to watch: In 1-2 sentences, state what could go wrong — what news, market conditions, or price levels would change this recommendation.
+
+IMPORTANT — Use ONLY these decision labels:
+- PURCHASABLE: strong buy signal — positive momentum, RSI not overbought, good entry now
+- ACCUMULATE: good buying opportunity over time — stock is rising steadily or recovering from oversold
+- WATCH TO BUY: stock needs a small pullback before entering — slightly overbought or conditions improving
+- AVOID FOR NOW: stock is declining or under pressure — wait for stabilization
+- TAKE PROFITS: stock has run up significantly — momentum investor may want to lock in gains
+
+Never write HOLD. Always use one of the five labels above. Match the label to the Computed Signal provided.
 
 Keep it under 200 words total. Write as if explaining to someone who is not a finance expert but wants to make a smart investment decision."""
 
@@ -146,8 +159,60 @@ Keep it under 200 words total. Write as if explaining to someone who is not a fi
         return _fallback_stock_analysis(symbol, stock_data)
 
 
+def _compute_signal(change: float, rsi: float, price: float, ma_20: float) -> str:
+    """
+    Compute a smart buy/sell signal label based on technical indicators.
+    Never returns HOLD — always returns an actionable label.
+    """
+    above_ma = (price > ma_20 * 1.01) if ma_20 else None
+    below_ma = (price < ma_20 * 0.99) if ma_20 else None
+
+    # Strong upward momentum, not overbought → PURCHASABLE
+    if change > 2 and rsi < 65:
+        return "PURCHASABLE"
+
+    # Oversold and recovering → ACCUMULATE
+    if rsi < 35:
+        return "ACCUMULATE"
+
+    # Positive move, RSI still reasonable → PURCHASABLE
+    if change > 0.5 and rsi < 60:
+        return "PURCHASABLE"
+
+    # Slight positive move or sideways but above MA → ACCUMULATE
+    if change >= 0 and rsi < 55 and above_ma:
+        return "ACCUMULATE"
+
+    # Slightly positive, neutral RSI, no MA context → WATCH TO BUY
+    if change >= 0 and rsi < 65:
+        return "WATCH TO BUY"
+
+    # Overbought after a strong run → TAKE PROFITS
+    if rsi > 72 and change > 3:
+        return "TAKE PROFITS"
+
+    # Overbought, still climbing → WATCH TO BUY
+    if rsi > 65:
+        return "WATCH TO BUY"
+
+    # Declining significantly → AVOID FOR NOW
+    if change < -2:
+        return "AVOID FOR NOW"
+
+    # Slight decline but not in freefall → WATCH TO BUY
+    if change < 0 and rsi > 40:
+        return "WATCH TO BUY"
+
+    # Oversold on decline → ACCUMULATE (potential reversal)
+    if change < 0 and rsi < 40:
+        return "ACCUMULATE"
+
+    # Default: positive bias
+    return "WATCH TO BUY"
+
+
 def _fallback_stock_analysis(symbol: str, stock_data: dict) -> str:
-    """Template-based fallback for individual stock analysis."""
+    """Template-based fallback for individual stock analysis. Never uses HOLD."""
     if not stock_data:
         return "🐺 Wolfee AI: Data is currently missing for this stock. Please try again in a moment."
 
@@ -158,44 +223,65 @@ def _fallback_stock_analysis(symbol: str, stock_data: dict) -> str:
     name = stock_data.get('name', symbol.replace('.IS', ''))
     currency = '₺' if str(symbol).endswith('.IS') else '$'
 
+    signal = _compute_signal(change, rsi, price, ma_20)
     analysis = f"🐺 Wolfee AI — {name}\n\n"
 
-    # Decision
-    if change > 2 and rsi < 65:
-        decision = "BUY"
-        decision_reason = f"{name} is gaining momentum today with a {change:+.1f}% increase and still has room to move higher."
-    elif change < -2 and rsi > 55:
-        decision = "SELL / AVOID"
-        decision_reason = f"{name} is under selling pressure today, dropping {change:.1f}%. The trend is weakening."
-    elif rsi < 35:
-        decision = "WATCH / BUY"
-        decision_reason = f"{name} has been heavily sold off recently and may be approaching a value zone worth entering."
-    elif rsi > 70:
-        decision = "HOLD / WAIT"
-        decision_reason = f"{name} has risen significantly and may be getting expensive. Waiting for a small pullback could offer a better entry."
-    else:
-        decision = "HOLD"
-        decision_reason = f"{name} is moving sideways without a clear direction. There is no strong reason to buy or sell right now."
+    # Decision line with context
+    if signal == "PURCHASABLE":
+        decision_reason = (
+            f"{name} is showing a clear buy signal right now. "
+            f"Today's change of {change:+.1f}% combined with a healthy momentum indicator "
+            f"suggests this is a good entry point for investors."
+        )
+    elif signal == "ACCUMULATE":
+        decision_reason = (
+            f"{name} is a good candidate to build a position in gradually. "
+            f"{'The stock has been heavily sold off and may be approaching a value zone.' if rsi < 35 else f'With a steady {change:+.1f}% move and moderate momentum, gradual buying makes sense.'}"
+        )
+    elif signal == "WATCH TO BUY":
+        decision_reason = (
+            f"{name} looks interesting but is not at the ideal entry point yet. "
+            f"{'The stock is slightly overbought — waiting for a small pullback could offer a better price.' if rsi > 65 else f'Conditions are improving with {change:+.1f}% movement — watch for a confirmed upswing before entering.'}"
+        )
+    elif signal == "TAKE PROFITS":
+        decision_reason = (
+            f"{name} has had a strong run and momentum investors may want to lock in gains. "
+            f"The stock is up {change:+.1f}% today and the momentum indicator signals it may be getting expensive short-term."
+        )
+    else:  # AVOID FOR NOW
+        decision_reason = (
+            f"{name} is under selling pressure today with a {change:.1f}% decline. "
+            f"It is better to wait for the stock to stabilize before entering a position."
+        )
 
-    analysis += f"Decision: {decision}\n\n"
+    analysis += f"Decision: {signal}\n\n"
     analysis += f"What is happening: {decision_reason}\n\n"
 
-    # Price vs average context
+    # Price vs moving average context
     if ma_20 and price:
         if price > ma_20 * 1.03:
-            analysis += f"The stock is currently trading {((price/ma_20 - 1)*100):.1f}% above its 20-day average price of {currency}{ma_20:.2f}, which means it has been in a sustained uptrend recently.\n\n"
+            analysis += (
+                f"The stock is trading {((price/ma_20 - 1)*100):.1f}% above its 20-day average price of "
+                f"{currency}{ma_20:.2f}, confirming it is in an active uptrend.\n\n"
+            )
         elif price < ma_20 * 0.97:
-            analysis += f"The stock is trading {((1 - price/ma_20)*100):.1f}% below its 20-day average price of {currency}{ma_20:.2f}, suggesting it has been underperforming recently and may be approaching a support level.\n\n"
+            analysis += (
+                f"The stock is trading {((1 - price/ma_20)*100):.1f}% below its 20-day average price of "
+                f"{currency}{ma_20:.2f}, suggesting it may be undervalued and approaching a potential support level.\n\n"
+            )
         else:
-            analysis += f"The stock is trading close to its 20-day average price of {currency}{ma_20:.2f}, indicating it is in a consolidation phase.\n\n"
+            analysis += (
+                f"The stock is trading near its 20-day average price of {currency}{ma_20:.2f}, "
+                f"indicating a consolidation phase — a breakout in either direction is possible.\n\n"
+            )
 
-    # Risk
+    # Risk note
     if rsi > 65:
-        analysis += "Risk to watch: If the stock cannot maintain this price level, a quick pullback is possible. Consider setting a stop-loss just below today's low."
+        analysis += "Risk to watch: If the stock cannot hold this price level, a quick pullback is possible. Consider setting a stop-loss just below today's low."
     elif rsi < 35:
-        analysis += "Risk to watch: The stock may continue falling before reversing. Do not rush into a full position — consider buying in stages."
+        analysis += "Risk to watch: The stock may continue dipping before reversing. Consider buying in stages rather than all at once."
     else:
-        analysis += "Risk to watch: Broader market conditions and macroeconomic news could push this stock in either direction regardless of its individual performance."
+        analysis += "Risk to watch: Broader market conditions and macroeconomic news could move this stock regardless of its individual signals."
 
     return analysis
 

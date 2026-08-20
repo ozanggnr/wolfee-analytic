@@ -120,7 +120,8 @@ function updateChangedCards(newStocks) {
                 // Update price and change
                 const priceEl = card.querySelector('.stock-price');
                 const changeEl = card.querySelector('.price-change');
-                const predEl = card.querySelector('.prediction-mini');
+                const sigChip = card.querySelector('.signal-chip');
+                const trendEl = card.querySelector('.stat-item:last-child span:last-child');
                 const currency = typeof getCurrencySymbol === 'function'
                     ? getCurrencySymbol(newStock.currency)
                     : (newStock.currency === 'USD' ? '$' : '₺');
@@ -136,10 +137,16 @@ function updateChangedCards(newStocks) {
                     changeEl.style.color = color;
                     changeEl.textContent = `${icon} ${Math.abs(newStock.change_pct || 0).toFixed(2)}%`;
                 }
-                if (predEl) {
-                    predEl.textContent = newStock.prediction || '';
-                    predEl.style.background = isUp ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)';
-                    predEl.style.color = color;
+                if (trendEl) {
+                    trendEl.style.color = color;
+                    trendEl.textContent = isUp ? 'Bullish' : 'Bearish';
+                }
+                if (sigChip && typeof getSignalStyle === 'function') {
+                    const sig = getSignalStyle(newStock.prediction);
+                    sigChip.style.color = sig.color;
+                    sigChip.style.background = sig.bg;
+                    sigChip.style.borderColor = sig.border;
+                    sigChip.innerHTML = `${sig.icon} ${sig.label}`;
                 }
             }
         });
