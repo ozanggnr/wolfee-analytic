@@ -14,12 +14,21 @@ window.savePortfolio = function(list) {
 window.togglePortfolioItem = function () {
     if (!currentSymbol) return;
 
-    // Find full stock object from cache or from modal
-    let stock = window.allStocks.find(s => s.symbol === currentSymbol);
-    if (!stock && window.currentModalStock && window.currentModalStock.symbol === currentSymbol) {
-        stock = window.currentModalStock;
+    // Use the modal stock object (always set when modal opens), fallback to allStocks cache
+    let stock = window.currentModalStock || null;
+    if (!stock || stock.symbol !== currentSymbol) {
+        stock = (window.allStocks || []).find(s => s.symbol === currentSymbol);
     }
-    if (!stock) return;
+    if (!stock) {
+        // Last resort: build a minimal stock object from the modal DOM
+        stock = {
+            symbol: currentSymbol,
+            name: currentSymbol,
+            price: parseFloat(document.getElementById('stat-last')?.textContent) || 0,
+            change_pct: parseFloat(document.getElementById('stat-change')?.textContent) || 0,
+            currency: 'TRY'
+        };
+    }
 
     let list = getPortfolio();
     const existingIndex = list.findIndex(s => s.symbol === currentSymbol);

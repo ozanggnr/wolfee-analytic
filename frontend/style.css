@@ -98,6 +98,7 @@ html, body {
     line-height: 1.6;
     overflow-x: hidden;
     width: 100%;
+    min-width: 320px;
     -webkit-text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

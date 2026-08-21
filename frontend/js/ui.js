@@ -396,6 +396,10 @@ async function _fetchLivePriceForModal(symbol) {
         if (currentSymbol !== symbol) return;
         const currency = getCurrencySymbol(liveData.currency);
         _applyStockToModal(liveData, currency, true);
+        // Keep currentModalStock in sync for portfolio
+        if (window.currentModalStock && window.currentModalStock.symbol === symbol) {
+            window.currentModalStock = { ...window.currentModalStock, ...liveData };
+        }
         // Also update the in-memory cache so portfolio exports use fresh data
         if (window.allStocks) {
             const idx = window.allStocks.findIndex(s => s.symbol === symbol);
