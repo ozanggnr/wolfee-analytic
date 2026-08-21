@@ -49,7 +49,7 @@
             <div class="nav-links hidden-mobile">
                 <button class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
                 <button class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Portfolio</button>
-                <button class="nav-link" onclick="scrollToOpportunities()">Opportunities</button>
+                <button class="nav-link tab-btn" id="tab-opportunities" onclick="switchTab('opportunities')">Opportunities</button>
             </div>
 
             <!-- Desktop Right Controls -->
@@ -150,7 +150,7 @@
             <nav class="mobile-nav-links">
                 <button class="mobile-nav-link tab-btn active" id="tab-market-m" onclick="switchTab('market'); toggleMobileMenu()">📈 Market</button>
                 <button class="mobile-nav-link tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio'); toggleMobileMenu()">💼 Portfolio</button>
-                <button class="mobile-nav-link" onclick="toggleMobileMenu(); scrollToOpportunities()">🎯 Opportunities</button>
+                <button class="mobile-nav-link tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities'); toggleMobileMenu()">🎯 Opportunities</button>
                 <button class="mobile-nav-link" onclick="openExportModal(); toggleMobileMenu()">📊 Export Excel</button>
             </nav>
             <div class="mobile-menu-controls">
@@ -178,13 +178,6 @@
     <!-- ===== MAIN CONTENT ===== -->
     <div class="container">
         <main>
-            <!-- Intro Video -->
-            <div class="video-container" style="width: 100%; border-radius: 20px; overflow: hidden; margin-bottom: 2rem; border: 1px solid rgba(200,111,255,0.2); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-                <video autoplay loop muted playsinline style="width: 100%; height: auto; display: block; object-fit: cover; max-height: 350px;">
-                    <source src="https://cdn.pixabay.com/video/2021/08/19/85633-590827255_large.mp4" type="video/mp4">
-                </video>
-            </div>
-
             <!-- Section Label -->
             <div class="section-header">
                 <div class="section-badge">
@@ -228,7 +221,6 @@
             <div id="portfolio-view" class="hidden">
                 <div class="portfolio-header">
                     <h2>Your Session Portfolio</h2>
-                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Items here persist only for this session.</p>
                 </div>
                 <div id="portfolio-grid" class="stock-grid-style">
                     <!-- Portfolio cards injected here -->
@@ -238,29 +230,21 @@
                     <p style="font-size: 1.1rem;">Your portfolio is empty.<br>Add stocks from the Market view!</p>
                 </div>
             </div>
-        </main>
 
-        <!-- ===== SIDEBAR (Opportunities) ===== -->
-        <aside id="sidebar">
-            <!-- Backdrop for mobile drawer -->
-            <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebar()"></div>
-            <span id="sidebar-close" class="close-sidebar" onclick="toggleSidebar()">&times;</span>
-            <div class="sidebar-section">
-                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.25rem;">
-                    <div class="sidebar-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--nexa-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <circle cx="12" cy="12" r="6"></circle>
-                          <circle cx="12" cy="12" r="2"></circle>
-                        </svg>
+            <!-- Opportunities View (new tab page) -->
+            <div id="opportunities-view" class="hidden">
+                <div class="section-header" style="margin-bottom: 1.5rem;">
+                    <div class="section-badge">
+                        <span class="section-badge-dot"></span>
+                        AI-Powered Signals
                     </div>
-                    <h2>Buy Opportunities</h2>
+                    <h2 class="section-heading hero-heading">Buy<br>Opportunities</h2>
                 </div>
-                <div id="opportunities-list">
-                    <p style="color: var(--text-secondary);">Scanning market...</p>
+                <div id="opportunities-grid" class="stock-grid-style">
+                    <p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">Scanning market...</p>
                 </div>
             </div>
-        </aside>
+        </main>
     </div>
 
     <!-- ===== EXPORT MODAL ===== -->
@@ -348,15 +332,6 @@
     <script src="js/main.js?v=5.0"></script>
 
     <script>
-        function scrollToOpportunities() {
-            const sidebar = document.getElementById('sidebar');
-            if (window.innerWidth <= 768) {
-                toggleSidebar();
-            } else {
-                sidebar.scrollIntoView({ behavior: 'smooth' });
-            }
-        }
-
         // Mobile Menu Toggle
         function toggleMobileMenu() {
             const menu = document.getElementById('mobile-menu');

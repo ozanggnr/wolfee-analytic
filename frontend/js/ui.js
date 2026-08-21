@@ -224,40 +224,78 @@ window.openExchangeModal = function(pair, price, change_pct) {
 };
 
 function renderOpportunities(opportunities) {
-    const list = document.getElementById('opportunities-list');
-    if (!list) return;
+    // Store globally for opportunities page tab
+    window._opportunitiesData = opportunities || [];
+    
+    // Also render on the opportunities page if it's currently visible
+    const oppView = document.getElementById('opportunities-view');
+    if (oppView && !oppView.classList.contains('hidden')) {
+        renderOpportunitiesPage();
+    }
+}
+
+window.renderOpportunitiesPage = function() {
+    const grid = document.getElementById('opportunities-grid');
+    if (!grid) return;
+    
+    const opportunities = window._opportunitiesData || [];
     
     if (!opportunities || opportunities.length === 0) {
-        list.innerHTML = '<p style="color: var(--text-secondary);">No clear signals at the moment.</p>';
+        grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">No clear signals at the moment.</p>';
         return;
     }
     
-    list.innerHTML = '';
+    grid.innerHTML = '';
     const validOpps = opportunities.filter(stock => stock.price && stock.price > 0);
-    validOpps.slice(0, 8).forEach(stock => {
-        const div = document.createElement('div');
-        div.className = 'opportunity-card';
+    validOpps.forEach(stock => {
+        const currency = getCurrencySymbol(stock.currency);
+        const isUp = (stock.change_pct || 0) >= 0;
+        const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
+        const icon = isUp ? '▲' : '▼';
+        const sig = getSignalStyle(stock.prediction);
         
         let badges = '';
         if (stock.rsi < 35) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
         if (stock.change_pct > 2) badges += '<span class="opp-badge badge-trend">Uptrend</span> ';
         if (!badges) badges = '<span class="opp-badge badge-golden">Value Pick</span> ';
         
-        const currency = getCurrencySymbol(stock.currency);
-        
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:700; color:var(--text-primary);">${(stock.symbol||'').replace('.IS','')}</span>
-                <span style="color:var(--success-color); font-weight:600;">${(stock.price||0).toFixed(2)} ${currency}</span>
+        const card = document.createElement('div');
+        card.className = 'stock-card';
+        card.innerHTML = `
+            <div class="stock-header">
+                <div class="symbol-group">
+                    <span class="stock-symbol">${(stock.symbol||'').replace('.IS', '')}</span>
+                    <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 22)}${(stock.name || '').length > 22 ? '...' : ''}</span>
+                </div>
+                <div>
+                    <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
+                    <div class="price-change" style="color: ${priceColor}">
+                        ${icon} ${Math.abs(stock.change_pct||0).toFixed(2)}%
+                    </div>
+                </div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span>Volume</span>
+                    <span>${formatNumber(stock.volume)}</span>
+                </div>
+                <div class="stat-item">
+                    <span>RSI</span>
+                    <span style="color: ${getRsiColor(stock.rsi)}">${(stock.rsi||50).toFixed(1)}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Trend</span>
+                    <span style="color: ${priceColor}">${isUp ? 'Bullish' : 'Bearish'}</span>
+                </div>
             </div>
             <div style="margin: 5px 0;">${badges}</div>
-            <div class="reason-text" style="color:var(--text-secondary);">${stock.reason || 'Positive signals detected.'}</div>
+            <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
+                ${sig.icon} ${sig.label}
+            </div>
+            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${stock.reason || 'Positive signals detected.'}</div>
         `;
-        div.onclick = () => {
-            toggleSidebar();
-            openModal(stock);
-        };
-        list.appendChild(div);
+        card.onclick = () => openModal(stock);
+        grid.appendChild(card);
     });
 }
 
@@ -422,30 +460,42 @@ window.toggleSidebar = function() {
 
 window.switchTab = function(tab) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`tab-${tab}`).classList.add('active');
     
+    // Activate desktop + mobile tab buttons
+    const desktopBtn = document.getElementById(`tab-${tab}`);
+    const mobileBtn = document.getElementById(`tab-${tab}-m`);
+    if (desktopBtn) desktopBtn.classList.add('active');
+    if (mobileBtn) mobileBtn.classList.add('active');
+    
+    // Hide all views
+    const marketView = document.getElementById('market-view');
+    const portfolioView = document.getElementById('portfolio-view');
+    const opportunitiesView = document.getElementById('opportunities-view');
+    const aiSection = document.getElementById('ai-section');
+    const goldSection = document.getElementById('gold-section');
+    const sectionHeader = document.querySelector('.section-header');
+    const filterBtn = document.getElementById('filter-toggle-btn');
+
+    if (marketView) marketView.classList.add('hidden');
+    if (portfolioView) portfolioView.classList.add('hidden');
+    if (opportunitiesView) opportunitiesView.classList.add('hidden');
+    if (aiSection) aiSection.classList.add('hidden');
+    if (goldSection) goldSection.classList.add('hidden');
+    if (sectionHeader) sectionHeader.style.display = 'none';
+    if (filterBtn) filterBtn.style.display = 'none';
+
     if (tab === 'market') {
-        document.getElementById('market-view').classList.remove('hidden');
-        document.getElementById('portfolio-view').classList.add('hidden');
-        const aiSection = document.getElementById('ai-section');
+        if (marketView) marketView.classList.remove('hidden');
         if (aiSection) aiSection.classList.remove('hidden');
-        const goldSection = document.getElementById('gold-section');
         if (goldSection) goldSection.classList.remove('hidden');
-        
-        const filterBtn = document.getElementById('filter-toggle-btn');
+        if (sectionHeader) sectionHeader.style.display = '';
         if (filterBtn) filterBtn.style.display = 'block';
-    } else {
-        document.getElementById('market-view').classList.add('hidden');
-        document.getElementById('portfolio-view').classList.remove('hidden');
-        const aiSection = document.getElementById('ai-section');
-        if (aiSection) aiSection.classList.add('hidden');
-        const goldSection = document.getElementById('gold-section');
-        if (goldSection) goldSection.classList.add('hidden');
-        
-        const filterBtn = document.getElementById('filter-toggle-btn');
-        if (filterBtn) filterBtn.style.display = 'none';
-        
+    } else if (tab === 'portfolio') {
+        if (portfolioView) portfolioView.classList.remove('hidden');
         if (typeof renderPortfolio === 'function') renderPortfolio();
+    } else if (tab === 'opportunities') {
+        if (opportunitiesView) opportunitiesView.classList.remove('hidden');
+        if (typeof renderOpportunitiesPage === 'function') renderOpportunitiesPage();
     }
 }
 

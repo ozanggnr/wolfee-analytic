@@ -700,40 +700,18 @@ input:checked + .slider:before { transform: translateX(19px); }
     top: var(--nav-h);
     left: 0; right: 0;
     z-index: 400;
-    overflow: hidden;
 }
 .exchange-ticker {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2rem;
+    flex-wrap: wrap;
+    gap: 1.5rem;
     padding: 8px 20px;
     background: rgba(12, 6, 24, 0.88);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(200,111,255,0.1);
     font-size: 0.82rem;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-}
-.exchange-ticker::-webkit-scrollbar { display: none; }
-/* Fade edge masks */
-.exchange-ticker-wrapper::before,
-.exchange-ticker-wrapper::after {
-    content: '';
-    position: absolute;
-    top: 0; bottom: 0;
-    width: 60px;
-    z-index: 2;
-    pointer-events: none;
-}
-.exchange-ticker-wrapper::before {
-    left: 0;
-    background: linear-gradient(to right, rgba(12,6,24,0.95), transparent);
-}
-.exchange-ticker-wrapper::after {
-    right: 0;
-    background: linear-gradient(to left, rgba(12,6,24,0.95), transparent);
 }
 .exchange-item {
     display: flex;
