@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=7.0">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -170,21 +170,21 @@
     </div>
     <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" onclick="toggleMobileMenu()"></div>
 
-    <!-- ===== EXCHANGE TICKER (marquee strip) ===== -->
-    <div id="exchange-ticker-wrapper" class="exchange-ticker-wrapper">
-        <div id="exchange-ticker" class="exchange-ticker"></div>
-    </div>
-
     <!-- ===== MAIN CONTENT ===== -->
     <div class="container">
         <main>
-            <!-- Section Label -->
+            <!-- Section Label & Ticker -->
             <div class="section-header">
                 <div class="section-badge">
                     <span class="section-badge-dot"></span>
                     Real-Time Intelligence
                 </div>
                 <h2 class="section-heading hero-heading">Market<br>Intelligence</h2>
+                
+                <!-- Exchange Ticker integrated below header texts -->
+                <div id="exchange-ticker-wrapper" class="exchange-ticker-wrapper">
+                    <div id="exchange-ticker" class="exchange-ticker"></div>
+                </div>
             </div>
 
             <!-- AI Section -->
@@ -323,13 +323,13 @@
     </div>
 
     <!-- ===== MODULAR SCRIPTS ===== -->
-    <script src="js/config.js?v=6.0"></script>
-    <script src="js/api.js?v=6.0"></script>
-    <script src="js/ui.js?v=6.0"></script>
-    <script src="js/filter.js?v=6.0"></script>
-    <script src="js/chart.js?v=6.0"></script>
-    <script src="js/portfolio.js?v=6.0"></script>
-    <script src="js/main.js?v=6.0"></script>
+    <script src="js/config.js?v=7.0"></script>
+    <script src="js/api.js?v=7.0"></script>
+    <script src="js/ui.js?v=7.0"></script>
+    <script src="js/filter.js?v=7.0"></script>
+    <script src="js/chart.js?v=7.0"></script>
+    <script src="js/portfolio.js?v=7.0"></script>
+    <script src="js/main.js?v=7.0"></script>
 
     <script>
         // Mobile Menu Toggle

@@ -694,48 +694,46 @@ input:checked + .slider:before { transform: translateX(19px); }
 .mobile-search-input:focus { outline: none; border-color: rgba(200,111,255,0.4); }
 
 /* ============================
-   EXCHANGE TICKER
+   EXCHANGE TICKER (Redesigned)
    ============================ */
 .exchange-ticker-wrapper {
-    position: fixed;
-    top: var(--nav-h);
-    left: 0; right: 0;
-    z-index: 400;
+    width: 100%;
+    margin-top: 1.5rem;
+    padding-bottom: 0.5rem;
 }
 .exchange-ticker {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: center; /* User requested centering */
     flex-wrap: wrap;
-    gap: 1.5rem;
-    padding: 8px 20px;
-    background: rgba(12, 6, 24, 0.88);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(200,111,255,0.1);
-    font-size: 0.82rem;
+    gap: 1rem;
+    width: 100%;
 }
 .exchange-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     white-space: nowrap;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 8px;
-    transition: background 0.2s;
+    padding: 10px 18px;
+    border-radius: 50px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
     flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
-.exchange-item:hover { background: rgba(200,111,255,0.08); }
-.exchange-item .pair { color: var(--text-muted); font-weight: 600; letter-spacing: 0.04em; font-size: 0.75rem; }
-.exchange-item .rate { color: var(--text-primary); font-weight: 700; font-size: clamp(0.75rem, 2vw, 0.88rem); font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.exchange-item:hover {
+    background: rgba(200, 111, 255, 0.08);
+    border-color: rgba(200, 111, 255, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(200, 111, 255, 0.15);
+}
+.exchange-item .pair { color: var(--text-muted); font-weight: 600; letter-spacing: 0.05em; font-size: 0.8rem; }
+.exchange-item .rate { color: var(--text-primary); font-weight: 700; font-size: 1rem; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 
-/* Ticker separator dots */
-.exchange-item + .exchange-item::before {
-    content: '·';
-    color: rgba(200,111,255,0.2);
-    margin-right: -4px;
-    margin-left: -4px;
-}
+
 
 /* ============================
    LAYOUT
@@ -1679,7 +1677,7 @@ body.no-scroll { overflow: hidden; }
     #search-input { display: none; } /* use mobile search instead */
 
     /* Exchange ticker: full width, smaller */
-    .exchange-ticker-wrapper { position: fixed; }
+    .exchange-ticker-wrapper { margin-top: 1rem; }
     .exchange-ticker { font-size: 0.76rem; gap: 1.25rem; padding: 6px 14px; }
 
     /* Layout: stack vertically */
