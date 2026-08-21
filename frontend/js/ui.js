@@ -184,7 +184,7 @@ function renderExchangeRates(rates) {
         return;
     }
     
-    ticker.style.display = 'flex';
+    ticker.style.display = '';
     let html = '';
     rates.forEach(r => {
         const color = (r.change_pct || 0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
