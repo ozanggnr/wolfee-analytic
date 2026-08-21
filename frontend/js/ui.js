@@ -263,6 +263,7 @@ function renderOpportunities(opportunities) {
 
 function openModal(stock) {
     currentSymbol = stock.symbol;
+    window.currentModalStock = stock;
     const modal = document.getElementById('stock-modal');
     
     // Add AI button to header

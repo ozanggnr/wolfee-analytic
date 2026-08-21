@@ -14,8 +14,11 @@ window.savePortfolio = function(list) {
 window.togglePortfolioItem = function () {
     if (!currentSymbol) return;
 
-    // Find full stock object from cache
-    const stock = window.allStocks.find(s => s.symbol === currentSymbol);
+    // Find full stock object from cache or from modal
+    let stock = window.allStocks.find(s => s.symbol === currentSymbol);
+    if (!stock && window.currentModalStock && window.currentModalStock.symbol === currentSymbol) {
+        stock = window.currentModalStock;
+    }
     if (!stock) return;
 
     let list = getPortfolio();
