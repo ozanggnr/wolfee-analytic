@@ -69,7 +69,15 @@ function getSignalStyle(prediction) {
 
 function renderStockCard(stock) {
     const grid = document.getElementById(stock.inPortfolio ? 'portfolio-grid' : 'stock-grid');
-    if (!grid) return;
+    if (!grid || !stock) return;
+
+    const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
+    if (!baseSym) return;
+
+    // Strict DOM guard: NEVER render duplicate card for the same symbol
+    if (grid.querySelector(`[data-stock-symbol="${baseSym}"]`)) {
+        return;
+    }
 
     const currency = getCurrencySymbol(stock.currency);
     const isUp = (stock.change_pct || 0) >= 0;
@@ -79,6 +87,7 @@ function renderStockCard(stock) {
 
     const card = document.createElement('div');
     card.className = 'stock-card skeleton';
+    card.setAttribute('data-stock-symbol', baseSym);
 
     // Remove skeleton class once data is loaded
     setTimeout(() => card.classList.remove('skeleton'), 100);
@@ -86,7 +95,7 @@ function renderStockCard(stock) {
     card.innerHTML = `
         <div class="stock-header">
             <div class="symbol-group">
-                <span class="stock-symbol">${(stock.symbol||'').replace('.IS', '')}</span>
+                <span class="stock-symbol">${baseSym}</span>
                 <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 22)}${(stock.name || '').length > 22 ? '...' : ''}</span>
             </div>
             <div>
@@ -238,7 +247,17 @@ window.renderOpportunitiesPage = function() {
     const grid = document.getElementById('opportunities-grid');
     if (!grid) return;
     
-    const opportunities = window._opportunitiesData || [];
+    const rawOpps = window._opportunitiesData || [];
+    
+    // Strict deduplication by normalized symbol
+    const seenOpps = new Set();
+    const opportunities = rawOpps.filter(stock => {
+        if (!stock || !stock.symbol || !stock.price || stock.price <= 0) return false;
+        const symKey = stock.symbol.toUpperCase().replace('.IS', '').trim();
+        if (!symKey || seenOpps.has(symKey)) return false;
+        seenOpps.add(symKey);
+        return true;
+    });
     
     if (!opportunities || opportunities.length === 0) {
         grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">No clear signals at the moment.</p>';
@@ -246,8 +265,10 @@ window.renderOpportunitiesPage = function() {
     }
     
     grid.innerHTML = '';
-    const validOpps = opportunities.filter(stock => stock.price && stock.price > 0);
-    validOpps.forEach(stock => {
+    opportunities.forEach(stock => {
+        const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
+        if (grid.querySelector(`[data-stock-symbol="${baseSym}"]`)) return;
+
         const currency = getCurrencySymbol(stock.currency);
         const isUp = (stock.change_pct || 0) >= 0;
         const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
@@ -261,6 +282,7 @@ window.renderOpportunitiesPage = function() {
         
         const card = document.createElement('div');
         card.className = 'stock-card';
+        card.setAttribute('data-stock-symbol', baseSym);
         card.innerHTML = `
             <div class="stock-header">
                 <div class="symbol-group">

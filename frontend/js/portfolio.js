@@ -61,7 +61,15 @@ window.renderPortfolio = function() {
     const portfolioEmpty = document.getElementById('portfolio-empty');
     if (!portfolioGrid || !portfolioEmpty) return;
     
-    const list = getPortfolio();
+    const rawList = getPortfolio();
+    const seen = new Set();
+    const list = rawList.filter(s => {
+        if (!s || !s.symbol) return false;
+        const key = s.symbol.toUpperCase().replace('.IS', '').trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 
     portfolioGrid.innerHTML = '';
 

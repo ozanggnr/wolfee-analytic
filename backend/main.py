@@ -139,7 +139,7 @@ async def get_quick_market_data(background_tasks: BackgroundTasks):
                 background_tasks.add_task(_sync_refresh)
                 return {"stocks": [], "status": "loading", "message": "First load — data is being fetched. Refresh in 30 seconds."}
 
-            stock_list = [_stock_to_dict(s) for s in stocks if s.price and s.price > 0]
+            stock_list = _deduplicate_stocks(stocks)
             # Include the most recent update timestamp so the frontend can show data age
             latest_update = max((s.updated_at for s in stocks if s.updated_at), default=None)
             return {
@@ -161,7 +161,7 @@ async def get_full_market_data():
                 select(StockData).order_by(StockData.market_type, StockData.symbol)
             )
             stocks = result.scalars().all()
-            return {"stocks": [_stock_to_dict(s) for s in stocks if s.price and s.price > 0]}
+            return {"stocks": _deduplicate_stocks(stocks)}
     except Exception as e:
         logger.error(f"Full market data error: {e}")
         return {"stocks": []}
@@ -410,9 +410,18 @@ async def get_opportunities():
         async with AsyncSessionLocal() as session:
             result = await session.execute(select(StockData))
             stocks = result.scalars().all()
-            stock_list = [_stock_to_dict(s) for s in stocks]
+            stock_list = _deduplicate_stocks(stocks)
             opps = get_market_opportunities(cached_data=stock_list)
-            return {"opportunities": opps}
+            # Strictly deduplicate opportunities by canonical symbol
+            seen_opps = set()
+            unique_opps = []
+            for o in (opps or []):
+                sym = (o.get("symbol") or "").upper().replace(".IS", "").strip()
+                if not sym or sym in seen_opps:
+                    continue
+                seen_opps.add(sym)
+                unique_opps.append(o)
+            return {"opportunities": unique_opps}
     except Exception as e:
         logger.error(f"Opportunities error: {e}")
         return {"opportunities": []}
@@ -864,3 +873,19 @@ def _stock_to_dict(stock: StockData) -> dict:
         "is_buyable": stock.is_buyable or False,
         "market_cap": stock.market_cap or 0,
     }
+
+
+def _deduplicate_stocks(stocks: list[StockData]) -> list[dict]:
+    """Strictly deduplicate stocks by canonical symbol to eliminate duplicate cards."""
+    seen = set()
+    result = []
+    for s in stocks:
+        if not s.price or s.price <= 0:
+            continue
+        key = (s.symbol or "").upper().replace(".IS", "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(_stock_to_dict(s))
+    return result
+

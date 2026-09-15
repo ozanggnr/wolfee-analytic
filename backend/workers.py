@@ -313,7 +313,7 @@ async def _upsert_stock(session, data: dict):
     result = await session.execute(
         select(StockData).where(StockData.symbol == data['symbol'])
     )
-    existing = result.scalar_one_or_none()
+    existing = result.scalars().first()
     
     if existing:
         # Only update if new price is valid (non-zero)

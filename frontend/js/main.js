@@ -209,14 +209,16 @@ async function loadOpportunities() {
     } catch (e) { console.error('Opportunities error:', e); }
 }
 
+let _processDataTimeout = null;
+
 function deduplicateStocks(stocksArray) {
-    if (!stocksArray) return [];
+    if (!stocksArray || !Array.isArray(stocksArray)) return [];
     const seen = new Set();
     return stocksArray.filter(s => {
-        if (!s.symbol) return false;
-        // Normalize symbol: uppercase, remove .IS for deduplication base check
+        if (!s || !s.symbol) return false;
+        // Normalize symbol: uppercase, strip .IS and extra spaces
         const baseSymbol = s.symbol.toUpperCase().replace('.IS', '').trim();
-        if (seen.has(baseSymbol)) return false;
+        if (!baseSymbol || seen.has(baseSymbol)) return false;
         seen.add(baseSymbol);
         return true;
     });
@@ -232,10 +234,14 @@ function processData(data) {
     const stockGrid = document.getElementById('stock-grid');
     if (!stockGrid) return;
     
+    if (_processDataTimeout) {
+        clearTimeout(_processDataTimeout);
+    }
+    
     // Fade out existing cards
     stockGrid.classList.add('switching');
     
-    setTimeout(() => {
+    _processDataTimeout = setTimeout(() => {
         stockGrid.innerHTML = '';
         
         let displayStocks = allStocks.filter(stock => {
@@ -243,6 +249,15 @@ function processData(data) {
             const sym = stock.symbol || '';
             const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
             return isGlobalModeVal ? isStockGlobal : !isStockGlobal;
+        });
+
+        // Double guarantee deduplication for display list
+        const seenDisplay = new Set();
+        displayStocks = displayStocks.filter(stock => {
+            const symKey = (stock.symbol || '').toUpperCase().replace('.IS', '').trim();
+            if (!symKey || seenDisplay.has(symKey)) return false;
+            seenDisplay.add(symKey);
+            return true;
         });
         
         if (displayStocks.length === 0) {
@@ -254,14 +269,15 @@ function processData(data) {
         stockGrid.classList.remove('switching');
         displayStocks.forEach((stock, i) => {
             renderStockCard(stock);
-            const card = stockGrid.lastElementChild;
+            const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
+            const card = stockGrid.querySelector(`[data-stock-symbol="${baseSym}"]`);
             if (card) {
                 card.classList.add('card-animate-in');
                 card.style.animationDelay = `${i * 0.03}s`;
             }
         });
         if (typeof initSearch === 'function') initSearch();
-    }, 150);
+    }, 100);
 }
 
 function initSearch() {

@@ -92,6 +92,16 @@ function applyFilters() {
 
     let filtered = window.getFilteredStocks(window.allStocks);
 
+    // Strict deduplication of filtered stocks
+    const seenFiltered = new Set();
+    filtered = filtered.filter(s => {
+        if (!s || !s.symbol) return false;
+        const key = s.symbol.toUpperCase().replace('.IS', '').trim();
+        if (!key || seenFiltered.has(key)) return false;
+        seenFiltered.add(key);
+        return true;
+    });
+
     const toggle = document.getElementById('region-toggle');
     const isGlobalMode = toggle ? toggle.checked : false;
     
@@ -106,7 +116,8 @@ function applyFilters() {
 
     filtered.forEach((stock, i) => {
         renderStockCard(stock);
-        const card = stockGrid.lastElementChild;
+        const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
+        const card = stockGrid.querySelector(`[data-stock-symbol="${baseSym}"]`);
         if (card) {
             card.classList.add('card-animate-in');
             card.style.animationDelay = `${i * 0.03}s`;
