@@ -1323,22 +1323,50 @@ body.no-scroll { overflow: hidden; }
     to   { transform: translateY(-20px); opacity: 0; }
 }
 
+/* Custom Global Scrollbars for perfect UI fit */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 10px;
+    margin: 10px 0; /* Keeps scrollbar away from rounded edges */
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(200, 111, 255, 0.25);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(200, 111, 255, 0.45);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
 .close-modal {
     position: absolute;
-    top: 1rem; right: 1.25rem;
-    font-size: 1.75rem;
+    top: 1.2rem; right: 1.25rem;
+    font-size: 1.6rem; /* Slightly smaller for centering */
     cursor: pointer;
     color: var(--text-muted);
-    transition: color 0.18s, background 0.18s;
+    transition: color 0.18s, background 0.18s, transform 0.2s;
     z-index: 20;
-    line-height: 1;
+    line-height: 0; /* Forces vertical centering */
     width: 36px; height: 36px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 50%;
     border: 1px solid rgba(200,111,255,0.15);
     background: rgba(200,111,255,0.05);
+    padding-bottom: 2px; /* Micro-adjustment for the multiplication sign font box */
 }
-.close-modal:hover { color: var(--text-primary); background: rgba(200,111,255,0.12); border-color: rgba(200,111,255,0.3); }
+.close-modal:hover { 
+    color: var(--text-primary); 
+    background: rgba(200,111,255,0.12); 
+    border-color: rgba(200,111,255,0.3);
+    transform: rotate(90deg); /* Nice professional interaction */
+}
 
 .modal-header-badge {
     display: inline-flex;

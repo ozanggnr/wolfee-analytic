@@ -214,8 +214,10 @@ function deduplicateStocks(stocksArray) {
     const seen = new Set();
     return stocksArray.filter(s => {
         if (!s.symbol) return false;
-        if (seen.has(s.symbol)) return false;
-        seen.add(s.symbol);
+        // Normalize symbol: uppercase, remove .IS for deduplication base check
+        const baseSymbol = s.symbol.toUpperCase().replace('.IS', '').trim();
+        if (seen.has(baseSymbol)) return false;
+        seen.add(baseSymbol);
         return true;
     });
 }
