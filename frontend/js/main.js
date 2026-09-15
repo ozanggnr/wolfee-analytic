@@ -44,10 +44,10 @@ async function pollForUpdates() {
     const label = document.getElementById('live-label');
     try {
         if (dot) dot.style.background = '#fbbf24'; // yellow = fetching
-        const response = await fetch(`${API_URL}/api/market-data/quick`);
+        const response = await fetch(`${API_URL}/api/market-data/quick`, { cache: 'no-store' });
         if (!response.ok) throw new Error('Poll failed');
         const data = await response.json();
-        const newStocks = data.stocks || [];
+        const newStocks = deduplicateStocks(data.stocks || []);
         const serverUpdatedAt = data.updated_at ? new Date(data.updated_at) : null;
 
         // Find changed stocks and update only those cards
@@ -209,8 +209,19 @@ async function loadOpportunities() {
     } catch (e) { console.error('Opportunities error:', e); }
 }
 
+function deduplicateStocks(stocksArray) {
+    if (!stocksArray) return [];
+    const seen = new Set();
+    return stocksArray.filter(s => {
+        if (!s.symbol) return false;
+        if (seen.has(s.symbol)) return false;
+        seen.add(s.symbol);
+        return true;
+    });
+}
+
 function processData(data) {
-    allStocks = data.stocks || [];
+    allStocks = deduplicateStocks(data.stocks || []);
     window.allStocks = allStocks;
     
     const toggle = document.getElementById('region-toggle');

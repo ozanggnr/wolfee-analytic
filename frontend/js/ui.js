@@ -389,7 +389,7 @@ function _applyStockToModal(stock, currency, isLive) {
 
 async function _fetchLivePriceForModal(symbol) {
     try {
-        const res = await fetch(`${API_URL}/api/live-price/${encodeURIComponent(symbol)}`);
+        const res = await fetch(`${API_URL}/api/live-price/${encodeURIComponent(symbol)}`, { cache: 'no-store' });
         if (!res.ok) return;
         const liveData = await res.json();
         // Only update if the modal is still showing the same stock

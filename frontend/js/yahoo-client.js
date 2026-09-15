@@ -14,10 +14,10 @@ const US_STOCKS = [
 // Fetch stock data directly from browser (Yahoo allows this)
 async function fetchStockFromBrowser(symbol) {
     try {
-        // Use yfinance-like endpoint that works from browser
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1mo&interval=1d`;
+        // Use interval=1m for LIVE intraday data instead of 1d
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1m`;
 
-        const response = await fetch(url);
+        const response = await fetch(url, { cache: 'no-store' });
         const data = await response.json();
 
         if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
@@ -26,27 +26,25 @@ async function fetchStockFromBrowser(symbol) {
 
         const result = data.chart.result[0];
         const meta = result.meta;
+
+        const currentPrice = meta.regularMarketPrice;
+        const changePct = meta.regularMarketChangePercent;
+        
+        // Find volume from quotes
         const quotes = result.indicators.quote[0];
-
-        if (!quotes || !quotes.close || quotes.close.length === 0) {
-            return null;
+        let currentVolume = meta.regularMarketVolume || 0;
+        if (!currentVolume && quotes && quotes.volume) {
+            const vols = quotes.volume.filter(v => v !== null);
+            if (vols.length > 0) currentVolume = vols[vols.length - 1];
         }
-
-        // Get latest price
-        const prices = quotes.close.filter(p => p !== null);
-        if (prices.length === 0) return null;
-
-        const currentPrice = prices[prices.length - 1];
-        const previousPrice = prices.length > 1 ? prices[prices.length - 2] : currentPrice;
-        const changePct = ((currentPrice - previousPrice) / previousPrice) * 100;
 
         return {
             symbol: symbol,
-            name: meta.symbol,
+            name: meta.longName || meta.shortName || meta.symbol,
             price: parseFloat(currentPrice.toFixed(2)),
             change_pct: parseFloat(changePct.toFixed(2)),
             currency: meta.currency || (symbol.endsWith('.IS') ? 'TRY' : 'USD'),
-            volume: quotes.volume ? quotes.volume[quotes.volume.length - 1] : 0,
+            volume: currentVolume,
             is_favorable: changePct > 0
         };
     } catch (error) {
