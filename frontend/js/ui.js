@@ -471,6 +471,29 @@ window.switchTab = function(tab) {
     if (desktopBtn) desktopBtn.classList.add('active');
     if (mobileBtn) mobileBtn.classList.add('active');
     
+    // Helper to safely transition in
+    const showWithAnim = (el, displayStyle = null, delay = 0) => {
+        if (!el) return;
+        el.classList.remove('tab-transition');
+        el.classList.remove('hidden');
+        if (displayStyle !== null) {
+            el.style.display = displayStyle;
+        }
+        el.style.animationDelay = `${delay}ms`;
+        // Force reflow to restart animation
+        void el.offsetWidth;
+        el.classList.add('tab-transition');
+    };
+
+    // Helper to hide
+    const hideEl = (el, hideStyle = false) => {
+        if (!el) return;
+        el.classList.add('hidden');
+        if (hideStyle) el.style.display = 'none';
+        el.classList.remove('tab-transition');
+        el.style.animationDelay = '';
+    };
+
     // Hide all views
     const marketView = document.getElementById('market-view');
     const portfolioView = document.getElementById('portfolio-view');
@@ -480,25 +503,25 @@ window.switchTab = function(tab) {
     const sectionHeader = document.querySelector('.section-header');
     const filterBtn = document.getElementById('filter-toggle-btn');
 
-    if (marketView) marketView.classList.add('hidden');
-    if (portfolioView) portfolioView.classList.add('hidden');
-    if (opportunitiesView) opportunitiesView.classList.add('hidden');
-    if (aiSection) aiSection.classList.add('hidden');
-    if (goldSection) goldSection.classList.add('hidden');
-    if (sectionHeader) sectionHeader.style.display = 'none';
+    hideEl(marketView);
+    hideEl(portfolioView);
+    hideEl(opportunitiesView);
+    hideEl(aiSection);
+    hideEl(goldSection);
+    hideEl(sectionHeader, true);
     if (filterBtn) filterBtn.style.display = 'none';
 
     if (tab === 'market') {
-        if (marketView) marketView.classList.remove('hidden');
-        if (aiSection) aiSection.classList.remove('hidden');
-        if (goldSection) goldSection.classList.remove('hidden');
-        if (sectionHeader) sectionHeader.style.display = '';
+        showWithAnim(sectionHeader, '', 0);
+        showWithAnim(aiSection, null, 50);
+        showWithAnim(goldSection, null, 100);
+        showWithAnim(marketView, null, 150);
         if (filterBtn) filterBtn.style.display = 'block';
     } else if (tab === 'portfolio') {
-        if (portfolioView) portfolioView.classList.remove('hidden');
+        showWithAnim(portfolioView, null, 0);
         if (typeof renderPortfolio === 'function') renderPortfolio();
     } else if (tab === 'opportunities') {
-        if (opportunitiesView) opportunitiesView.classList.remove('hidden');
+        showWithAnim(opportunitiesView, null, 0);
         if (typeof renderOpportunitiesPage === 'function') renderOpportunitiesPage();
     }
 }
