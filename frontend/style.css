@@ -1642,16 +1642,17 @@ body.no-scroll { overflow: hidden; }
 @keyframes tabFadeIn {
     0% {
         opacity: 0;
-        transform: translateY(20px) scale(0.99);
+        transform: translateY(20px) scale(0.99) translateZ(0);
     }
     100% {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translateY(0) scale(1) translateZ(0);
     }
 }
 
 .tab-transition {
     animation: tabFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
 }
 
 /* ============================
