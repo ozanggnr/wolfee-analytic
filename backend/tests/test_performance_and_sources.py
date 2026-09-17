@@ -86,3 +86,25 @@ def test_gemini_fallback_when_unconfigured():
 
         insight = get_market_insight([{"symbol": "THYAO.IS", "change_pct": 2.5, "price": 310.0}])
         assert "Wolfee AI" in insight
+
+
+def test_persistent_session_cookies_and_caching_headers():
+    from starlette.testclient import TestClient
+    from backend.main import app
+    from backend.security_middleware import set_auth_cookies, SESSION_DURATION_DAYS
+    from fastapi import Response
+
+    # Verify set_auth_cookies produces persistent Lax cookie with 30-day max_age
+    resp = Response()
+    set_auth_cookies(resp, "test_session_id_12345678901234567890")
+    cookie_header = resp.headers.get("set-cookie", "")
+    assert "wolfee_session=test_session_id" in cookie_header
+    assert "samesite=lax" in cookie_header.lower()
+    assert f"max-age={60 * 60 * 24 * SESSION_DURATION_DAYS}" in cookie_header.lower()
+
+    # Verify caching headers injected by SecurityMiddleware
+    client = TestClient(app)
+    static_res = client.get("/js/config.js")
+    assert "Cache-Control" in static_res.headers
+    assert "public" in static_res.headers["Cache-Control"]
+    assert "max-age=86400" in static_res.headers["Cache-Control"]

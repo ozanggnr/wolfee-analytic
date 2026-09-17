@@ -7,19 +7,35 @@ let _lastSummaryFetchTime = 0;
 let _cachedSummaryData = null;
 let _summaryCountdownInterval = null;
 
-// Guest session storage fallback
+// Persistent guest storage fallback (localStorage so items survive closing browser)
 window.getGuestPortfolio = function() {
-    const raw = sessionStorage.getItem('wolfee_portfolio');
-    return raw ? JSON.parse(raw) : [];
+    try {
+        const raw = localStorage.getItem('wolfee_guest_portfolio') || sessionStorage.getItem('wolfee_portfolio');
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+        return [];
+    }
 };
 
 window.saveGuestPortfolio = function(list) {
-    sessionStorage.setItem('wolfee_portfolio', JSON.stringify(list));
+    try {
+        localStorage.setItem('wolfee_guest_portfolio', JSON.stringify(list));
+    } catch (e) {}
 };
+
+// Immediately restore cached cloud watchlist from localStorage for zero-latency rendering
+try {
+    const rawCloud = localStorage.getItem('wolfee_cached_watchlist');
+    if (rawCloud) {
+        window._cachedCloudWatchlist = JSON.parse(rawCloud);
+    }
+} catch (e) {
+    window._cachedCloudWatchlist = null;
+}
 
 /**
  * Universal portfolio getter: returns current list of stock objects.
- * When logged in, returns cloud-synced items; otherwise returns session items.
+ * When logged in, returns cloud-synced items; otherwise returns guest items.
  */
 window.getPortfolio = function() {
     if (window._cachedCloudWatchlist && window.currentUser) {
@@ -147,9 +163,12 @@ window.loadPortfolio = async function() {
                     prediction: item.prediction,
                     inPortfolio: true
                 }));
+                try {
+                    localStorage.setItem('wolfee_cached_watchlist', JSON.stringify(window._cachedCloudWatchlist));
+                } catch (e) {}
             }
         } catch (e) {
-            console.warn('Failed to load cloud watchlist, using local:', e);
+            console.warn('Failed to load cloud watchlist, using local cache:', e);
         }
     }
 
@@ -165,10 +184,21 @@ window.loadPortfolioSummaryCard = async function(forceRefresh = false) {
     if (!summaryContainer) return;
 
     const now = Date.now();
-    // Check 60-second client TTL
+    // Check in-memory 60-second client TTL
     if (!forceRefresh && _cachedSummaryData && (now - _lastSummaryFetchTime < 60000)) {
         renderSummaryCardUI(_cachedSummaryData);
         return;
+    }
+
+    // Check localStorage cache for initial instant render
+    if (!_cachedSummaryData && !forceRefresh) {
+        try {
+            const rawSummary = localStorage.getItem('wolfee_cached_summary');
+            if (rawSummary) {
+                _cachedSummaryData = JSON.parse(rawSummary);
+                renderSummaryCardUI(_cachedSummaryData);
+            }
+        } catch (e) {}
     }
 
     if (window.currentUser) {
@@ -179,6 +209,9 @@ window.loadPortfolioSummaryCard = async function(forceRefresh = false) {
                 const data = await res.json();
                 _cachedSummaryData = data;
                 _lastSummaryFetchTime = now;
+                try {
+                    localStorage.setItem('wolfee_cached_summary', JSON.stringify(data));
+                } catch (e) {}
                 renderSummaryCardUI(data);
                 startSummaryCountdown(data.cache_expires_in || 60);
                 return;

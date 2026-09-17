@@ -28,8 +28,8 @@ SESSION_COOKIE_NAME = "wolfee_session"
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 
-# Session duration: 14 days
-SESSION_DURATION_DAYS = 14
+# Session duration: 30 days (persistent login)
+SESSION_DURATION_DAYS = int(os.getenv("SESSION_DURATION_DAYS", "30"))
 
 # Determine cookie security (in production over HTTPS, Secure=True; dev can configure or auto-detect)
 COOKIE_SECURE_DEFAULT = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
@@ -231,14 +231,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
                 value=new_csrf_token,
-                max_age=60 * 60 * 24 * 30,  # 30 days
+                max_age=60 * 60 * 24 * SESSION_DURATION_DAYS,
                 path="/",
                 httponly=False,
                 secure=is_secure,
-                samesite="strict"
+                samesite="lax"
             )
 
-        # 4. Inject Comprehensive HTTP Security Headers
+        # 4. Inject Caching Headers for Performance & Repeat Visits
+        path = request.url.path
+        if any(path.endswith(ext) for ext in (".js", ".css", ".png", ".svg", ".jpg", ".jpeg", ".ico", ".woff", ".woff2")):
+            response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+        elif path.startswith("/api/auth/"):
+            response.headers["Cache-Control"] = "no-store, private"
+        elif path in ("/", "/index.html"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+
+        # 5. Inject Comprehensive HTTP Security Headers
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -314,21 +323,24 @@ async def create_user_session(
 def is_connection_secure(request: Optional[Request] = None) -> bool:
     """
     Determine if connection is secure:
-    - Environment explicitly sets COOKIE_SECURE=true
-    - Running in Railway production (RAILWAY_ENVIRONMENT or RAILWAY_PUBLIC_DOMAIN set)
-    - Request is over HTTPS or forwarded via HTTPS reverse proxy (X-Forwarded-Proto)
+    - If request is local HTTP (localhost / 127.0.0.1), always return False so browser accepts cookies.
+    - If request is HTTPS or behind an HTTPS reverse proxy (Railway, Cloudflare), return True.
+    - If environment sets COOKIE_SECURE=true or RAILWAY_ENVIRONMENT, return True.
     """
-    if os.getenv("COOKIE_SECURE", "").lower() in ("true", "1", "yes"):
-        return True
-    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-        return True
     if request:
+        host = request.url.hostname or ""
+        if host in ("localhost", "127.0.0.1") and request.url.scheme != "https":
+            return False
         if request.url.scheme == "https":
             return True
         if request.headers.get("X-Forwarded-Proto", "").lower() == "https":
             return True
         if request.headers.get("X-Forwarded-Ssl", "").lower() == "on":
             return True
+    if os.getenv("COOKIE_SECURE", "").lower() in ("true", "1", "yes"):
+        return True
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PUBLIC_DOMAIN"):
+        return True
     return False
 
 
@@ -339,24 +351,26 @@ def set_auth_cookies(
     duration_days: int = SESSION_DURATION_DAYS
 ):
     """
-    Set httpOnly, Secure, SameSite=Strict session cookie
+    Set persistent httpOnly, Secure (in production), SameSite=Lax session cookie
     and companion CSRF token cookie.
+    SameSite=Lax ensures the session cookie is preserved on top-level navigation,
+    preventing users from being logged out when reopening the browser or following bookmarks.
     """
     is_secure = is_connection_secure(request)
     max_age = 60 * 60 * 24 * duration_days
 
-    # 1. Session Cookie (HttpOnly, Secure, SameSite=Strict)
+    # 1. Session Cookie (HttpOnly, Secure in prod, SameSite=Lax for persistent login)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_id,
         max_age=max_age,
         path="/",
         httponly=True,       # Never accessible to client JS (prevents XSS theft)
-        secure=is_secure,    # Only transmitted over HTTPS
-        samesite="strict"    # Never sent in cross-site requests
+        secure=is_secure,    # Only transmitted over HTTPS in production
+        samesite="lax"       # Preserved on top-level navigation, blocked on cross-site mutations
     )
 
-    # 2. CSRF Cookie (SameSite=Strict, Accessible to JS to send in X-CSRF-Token header)
+    # 2. CSRF Cookie (SameSite=Lax, Accessible to JS to send in X-CSRF-Token header)
     csrf_token = secrets.token_hex(32)
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
@@ -365,7 +379,7 @@ def set_auth_cookies(
         path="/",
         httponly=False,
         secure=is_secure,
-        samesite="strict"
+        samesite="lax"
     )
 
 
@@ -377,14 +391,14 @@ def clear_auth_cookies(response: Response, request: Optional[Request] = None):
         path="/",
         httponly=True,
         secure=is_secure,
-        samesite="strict"
+        samesite="lax"
     )
     response.delete_cookie(
         key=CSRF_COOKIE_NAME,
         path="/",
         httponly=False,
         secure=is_secure,
-        samesite="strict"
+        samesite="lax"
     )
 
 
@@ -421,6 +435,17 @@ async def get_current_user(
             detail="Session invalid or expired. Please log in again."
         )
 
+    # Sliding window session renewal: keep active users logged in
+    exp = session_record.expires_at
+    if exp and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp and (exp - now < timedelta(days=SESSION_DURATION_DAYS - 2)):
+        session_record.expires_at = now + timedelta(days=SESSION_DURATION_DAYS)
+        try:
+            await db.commit()
+        except Exception as ex:
+            logger.debug(f"Sliding session commit skipped: {ex}")
+
     # Fetch corresponding user
     user_result = await db.execute(select(User).where(User.id == session_record.user_id))
     user = user_result.scalar_one_or_none()
@@ -456,6 +481,17 @@ async def get_optional_user(
         session_record = result.scalar_one_or_none()
         if not session_record:
             return None
+
+        # Sliding window session renewal
+        opt_exp = session_record.expires_at
+        if opt_exp and opt_exp.tzinfo is None:
+            opt_exp = opt_exp.replace(tzinfo=timezone.utc)
+        if opt_exp and (opt_exp - now < timedelta(days=SESSION_DURATION_DAYS - 2)):
+            session_record.expires_at = now + timedelta(days=SESSION_DURATION_DAYS)
+            try:
+                await db.commit()
+            except Exception:
+                pass
 
         user_result = await db.execute(select(User).where(User.id == session_record.user_id))
         return user_result.scalar_one_or_none()

@@ -8,7 +8,17 @@
  */
 
 (function () {
-    window.currentUser = null;
+    // Immediately restore cached session from localStorage for instant, zero-flicker UI
+    let initialUser = null;
+    try {
+        const rawUser = localStorage.getItem('wolfee_cached_user');
+        if (rawUser) {
+            initialUser = JSON.parse(rawUser);
+        }
+    } catch (e) {
+        console.warn('Failed to parse cached user:', e);
+    }
+    window.currentUser = initialUser;
 
     // ============================================================
     // CSRF & SECURE FETCH HELPERS
@@ -55,7 +65,7 @@
     };
 
     // ============================================================
-    // AUTH STATUS CHECK
+    // AUTH STATUS CHECK (with session caching)
     // ============================================================
     window.checkAuthStatus = async function () {
         try {
@@ -63,18 +73,38 @@
             if (res.ok) {
                 const user = await res.json();
                 window.currentUser = user;
+                try {
+                    localStorage.setItem('wolfee_cached_user', JSON.stringify(user));
+                } catch (e) {}
                 updateAuthUI(user);
                 document.dispatchEvent(new CustomEvent('wolfee_auth_changed', { detail: { user } }));
                 return user;
-            } else {
+            } else if (res.status === 401) {
+                // Session expired or invalidated on server
                 window.currentUser = null;
+                try {
+                    localStorage.removeItem('wolfee_cached_user');
+                    localStorage.removeItem('wolfee_cached_watchlist');
+                } catch (e) {}
                 updateAuthUI(null);
                 document.dispatchEvent(new CustomEvent('wolfee_auth_changed', { detail: { user: null } }));
                 return null;
+            } else {
+                // Other server response: preserve cached user if available
+                if (window.currentUser) {
+                    updateAuthUI(window.currentUser);
+                    return window.currentUser;
+                }
+                updateAuthUI(null);
+                return null;
             }
         } catch (err) {
-            console.warn('Auth check error:', err);
-            window.currentUser = null;
+            console.warn('Auth check network warning:', err);
+            // On temporary network disconnection, preserve cached user so session is not lost
+            if (window.currentUser) {
+                updateAuthUI(window.currentUser);
+                return window.currentUser;
+            }
             updateAuthUI(null);
             return null;
         }
@@ -291,6 +321,9 @@
 
             if (res.ok) {
                 window.currentUser = data.user;
+                try {
+                    localStorage.setItem('wolfee_cached_user', JSON.stringify(data.user));
+                } catch (e) {}
                 updateAuthUI(data.user);
                 closeAuthModal();
                 // Refresh portfolio page
@@ -392,15 +425,26 @@
             console.warn('Logout error:', e);
         }
         window.currentUser = null;
+        try {
+            localStorage.removeItem('wolfee_cached_user');
+            localStorage.removeItem('wolfee_cached_watchlist');
+            localStorage.removeItem('wolfee_cached_summary');
+        } catch (e) {}
         updateAuthUI(null);
         document.dispatchEvent(new CustomEvent('wolfee_auth_changed', { detail: { user: null } }));
         if (typeof renderPortfolio === 'function') renderPortfolio();
     };
 
     // ============================================================
-    // URL PARAMETER DETECTION (Verified, Reset Token)
+    // URL PARAMETER DETECTION & PERSISTENT SESSION RESTORE
     // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
+        // Apply cached user immediately on DOM ready (zero delay)
+        if (window.currentUser) {
+            updateAuthUI(window.currentUser);
+        }
+
+        // Validate/refresh session in background
         checkAuthStatus();
 
         const params = new URLSearchParams(window.location.search);

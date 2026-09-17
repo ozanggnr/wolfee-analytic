@@ -505,8 +505,20 @@ async def logout_user(
 # CURRENT USER PROFILE ENDPOINT
 # ============================================================
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_profile(user: User = Depends(get_current_user)):
-    """Return profile data for the active authenticated session."""
+async def get_current_user_profile(
+    request: Request,
+    response: Response,
+    user: User = Depends(get_current_user)
+):
+    """
+    Return profile data for the active authenticated session.
+    Automatically refreshes persistent session and CSRF cookies to extend active login.
+    """
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id:
+        set_auth_cookies(response=response, session_id=session_id, request=request)
+
+    response.headers["Cache-Control"] = "no-store, private"
     return UserResponse(
         id=user.id,
         email=user.email,
