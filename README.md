@@ -48,5 +48,39 @@ A lightweight, high-performance interface built for clarity and speed.
 -   **Rate Limit Protection**: Advanced throttling and delay mechanisms to respect third-party API limits.
 -   **Error Resilience**: graceful error handling for missing charts or delisted assets, ensuring the platform remains stable even during partial data outages.
 
+### 4. Secure Authentication & Portfolio Watchlist
+-   **Enterprise-Grade Authentication**:
+    -   Password hashing using **bcrypt with cost factor 12** (`rounds=12`) with built-in salting.
+    -   Mandatory **Email Verification** before account activation.
+    -   Strict **server-side password policy**: minimum 10 characters with common password blocklist validation.
+    -   Complete **anti-enumeration protection**: identical generic responses across registration, login, and forgot-password endpoints.
+-   **Brute-Force & Bot Defense**:
+    -   Per-IP sliding-window rate limiting (10 req/min) on sensitive authentication endpoints.
+    -   Per-account lockout with exponential backoff cooldowns: 1 min after 5 failures, 5 min after 6 failures, 15 min after 7+ failures.
+    -   CAPTCHA bot protection challenge on registration and dynamically triggered after 3 failed login attempts.
+    -   Security audit logs recording failed attempts, source IPs, and timestamps.
+-   **Session Security**:
+    -   Server-side sessions stored in PostgreSQL `user_sessions` table for instant multi-device revocation.
+    -   Stored strictly in `HttpOnly`, `Secure`, `SameSite=Strict` cookies (zero credentials in `localStorage` or `sessionStorage`).
+    -   Double-Submit Cookie CSRF protection on all state-changing endpoints (`POST`, `PUT`, `DELETE`).
+-   **Portfolio Watchlist & Performance Snapshot**:
+    -   Persistent watchlist items mapped to authenticated accounts (`BIST100` and `US` stocks).
+    -   Real-time multi-tier market data enrichment from PostgreSQL cache and live provider fallbacks.
+    -   **Analytical Summary Card**: Real-time breakdown of Up/Down/Flat ticker counts, highlighted single biggest daily mover, overall portfolio daily % change, and individual ticker movement pills.
+    -   60-second TTL server/client cache with live countdown timer and manual instant refresh.
+
+## 🛡️ Infrastructure & Deployment Security Note
+
+> [!IMPORTANT]
+> **Application-Level vs. Network-Level Protection**:
+> The application-level rate limiting and account lockout mechanisms protect the application from targeted brute-force attacks and credential stuffing. However, **application code cannot solve large-scale volumetric Distributed Denial of Service (DDoS) attacks alone**.
+>
+> **Production Infrastructure Recommendation**:
+> As a required production deployment step, deploy Wolfee Analytics behind a reverse-proxy security edge such as **Cloudflare**:
+> 1. **Bot Fight Mode**: Enable Cloudflare Bot Fight Mode to challenge automated scrapers and bad bots before requests reach the origin server.
+> 2. **WAF Rate Limiting Rules**: Set an edge rate limit (e.g., max 100 requests per 10 seconds per IP) to absorb L7 HTTP floods at the edge.
+> 3. **DDoS Mitigation**: Enable Cloudflare's unmetered HTTP DDoS protection.
+> 4. **Proxy Headers**: Ensure your origin server receives and trusts `CF-Connecting-IP` (which Wolfee Analytics automatically prioritizes for IP rate limiting and security audit logs).
+
 ---
 *Wolfee Analytics is built for analysts, traders, and finance enthusiasts who require reliable, aggregated market data at their fingertips.*

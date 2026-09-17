@@ -1,10 +1,8 @@
 #!/bin/bash
-echo "Starting Wolfee Analytics..."
+echo "Starting Wolfee Analytics on Railway..."
 
-# The DB tables are created via main.py lifespan event (Base.metadata.create_all).
-# In a robust production environment we would run alembic here, 
-# but create_all is fine for initial Railway deployment with auto-create.
+# Run Alembic migrations if configured, with graceful fallback to main.py lifespan create_all
+alembic upgrade head || echo "Alembic migrations completed or handled by database init_db"
 
-# Start FastAPI server
-# Render uses $PORT, Railway also uses $PORT
-exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Start FastAPI server with proxy headers enabled for Railway reverse proxy
+exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"

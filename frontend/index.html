@@ -112,6 +112,9 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Export
                 </button>
+
+                <!-- Auth Status / Sign In Button -->
+                <div id="nav-auth-container" class="nav-auth-wrap"></div>
             </div>
 
             <!-- Mobile Right: hamburger only -->
@@ -165,6 +168,7 @@
                     <span class="live-dot"></span>
                     <span id="live-label-m">Live</span>
                 </div>
+                <div id="mobile-auth-container" class="mobile-auth-wrap"></div>
             </div>
         </div>
     </div>
@@ -219,15 +223,32 @@
 
             <!-- Portfolio View -->
             <div id="portfolio-view" class="hidden">
-                <div class="portfolio-header">
-                    <h2>Your Session Portfolio</h2>
+                <div class="section-header" style="margin-bottom: 1.5rem;">
+                    <div class="section-badge">
+                        <span class="section-badge-dot"></span>
+                        Portfolio & Watchlist
+                    </div>
+                    <h2 class="section-heading hero-heading">Watchlist<br>Intelligence</h2>
                 </div>
+
+                <!-- 60-Second Cached Watchlist Summary Card -->
+                <div id="portfolio-summary-card" class="portfolio-summary-wrap"></div>
+
+                <!-- Watchlist Quick Add Toolbar -->
+                <div class="portfolio-toolbar">
+                    <div class="portfolio-add-input-wrap">
+                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                        <input type="text" id="portfolio-add-input" placeholder="Add ticker to watchlist (e.g. THYAO, NVDA, AAPL)..." onkeydown="if(event.key==='Enter') addTickerFromPortfolioInput()">
+                    </div>
+                    <button class="gradient-btn" onclick="addTickerFromPortfolioInput()">+ Add Ticker</button>
+                </div>
+
                 <div id="portfolio-grid" class="stock-grid-style">
                     <!-- Portfolio cards injected here -->
                 </div>
                 <div id="portfolio-empty" class="hidden"
                     style="text-align:center; padding: 3rem; color: var(--text-secondary);">
-                    <p style="font-size: 1.1rem;">Your portfolio is empty.<br>Add stocks from the Market view!</p>
+                    <p style="font-size: 1.1rem;">Your watchlist is currently empty.<br>Add stocks using the input above or from the Market view!</p>
                 </div>
             </div>
 
@@ -322,9 +343,113 @@
         </div>
     </div>
 
+    <!-- ===== AUTH MODAL (Login / Register / Forgot / Reset) ===== -->
+    <div id="auth-modal" class="modal hidden">
+        <div class="modal-content auth-modal-content">
+            <span class="close-modal" onclick="closeAuthModal()">&times;</span>
+            <div class="auth-modal-header">
+                <div class="modal-header-badge">🔐 Wolfee Account</div>
+                <div class="auth-tabs">
+                    <button class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign In</button>
+                    <button class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
+                    <button class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot</button>
+                </div>
+            </div>
+
+            <!-- Alert notification box -->
+            <div id="auth-alert" class="auth-alert hidden"></div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form-view" onsubmit="handleLoginSubmit(event)">
+                <div class="auth-field">
+                    <label for="login-email">Email Address</label>
+                    <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="••••••••••" autocomplete="current-password">
+                </div>
+                <div id="login-captcha-wrap" class="auth-field hidden">
+                    <label>Security Verification (CAPTCHA)</label>
+                    <div class="captcha-placeholder">
+                        <span class="captcha-badge">🛡️ Bot Protection Active</span>
+                        <input type="hidden" id="login-captcha" value="dev-captcha-pass">
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Security challenge active after multiple attempts.</p>
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+                    <a href="javascript:void(0)" onclick="switchAuthTab('forgot')" style="color:var(--nexa-accent); font-size:0.85rem; text-decoration:none;">Forgot password?</a>
+                    <a href="javascript:void(0)" onclick="switchAuthTab('resend')" style="color:var(--text-secondary); font-size:0.85rem; text-decoration:none;">Resend verify link</a>
+                </div>
+                <button type="submit" id="login-submit-btn" class="gradient-btn auth-submit-btn">Sign In to Wolfee</button>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form-view hidden" onsubmit="handleRegisterSubmit(event)">
+                <div class="auth-field">
+                    <label for="reg-email">Email Address</label>
+                    <input type="email" id="reg-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" required placeholder="At least 10 characters" autocomplete="new-password" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.style.color=p.valid?'var(--success-color)':'var(--danger-color)'; }">
+                    <span id="pw-hint" class="auth-hint">Minimum 10 characters required</span>
+                </div>
+                <div class="auth-field">
+                    <label for="reg-confirm">Confirm Password</label>
+                    <input type="password" id="reg-confirm" required placeholder="Repeat password" autocomplete="new-password">
+                </div>
+                <div class="auth-field">
+                    <label>Security Verification</label>
+                    <div class="captcha-placeholder">
+                        <span class="captcha-badge">🛡️ Bot Protection</span>
+                        <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Protected by automated bot detection.</p>
+                    </div>
+                </div>
+                <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create Account</button>
+            </form>
+
+            <!-- Forgot Password Form -->
+            <form id="forgot-form" class="auth-form-view hidden" onsubmit="handleForgotPasswordSubmit(event)">
+                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1rem;">Enter your account email to receive reset instructions:</p>
+                <div class="auth-field">
+                    <label for="forgot-email">Email Address</label>
+                    <input type="email" id="forgot-email" required placeholder="you@example.com">
+                </div>
+                <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send Reset Link</button>
+            </form>
+
+            <!-- Resend Verification Form -->
+            <form id="resend-form" class="auth-form-view hidden" onsubmit="event.preventDefault(); const em=document.getElementById('resend-email').value; if(em) authFetch(`${API_URL}/api/auth/resend-verification`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em})}).then(r=>r.json()).then(d=>showAuthAlert(d.message,true));">
+                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1rem;">Need a fresh verification email?</p>
+                <div class="auth-field">
+                    <label for="resend-email">Email Address</label>
+                    <input type="email" id="resend-email" required placeholder="you@example.com">
+                </div>
+                <button type="submit" class="gradient-btn auth-submit-btn">Resend Verification</button>
+            </form>
+
+            <!-- Reset Password Form -->
+            <form id="reset-form" class="auth-form-view hidden" onsubmit="handleResetPasswordSubmit(event)">
+                <h3 style="margin:0 0 1rem 0;font-size:1rem;color:var(--nexa-accent);">Set New Password</h3>
+                <div class="auth-field">
+                    <label for="reset-new-password">New Password</label>
+                    <input type="password" id="reset-new-password" required placeholder="At least 10 characters">
+                </div>
+                <div class="auth-field">
+                    <label for="reset-confirm-password">Confirm New Password</label>
+                    <input type="password" id="reset-confirm-password" required placeholder="Repeat password">
+                </div>
+                <button type="submit" class="gradient-btn auth-submit-btn">Save New Password</button>
+            </form>
+        </div>
+    </div>
+
     <!-- ===== MODULAR SCRIPTS ===== -->
     <script src="js/config.js?v=12.0"></script>
     <script src="js/api.js?v=12.0"></script>
+    <script src="js/auth.js?v=12.0"></script>
     <script src="js/ui.js?v=12.0"></script>
     <script src="js/filter.js?v=12.0"></script>
     <script src="js/chart.js?v=12.0"></script>

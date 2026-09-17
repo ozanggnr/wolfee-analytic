@@ -541,7 +541,11 @@ window.switchTab = function(tab) {
         if (filterBtn) filterBtn.style.display = 'block';
     } else if (tab === 'portfolio') {
         showWithAnim(portfolioView, null, 0);
-        if (typeof renderPortfolio === 'function') renderPortfolio();
+        if (typeof loadPortfolio === 'function') {
+            loadPortfolio();
+        } else if (typeof renderPortfolio === 'function') {
+            renderPortfolio();
+        }
     } else if (tab === 'opportunities') {
         showWithAnim(opportunitiesView, null, 0);
         if (typeof renderOpportunitiesPage === 'function') renderOpportunitiesPage();
@@ -558,17 +562,18 @@ window.closeExportModal = function() {
 
 window.updatePortfolioButtonUI = function(symbol) {
     const btn = document.getElementById('btn-portfolio-action');
-    if (!btn) return;
+    if (!btn || !symbol) return;
     
+    const cleanSym = symbol.toUpperCase().replace('.IS', '').trim();
     const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
-    const inPortfolio = portfolio.some(s => s.symbol === symbol);
+    const inPortfolio = portfolio.some(s => (s.symbol || s.ticker || '').toUpperCase().replace('.IS', '').trim() === cleanSym);
     
     if (inPortfolio) {
-        btn.textContent = '− Remove from Portfolio';
+        btn.textContent = '− Remove from Watchlist';
         btn.style.color = 'var(--danger-color)';
         btn.style.borderColor = 'var(--danger-color)';
     } else {
-        btn.textContent = '+ Add to Portfolio';
+        btn.textContent = '+ Add to Watchlist';
         btn.style.color = 'var(--accent-color)';
         btn.style.borderColor = 'var(--accent-color)';
     }

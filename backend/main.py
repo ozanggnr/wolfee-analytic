@@ -20,6 +20,10 @@ from analysis import (
 from ai_service import get_market_insight, get_stock_analysis
 from workers import refresh_all_data, start_periodic_refresh
 
+from security_middleware import SecurityMiddleware
+import auth_routes
+import watchlist_routes
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -77,6 +81,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register security middleware (IP rate limiting, CSRF validation, cookies)
+app.add_middleware(SecurityMiddleware)
+
+# Register Authentication and Watchlist API routers
+app.include_router(auth_routes.router)
+app.include_router(watchlist_routes.router)
 
 
 # ============================================================

@@ -5,20 +5,29 @@ from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
-# Railway provides DATABASE_URL as postgresql://...
+# Railway and Render provide DATABASE_URL as postgresql://...
 # asyncpg needs postgresql+asyncpg://...
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/wolfee")
-if DATABASE_URL.startswith("postgresql://"):
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    # Fallback to local SQLite for seamless local dev and tests if no Postgres URL is provided
+    DATABASE_URL = "sqlite+aiosqlite:///./wolfee.db"
+elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800
-)
+is_sqlite = DATABASE_URL.startswith("sqlite")
+
+engine_kwargs = {"echo": False}
+if not is_sqlite:
+    engine_kwargs.update({
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_timeout": 30,
+        "pool_recycle": 1800
+    })
+
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
@@ -33,6 +42,7 @@ class Base(DeclarativeBase):
 
 async def init_db():
     """Create all tables on startup"""
+    import models  # Ensure all models are registered on Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created/verified")
