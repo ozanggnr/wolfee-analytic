@@ -15,9 +15,10 @@ import logging
 import smtplib
 from datetime import datetime, timezone, timedelta
 from email.message import EmailMessage
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 import bcrypt
 import httpx
+from starlette.requests import Request
 
 logger = logging.getLogger("auth_security")
 
@@ -215,102 +216,275 @@ def hash_token(token: str) -> str:
 
 # ============================================================
 # EMAIL NOTIFICATIONS (Verification & Password Reset)
+# Multi-provider support: Resend API, SendGrid API, and SMTP Relay
 # ============================================================
-SMTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-EMAIL_FROM = os.getenv("EMAIL_FROM", "Wolfee Analytics <noreply@wolfee.com>")
 
-def get_app_base_url() -> str:
-    """Resolve base URL from APP_BASE_URL, RAILWAY_PUBLIC_DOMAIN, or localhost fallback."""
+def get_app_base_url(request: Optional[Request] = None) -> str:
+    """Resolve public base URL from APP_BASE_URL, RAILWAY_PUBLIC_DOMAIN, or request headers."""
     base_url = os.getenv("APP_BASE_URL")
     if base_url:
         return base_url.rstrip("/")
     railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
     if railway_domain:
         return f"https://{railway_domain.rstrip('/')}"
+    if request:
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc))
+        return f"{proto}://{host}".rstrip("/")
     return "http://localhost:8000"
 
 
-async def send_verification_email(to_email: str, raw_token: str, base_url: str = ""):
+def is_email_service_configured() -> bool:
+    """Check if any live email dispatch service is configured."""
+    if os.getenv("RESEND_API_KEY") or os.getenv("SENDGRID_API_KEY"):
+        return True
+    if os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"):
+        return True
+    return False
+
+
+def create_email_html(title: str, preheader: str, button_label: str, button_url: str, subtext: str) -> str:
+    """Generate dark fintech branded HTML email matching Wolfee Analytics aesthetic."""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0c0c0c;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e8f0fe;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0c0c0c;padding:40px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:520px;background:#140c26;border:1px solid rgba(200,111,255,0.25);border-radius:24px;padding:36px 32px;box-shadow:0 16px 40px rgba(0,0,0,0.7);">
+          <!-- Logo -->
+          <tr>
+            <td align="center" style="padding-bottom:20px;">
+              <span style="font-size:24px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">
+                Wolfee<span style="color:#c86fff;">.</span>
+              </span>
+              <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#c86fff;text-transform:uppercase;margin-top:4px;">Market Intelligence</div>
+            </td>
+          </tr>
+          <!-- Title -->
+          <tr>
+            <td style="padding-bottom:12px;text-align:center;">
+              <h1 style="margin:0;font-size:22px;font-weight:700;color:#e8f0fe;">{title}</h1>
+            </td>
+          </tr>
+          <!-- Body Text -->
+          <tr>
+            <td style="padding-bottom:28px;text-align:center;color:#a997ce;font-size:15px;line-height:1.6;">
+              {preheader}
+            </td>
+          </tr>
+          <!-- Action Button -->
+          <tr>
+            <td align="center" style="padding-bottom:28px;">
+              <a href="{button_url}" target="_blank" style="display:inline-block;padding:14px 32px;background:linear-gradient(123deg,#B600A8,#7621B0,#BE4C00);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:50px;box-shadow:0 4px 16px rgba(182,0,168,0.4);">
+                {button_label}
+              </a>
+            </td>
+          </tr>
+          <!-- Subtext / Raw Link -->
+          <tr>
+            <td style="padding-top:16px;border-top:1px solid rgba(200,111,255,0.12);color:#7a6d96;font-size:12px;line-height:1.5;text-align:center;">
+              {subtext}<br><br>
+              Direct Link: <a href="{button_url}" style="color:#c86fff;word-break:break-all;text-decoration:underline;">{button_url}</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+async def dispatch_email(
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+    fallback_link: str = "",
+    action_name: str = "Email Action"
+) -> bool:
     """
-    Send an email verification link.
-    If SMTP credentials are provided, sends live email.
-    Otherwise, logs the verification link to the console for development/staging.
+    Unified email dispatcher:
+    1. Resend API (RESEND_API_KEY) - instant HTTPS setup, no SMTP ports needed
+    2. SendGrid API (SENDGRID_API_KEY)
+    3. SMTP Relay (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD) - supporting Port 465 (SSL) & 587 (STARTTLS)
+    4. Console logger fallback with actionable Railway instructions
     """
+    email_from = os.getenv("EMAIL_FROM") or "Wolfee Analytics <onboarding@resend.dev>"
+
+    # 1. Resend HTTP API (Recommended)
+    resend_key = os.getenv("RESEND_API_KEY")
+    if resend_key:
+        try:
+            headers = {
+                "Authorization": f"Bearer {resend_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "from": email_from,
+                "to": [to_email],
+                "subject": subject,
+                "text": text_body,
+                "html": html_body
+            }
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = await client.post("https://api.resend.com/emails", json=payload, headers=headers)
+                if resp.status_code in (200, 201):
+                    logger.info(f"Email '{subject}' successfully sent to {to_email} via Resend API.")
+                    return True
+                else:
+                    logger.error(f"Resend API error ({resp.status_code}): {resp.text}")
+        except Exception as e:
+            logger.error(f"Failed to send email via Resend API to {to_email}: {e}")
+
+    # 2. SendGrid HTTP API
+    sendgrid_key = os.getenv("SENDGRID_API_KEY")
+    if sendgrid_key:
+        try:
+            headers = {
+                "Authorization": f"Bearer {sendgrid_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "personalizations": [{"to": [{"email": to_email}]}],
+                "from": {"email": os.getenv("EMAIL_FROM", "noreply@wolfee.com")},
+                "subject": subject,
+                "content": [
+                    {"type": "text/plain", "value": text_body},
+                    {"type": "text/html", "value": html_body}
+                ]
+            }
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = await client.post("https://api.sendgrid.com/v3/mail/send", json=payload, headers=headers)
+                if resp.status_code in (200, 202):
+                    logger.info(f"Email '{subject}' sent to {to_email} via SendGrid.")
+                    return True
+                else:
+                    logger.error(f"SendGrid API error ({resp.status_code}): {resp.text}")
+        except Exception as e:
+            logger.error(f"Failed to send email via SendGrid to {to_email}: {e}")
+
+    # 3. SMTP Relay
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = os.getenv("EMAIL_FROM", "Wolfee Analytics <noreply@wolfee.com>")
+            msg["To"] = to_email
+            msg.set_content(text_body)
+            if html_body:
+                msg.add_alternative(html_body, subtype="html")
+
+            # Handle SSL (Port 465) vs STARTTLS (Port 587, 25, 2525)
+            if smtp_port == 465:
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+
+            logger.info(f"Email '{subject}' sent to {to_email} via SMTP ({smtp_host}:{smtp_port}).")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send email via SMTP ({smtp_host}:{smtp_port}) to {to_email}: {e}")
+
+    # 4. Fallback: Log directly to Railway console
+    logger.warning("================================================================================")
+    logger.warning(f"⚠️ [NO LIVE EMAIL SENT] No email service configured on Railway.")
+    logger.warning(f"Target: {to_email} | Subject: {subject}")
+    if fallback_link:
+        logger.warning(f"Action Link for {action_name}:")
+        logger.warning(f"👉 {fallback_link}")
+    logger.warning("To send live emails to inboxes:")
+    logger.warning("  Option A (Recommended): Set RESEND_API_KEY=re_... in Railway variables.")
+    logger.warning("  Option B: Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM.")
+    logger.warning("  Option C (Dev bypass): Set AUTO_VERIFY_DEV=true in Railway variables.")
+    logger.warning("================================================================================")
+    return False
+
+
+async def send_verification_email(
+    to_email: str,
+    raw_token: str,
+    base_url: str = "",
+    request: Optional[Request] = None
+) -> bool:
+    """Send an email verification link (via Resend, SendGrid, SMTP, or log fallback)."""
     if not base_url:
-        base_url = get_app_base_url()
+        base_url = get_app_base_url(request)
 
     verify_link = f"{base_url.rstrip('/')}/api/auth/verify-email?token={raw_token}"
     subject = "Verify your Wolfee Analytics account"
-    body = (
+    text_body = (
         f"Welcome to Wolfee Analytics!\n\n"
         f"Please verify your email address by opening the following link:\n"
         f"{verify_link}\n\n"
         f"This verification link will expire in 24 hours.\n\n"
         f"If you did not register for Wolfee Analytics, please ignore this email."
     )
+    html_body = create_email_html(
+        title="Verify Your Account",
+        preheader="Welcome to Wolfee Analytics! Please confirm your email address to activate your cloud watchlist and live analytics.",
+        button_label="Verify Email Address",
+        button_url=verify_link,
+        subtext="This link will expire in 24 hours. If you did not create an account, you can safely ignore this email."
+    )
 
-    if SMTP_HOST and SMTP_USER and SMTP_PASSWORD:
-        try:
-            msg = EmailMessage()
-            msg["Subject"] = subject
-            msg["From"] = EMAIL_FROM
-            msg["To"] = to_email
-            msg.set_content(body)
-
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-                server.send_message(msg)
-            logger.info(f"Verification email sent to {to_email}")
-            return
-        except Exception as e:
-            logger.error(f"Failed to send email via SMTP to {to_email}: {e}")
-
-    # Fallback to local dev logger
-    logger.warning("=================================================================")
-    logger.warning(f"[EMAIL DEV FALLBACK] Verification link for {to_email}:")
-    logger.warning(f"-> {verify_link}")
-    logger.warning("=================================================================")
+    return await dispatch_email(
+        to_email=to_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        fallback_link=verify_link,
+        action_name="Email Verification"
+    )
 
 
-async def send_password_reset_email(to_email: str, raw_token: str, base_url: str = ""):
-    """
-    Send a password reset link.
-    Falls back to logger if SMTP is unconfigured.
-    """
+async def send_password_reset_email(
+    to_email: str,
+    raw_token: str,
+    base_url: str = "",
+    request: Optional[Request] = None
+) -> bool:
+    """Send a password reset link (via Resend, SendGrid, SMTP, or log fallback)."""
     if not base_url:
-        base_url = get_app_base_url()
+        base_url = get_app_base_url(request)
 
     reset_link = f"{base_url.rstrip('/')}/index.html?reset_token={raw_token}"
-    subject = "Password Reset - Wolfee Analytics"
-    body = (
+    subject = "Reset your Wolfee Analytics password"
+    text_body = (
         f"A password reset was requested for your Wolfee Analytics account.\n\n"
         f"Use this link to reset your password:\n"
         f"{reset_link}\n\n"
         f"This link expires in 1 hour. If you didn't request this, ignore this email."
     )
+    html_body = create_email_html(
+        title="Reset Your Password",
+        preheader="A password reset request was received for your Wolfee account. Click below to choose a new password.",
+        button_label="Reset Password",
+        button_url=reset_link,
+        subtext="This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email."
+    )
 
-    if SMTP_HOST and SMTP_USER and SMTP_PASSWORD:
-        try:
-            msg = EmailMessage()
-            msg["Subject"] = subject
-            msg["From"] = EMAIL_FROM
-            msg["To"] = to_email
-            msg.set_content(body)
-
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-                server.send_message(msg)
-            logger.info(f"Password reset email sent to {to_email}")
-            return
-        except Exception as e:
-            logger.error(f"Failed to send reset email to {to_email}: {e}")
-
-    logger.warning("=================================================================")
-    logger.warning(f"[EMAIL DEV FALLBACK] Password reset link for {to_email}:")
-    logger.warning(f"-> {reset_link}")
-    logger.warning("=================================================================")
+    return await dispatch_email(
+        to_email=to_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        fallback_link=reset_link,
+        action_name="Password Reset"
+    )

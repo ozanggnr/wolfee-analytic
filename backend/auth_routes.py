@@ -12,6 +12,7 @@ Endpoints:
 - GET  /api/auth/csrf
 """
 
+import os
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -132,11 +133,16 @@ async def register_user(
     # 4. Hash password with bcrypt cost factor 12
     pw_hash = hash_password(req.password)
 
-    # 5. Create user (unverified by default)
+    # 5. Create user (respects AUTO_VERIFY_DEV or REQUIRE_EMAIL_VERIFICATION)
+    auto_verify = (
+        os.getenv("AUTO_VERIFY_DEV", "false").lower() in ("true", "1", "yes") or
+        os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() in ("false", "0", "no")
+    )
+
     new_user = User(
         email=email_normalized,
         password_hash=pw_hash,
-        email_verified=False,
+        email_verified=auto_verify,
         failed_login_count=0
     )
     db.add(new_user)
@@ -164,14 +170,16 @@ async def register_user(
         email=email_normalized,
         ip_address=client_ip,
         user_agent=request.headers.get("User-Agent", "")[:250],
-        details="Account created, verification email dispatched"
+        details=f"Account created (verified={auto_verify})"
     )
     db.add(sec_log)
     await db.commit()
 
-    # 8. Send verification email
-    base_url = str(request.base_url)
-    await send_verification_email(email_normalized, raw_token, base_url=base_url)
+    # 8. Send verification email (or log link if no email provider is configured)
+    await send_verification_email(email_normalized, raw_token, request=request)
+
+    if auto_verify:
+        return {"message": "Account created successfully! You can now log in."}
 
     return {"message": GENERIC_REGISTER_SUCCESS}
 
@@ -288,8 +296,7 @@ async def resend_verification(
         db.add(auth_tok)
         await db.commit()
 
-        base_url = str(request.base_url)
-        await send_verification_email(email_normalized, raw_token, base_url=base_url)
+        await send_verification_email(email_normalized, raw_token, request=request)
 
     return {
         "message": (
@@ -414,20 +421,30 @@ async def login_user(
 
     # 6. Check Email Verification
     if not user.email_verified:
-        sec_log = SecurityLog(
-            event_type="LOGIN_UNVERIFIED_EMAIL",
-            email=email_normalized,
-            ip_address=client_ip,
-            user_agent=user_agent,
-            details="Login blocked: email not verified"
+        # Check if developer auto-verify is enabled in Railway
+        auto_verify = (
+            os.getenv("AUTO_VERIFY_DEV", "false").lower() in ("true", "1", "yes") or
+            os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() in ("false", "0", "no")
         )
-        db.add(sec_log)
-        await db.commit()
+        if auto_verify:
+            user.email_verified = True
+            await db.commit()
+            logger.info(f"Account {email_normalized} automatically verified via AUTO_VERIFY_DEV.")
+        else:
+            sec_log = SecurityLog(
+                event_type="LOGIN_UNVERIFIED_EMAIL",
+                email=email_normalized,
+                ip_address=client_ip,
+                user_agent=user_agent,
+                details="Login blocked: email not verified"
+            )
+            db.add(sec_log)
+            await db.commit()
 
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account not verified. Please check your email inbox to verify your account before logging in."
-        )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account not verified. Please check your email inbox to verify your account before logging in."
+            )
 
     # 7. Successful Authentication: Reset lockout counters
     user.failed_login_count = 0
@@ -542,8 +559,7 @@ async def forgot_password(
         db.add(sec_log)
         await db.commit()
 
-        base_url = str(request.base_url)
-        await send_password_reset_email(email_normalized, raw_token, base_url=base_url)
+        await send_password_reset_email(email_normalized, raw_token, request=request)
     else:
         logger.info(f"Password reset requested for unregistered email: {email_normalized} from {client_ip}")
 
