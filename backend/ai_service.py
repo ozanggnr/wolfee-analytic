@@ -3,27 +3,60 @@ import json
 import logging
 from datetime import datetime
 
+from typing import Optional
+
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+FALLBACK_MODELS = [DEFAULT_MODEL, "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
+
+
+def _generate_with_gemini(prompt: str) -> Optional[str]:
+    """Attempt generation across supported Gemini models with fallback."""
+    if not GEMINI_API_KEY:
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+    except Exception as e:
+        logger.error(f"Gemini configure error: {e}")
+        return None
+
+    # Deduplicate while preserving order
+    seen = set()
+    models_to_try = [m for m in FALLBACK_MODELS if not (m in seen or seen.add(m))]
+
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            logger.warning(f"Gemini generation with model {model_name} failed: {e}")
+            continue
+
+    logger.error("All Gemini model attempts failed.")
+    return None
+
 
 def _get_model():
-    """Get Gemini model, returns None if not configured"""
+    """Get Gemini model, returns None if not configured (deprecated: use _generate_with_gemini)"""
     try:
         import google.generativeai as genai
         if not GEMINI_API_KEY:
             return None
         genai.configure(api_key=GEMINI_API_KEY)
-        return genai.GenerativeModel("gemini-2.0-flash")
+        return genai.GenerativeModel(DEFAULT_MODEL)
     except Exception as e:
         logger.error(f"Gemini init error: {e}")
         return None
 
+
 def get_market_insight(market_data: list, opportunities: list = None) -> str:
     """Generate daily market insight using Gemini AI."""
-    model = _get_model()
-
-    if not model or not market_data:
+    if not market_data:
         return _fallback_insight(market_data, opportunities)
 
     try:
@@ -76,8 +109,8 @@ Third paragraph (optional): mention any caution or risk if the market looks unce
 
 Do not use abbreviations. Do not use symbols like ** or ##. Write full stock names. Speak like a trusted financial advisor explaining to a client."""
 
-        response = model.generate_content(prompt)
-        return response.text if response.text else _fallback_insight(market_data, opportunities)
+        response_text = _generate_with_gemini(prompt)
+        return response_text if response_text else _fallback_insight(market_data, opportunities)
 
     except Exception as e:
         logger.error(f"Gemini market insight error: {e}")
@@ -86,9 +119,7 @@ Do not use abbreviations. Do not use symbols like ** or ##. Write full stock nam
 
 def get_stock_analysis(symbol: str, stock_data: dict) -> str:
     """Get deep AI analysis for a single stock"""
-    model = _get_model()
-
-    if not model or not stock_data:
+    if not stock_data:
         return _fallback_stock_analysis(symbol, stock_data)
 
     try:
@@ -151,8 +182,8 @@ Never write HOLD. Always use one of the five labels above. Match the label to th
 
 Keep it under 200 words total. Write as if explaining to someone who is not a finance expert but wants to make a smart investment decision."""
 
-        response = model.generate_content(prompt)
-        return response.text if response.text else _fallback_stock_analysis(symbol, stock_data)
+        response_text = _generate_with_gemini(prompt)
+        return response_text if response_text else _fallback_stock_analysis(symbol, stock_data)
 
     except Exception as e:
         logger.error(f"Gemini stock analysis error: {e}")

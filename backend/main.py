@@ -44,9 +44,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ Database initialized")
 
-    # Start background refresh worker (2 min interval for near-live prices)
-    refresh_task = asyncio.create_task(start_periodic_refresh(interval_minutes=2))
-    logger.info("✅ Background refresh worker started (every 2 min)")
+    # Start background refresh worker (10 min default, configurable via REFRESH_INTERVAL_MINUTES)
+    refresh_interval = int(os.getenv("REFRESH_INTERVAL_MINUTES", "10"))
+    refresh_task = asyncio.create_task(start_periodic_refresh(interval_minutes=refresh_interval))
+    logger.info(f"✅ Background refresh worker started (every {refresh_interval} min)")
 
     yield
 

@@ -21,52 +21,56 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
     """Fetch global/US stock data using yfinance. No suffix needed for US stocks."""
     try:
         ticker = yf.Ticker(symbol)
-        fi = ticker.fast_info
 
-        price = float(fi.last_price) if fi.last_price else 0.0
-        prev_close = float(fi.previous_close) if fi.previous_close else 0.0
-        day_high = float(fi.day_high) if fi.day_high else 0.0
-        day_low = float(fi.day_low) if fi.day_low else 0.0
-        open_price = float(fi.open) if fi.open else 0.0
-        volume = float(fi.last_volume) if fi.last_volume else 0.0
-        market_cap = float(fi.market_cap) if fi.market_cap else 0.0
-        fifty_day_avg = float(fi.fifty_day_average) if fi.fifty_day_average else 0.0
+        price = 0.0
+        prev_close = 0.0
+        day_high = 0.0
+        day_low = 0.0
+        open_price = 0.0
+        volume = 0.0
+        market_cap = 0.0
+        fifty_day_avg = 0.0
+        currency = "USD"
+
+        # 1. Attempt fast_info
+        try:
+            fi = ticker.fast_info
+            price = float(fi.last_price) if fi.last_price else 0.0
+            prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+            day_high = float(fi.day_high) if fi.day_high else 0.0
+            day_low = float(fi.day_low) if fi.day_low else 0.0
+            open_price = float(fi.open) if fi.open else 0.0
+            volume = float(fi.last_volume) if fi.last_volume else 0.0
+            market_cap = float(fi.market_cap) if fi.market_cap else 0.0
+            fifty_day_avg = float(fi.fifty_day_average) if fi.fifty_day_average else 0.0
+            currency = getattr(fi, "currency", "USD") or "USD"
+        except Exception as e:
+            logger.debug("Fast info failed for %s: %s", symbol, e)
+
+        # 2. Fallback to history if price not retrieved via fast_info
+        if price == 0.0:
+            try:
+                hist = ticker.history(period="5d")
+                if not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+                    open_price = float(hist["Open"].iloc[-1])
+                    day_high = float(hist["High"].iloc[-1])
+                    day_low = float(hist["Low"].iloc[-1])
+                    volume = float(hist["Volume"].iloc[-1])
+            except Exception as e:
+                logger.warning("History fallback failed for global stock %s: %s", symbol, e)
+
+        if price == 0.0:
+            return None
 
         change_pct = 0.0
         if prev_close and prev_close > 0:
             change_pct = round((price - prev_close) / prev_close * 100, 2)
 
-        # Try to get human-readable name
-        name = symbol
-        try:
-            info = ticker.info
-            name = info.get("shortName") or info.get("longName") or name
-        except Exception:
-            pass
-
-        # Attempt bid/ask
-        bid = 0.0
-        ask = 0.0
-        try:
-            if "info" not in dir() or info is None:
-                info = ticker.info
-            bid = float(info.get("bid", 0) or 0)
-            ask = float(info.get("ask", 0) or 0)
-        except Exception:
-            pass
-
-        # Detect currency from info
-        currency = "USD"
-        try:
-            if "info" not in dir() or info is None:
-                info = ticker.info
-            currency = info.get("currency", "USD") or "USD"
-        except Exception:
-            pass
-
         return {
             "symbol": symbol,
-            "name": name,
+            "name": symbol,
             "price": price,
             "change_pct": change_pct,
             "volume": volume,
@@ -74,8 +78,8 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
             "day_low": day_low,
             "open": open_price,
             "previous_close": prev_close,
-            "bid": bid,
-            "ask": ask,
+            "bid": 0.0,
+            "ask": 0.0,
             "market_cap": market_cap,
             "fifty_day_average": fifty_day_avg,
             "currency": currency,
@@ -229,14 +233,42 @@ def fetch_commodity_data(symbol: str) -> Optional[dict]:
     """Fetch commodity data (GC=F, SI=F, CL=F, HG=F, etc.) using yfinance."""
     try:
         ticker = yf.Ticker(symbol)
-        fi = ticker.fast_info
 
-        price = float(fi.last_price) if fi.last_price else 0.0
-        prev_close = float(fi.previous_close) if fi.previous_close else 0.0
-        day_high = float(fi.day_high) if fi.day_high else 0.0
-        day_low = float(fi.day_low) if fi.day_low else 0.0
-        open_price = float(fi.open) if fi.open else 0.0
-        volume = float(fi.last_volume) if fi.last_volume else 0.0
+        price = 0.0
+        prev_close = 0.0
+        day_high = 0.0
+        day_low = 0.0
+        open_price = 0.0
+        volume = 0.0
+
+        # 1. Attempt fast_info
+        try:
+            fi = ticker.fast_info
+            price = float(fi.last_price) if fi.last_price else 0.0
+            prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+            day_high = float(fi.day_high) if fi.day_high else 0.0
+            day_low = float(fi.day_low) if fi.day_low else 0.0
+            open_price = float(fi.open) if fi.open else 0.0
+            volume = float(fi.last_volume) if fi.last_volume else 0.0
+        except Exception as e:
+            logger.debug("Fast info failed for commodity %s: %s", symbol, e)
+
+        # 2. Fallback to history
+        if price == 0.0:
+            try:
+                hist = ticker.history(period="5d")
+                if not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+                    open_price = float(hist["Open"].iloc[-1])
+                    day_high = float(hist["High"].iloc[-1])
+                    day_low = float(hist["Low"].iloc[-1])
+                    volume = float(hist["Volume"].iloc[-1])
+            except Exception as e:
+                logger.warning("History fallback failed for commodity %s: %s", symbol, e)
+
+        if price == 0.0:
+            return None
 
         change_pct = 0.0
         if prev_close and prev_close > 0:
@@ -255,15 +287,6 @@ def fetch_commodity_data(symbol: str) -> Optional[dict]:
         }
 
         name = commodity_names.get(symbol, symbol)
-
-        # Try to get the proper name from yfinance info
-        try:
-            info = ticker.info
-            fetched_name = info.get("shortName") or info.get("longName")
-            if fetched_name:
-                name = fetched_name
-        except Exception:
-            pass
 
         return {
             "symbol": symbol,

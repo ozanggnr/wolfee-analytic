@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import time
@@ -65,59 +66,70 @@ async def refresh_all_data():
         _refresh_running = False
 
 async def refresh_bist_stocks() -> int:
-    """Refresh all BIST stocks"""
+    """Refresh all BIST stocks with bounded concurrency"""
     from analysis import BIST_SYMBOLS
     from data_sources.turkish_market import fetch_bist_stock, fetch_bist_stock_fallback
-    
-    count = 0
-    async with AsyncSessionLocal() as session:
-        for symbol in BIST_SYMBOLS:
+
+    sem = asyncio.Semaphore(6)
+
+    async def fetch_one(symbol: str):
+        async with sem:
             try:
-                # Try primary source
                 data = await asyncio.to_thread(fetch_bist_stock, symbol)
                 if not data:
                     data = await asyncio.to_thread(fetch_bist_stock_fallback, symbol)
                 if not data:
-                    continue
-                
-                # Add analysis fields
-                data = _enrich_stock_data(data, market_type='BIST', currency='TRY')
-                
-                # Upsert to DB
-                await _upsert_stock(session, data)
-                count += 1
-                
-                # Small delay to avoid rate limits
-                await asyncio.sleep(0.1)
-                
+                    return None
+                return _enrich_stock_data(data, market_type='BIST', currency='TRY')
             except Exception as e:
                 logger.error(f"BIST refresh error {symbol}: {e}")
-        
+                return None
+
+    tasks = [fetch_one(s) for s in BIST_SYMBOLS]
+    results = await asyncio.gather(*tasks)
+    valid_data = [d for d in results if d]
+
+    count = 0
+    async with AsyncSessionLocal() as session:
+        for data in valid_data:
+            try:
+                await _upsert_stock(session, data)
+                count += 1
+            except Exception as e:
+                logger.error(f"BIST upsert error {data.get('symbol')}: {e}")
         await session.commit()
     return count
 
 async def refresh_global_stocks() -> int:
-    """Refresh all global stocks"""
+    """Refresh all global stocks with bounded concurrency"""
     from analysis import GLOBAL_SYMBOLS
     from data_sources.global_market import fetch_global_stock
-    
-    count = 0
-    async with AsyncSessionLocal() as session:
-        for symbol in GLOBAL_SYMBOLS:
+
+    sem = asyncio.Semaphore(6)
+
+    async def fetch_one(symbol: str):
+        async with sem:
             try:
                 data = await asyncio.to_thread(fetch_global_stock, symbol)
                 if not data:
-                    continue
-                
-                data = _enrich_stock_data(data, market_type='GLOBAL', currency=data.get('currency', 'USD') or 'USD')
-                await _upsert_stock(session, data)
-                count += 1
-                
-                await asyncio.sleep(0.1)
-                
+                    return None
+                return _enrich_stock_data(data, market_type='GLOBAL', currency=data.get('currency', 'USD') or 'USD')
             except Exception as e:
                 logger.error(f"Global refresh error {symbol}: {e}")
-        
+                return None
+
+    tasks = [fetch_one(s) for s in GLOBAL_SYMBOLS]
+    results = await asyncio.gather(*tasks)
+    valid_data = [d for d in results if d]
+
+    count = 0
+    async with AsyncSessionLocal() as session:
+        for data in valid_data:
+            try:
+                await _upsert_stock(session, data)
+                count += 1
+            except Exception as e:
+                logger.error(f"Global upsert error {data.get('symbol')}: {e}")
         await session.commit()
     return count
 
@@ -362,8 +374,14 @@ async def _upsert_stock(session, data: dict):
         )
         session.add(stock)
 
-async def start_periodic_refresh(interval_minutes: int = 2):
+async def start_periodic_refresh(interval_minutes: int = 10):
     """Start the periodic refresh loop"""
+    interval_env = os.getenv("REFRESH_INTERVAL_MINUTES")
+    if interval_env:
+        try:
+            interval_minutes = int(interval_env)
+        except ValueError:
+            pass
     logger.info(f"Starting periodic refresh every {interval_minutes} minutes")
     
     # Initial refresh on startup

@@ -9,10 +9,9 @@ logger = logging.getLogger(__name__)
 # BIST STOCKS — Expanded coverage (~150 stocks)
 # ============================================================
 BIST_SYMBOLS = [
-    # Major Banks (12)
+    # Major Banks (10)
     "AKBNK.IS", "GARAN.IS", "HALKB.IS", "ISCTR.IS", "YKBNK.IS",
-    "VAKBN.IS", "TSKB.IS", "SKBNK.IS", "ALBRK.IS", "QNBFB.IS",
-    "DENIZ.IS", "ICBCT.IS",
+    "VAKBN.IS", "TSKB.IS", "SKBNK.IS", "ALBRK.IS", "ICBCT.IS",
 
     # Major Holdings & Investment (15)
     "KCHOL.IS", "SAHOL.IS", "DOHOL.IS", "EKGYO.IS", "GSDHO.IS",
@@ -40,51 +39,49 @@ BIST_SYMBOLS = [
     "ASELS.IS", "TCELL.IS", "TTKOM.IS", "SDTTR.IS", "VBTYZ.IS",
     "LOGO.IS", "INDES.IS", "NETAS.IS", "KAREL.IS", "ARDYZ.IS",
 
-    # Mining & Metals (8)
-    "KOZAL.IS", "KOZAA.IS", "KRDMD.IS", "CEMAS.IS", "ISGSY.IS",
-    "SARKY.IS", "CELHA.IS", "BRSAN.IS",
+    # Mining & Metals (6)
+    "KRDMD.IS", "CEMAS.IS", "ISGSY.IS", "SARKY.IS", "CELHA.IS", "BRSAN.IS",
 
-    # Construction & Real Estate (8)
-    "ENKAI.IS", "TKFEN.IS", "TURSG.IS", "OYAKC.IS", "CIMSA.IS",
-    "ADANA.IS", "BOLUC.IS", "BUCIM.IS",
+    # Construction & Real Estate (6)
+    "ENKAI.IS", "TKFEN.IS", "TURSG.IS", "OYAKC.IS", "CIMSA.IS", "BUCIM.IS",
 
-    # Insurance & Finance (6)
-    "ANSGR.IS", "AKGRT.IS", "TURSG.IS", "ANHYT.IS", "METUR.IS", "ISMEN.IS",
+    # Insurance & Finance (5)
+    "ANSGR.IS", "AKGRT.IS", "TURSG.IS", "ANHYT.IS", "ISMEN.IS",
 
     # Healthcare & Pharma (5)
     "SELEC.IS", "DEVA.IS", "ECILC.IS", "LKMNH.IS", "MPARK.IS",
 
-    # Chemicals & Materials (6)
-    "SASA.IS", "AKSA.IS", "HEKTS.IS", "ALKIM.IS", "SODA.IS", "BAGFS.IS",
+    # Chemicals & Materials (5)
+    "SASA.IS", "AKSA.IS", "HEKTS.IS", "ALKIM.IS", "BAGFS.IS",
 
-    # Tourism & Media (5)
-    "MRTGG.IS", "MRGYO.IS", "TRGYO.IS", "VAKKO.IS", "DURDO.IS",
+    # Tourism & Media (4)
+    "MRGYO.IS", "TRGYO.IS", "VAKKO.IS", "DURDO.IS",
 
-    # Other Notable BIST Stocks (15)
+    # Other Notable BIST Stocks (13)
     "ASUZU.IS", "BERA.IS", "CANTE.IS", "DGNMO.IS", "ESEN.IS",
     "GENIL.IS", "GEDIK.IS", "GOODY.IS", "GOZDE.IS", "HURGZ.IS",
-    "IPEKE.IS", "KERVT.IS", "KLMSN.IS", "KONKA.IS", "KONYA.IS",
+    "KLMSN.IS", "KONKA.IS", "KONYA.IS",
 ]
 
 # Deduplicate
 BIST_SYMBOLS = list(dict.fromkeys(BIST_SYMBOLS))
 
 # ============================================================
-# GLOBAL STOCKS — Expanded coverage (~220+ stocks)
+# GLOBAL STOCKS — Expanded coverage (~215+ stocks)
 # ============================================================
 GLOBAL_SYMBOLS = [
-    # US Tech Giants & FAANG+ (30)
+    # US Tech Giants & FAANG+ (29)
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "NFLX",
     "AMD", "INTC", "AVGO", "QCOM", "CSCO", "ORCL", "ADBE", "CRM",
     "NOW", "SNOW", "PANW", "CRWD", "ZS", "DDOG", "NET", "MDB",
-    "PLTR", "U", "TTD", "TWLO", "SQ", "PYPL",
+    "PLTR", "U", "TTD", "TWLO", "PYPL",
 
     # AI & Robotics (8)
     "SMCI", "ARM", "MRVL", "AI", "PATH", "IONQ", "RGTI", "BBAI",
 
-    # Finance & Banks (20)
+    # Finance & Banks (19)
     "JPM", "V", "MA", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP",
-    "SCHW", "USB", "PNC", "TFC", "COF", "BK", "STT", "SPGI", "MCO", "ICE",
+    "SCHW", "USB", "PNC", "TFC", "COF", "STT", "SPGI", "MCO", "ICE",
 
     # Consumer & Retail (18)
     "WMT", "COST", "HD", "LOW", "TGT", "TJX", "NKE", "LULU",
@@ -99,11 +96,11 @@ GLOBAL_SYMBOLS = [
     "BMY", "AMGN", "GILD", "VRTX", "REGN", "CI", "CVS", "HUM",
     "ELV", "HCA", "MOH",
 
-    # Biotech (8)
-    "MRNA", "BNTX", "SGEN", "BIIB", "ALNY", "INCY", "BMRN", "EXAS",
+    # Biotech (6)
+    "MRNA", "BNTX", "BIIB", "ALNY", "INCY", "BMRN",
 
-    # Media & Entertainment (10)
-    "DIS", "CMCSA", "WBD", "FOXA", "SPOT", "RBLX", "EA", "TTWO",
+    # Media & Entertainment (9)
+    "DIS", "CMCSA", "WBD", "FOXA", "SPOT", "RBLX", "TTWO",
     "PARA", "LYV",
 
     # Industrial & Manufacturing (18)
@@ -125,8 +122,8 @@ GLOBAL_SYMBOLS = [
     "SHOP", "MELI", "EBAY", "ETSY", "SE", "BABA", "JD", "PDD",
     "COIN", "SOFI",
 
-    # Telecom (5)
-    "T", "VZ", "TMUS", "CHTR", "LBRDK",
+    # Telecom (4)
+    "T", "VZ", "TMUS", "CHTR",
 
     # Real Estate & REITs (10)
     "PLD", "AMT", "CCI", "EQIX", "SPG", "PSA", "O", "WELL", "DLR", "VICI",

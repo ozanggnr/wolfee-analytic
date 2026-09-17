@@ -38,39 +38,48 @@ def fetch_bist_stock(symbol: str) -> Optional[dict]:
         ticker_symbol = symbol if symbol.endswith(".IS") else f"{symbol}.IS"
         ticker = yf.Ticker(ticker_symbol)
 
-        fi = ticker.fast_info
+        price = 0.0
+        prev_close = 0.0
+        day_high = 0.0
+        day_low = 0.0
+        open_price = 0.0
+        volume = 0.0
+        market_cap = 0.0
+        fifty_day_avg = 0.0
 
-        price = float(fi.last_price) if fi.last_price else 0.0
-        prev_close = float(fi.previous_close) if fi.previous_close else 0.0
-        day_high = float(fi.day_high) if fi.day_high else 0.0
-        day_low = float(fi.day_low) if fi.day_low else 0.0
-        open_price = float(fi.open) if fi.open else 0.0
-        volume = float(fi.last_volume) if fi.last_volume else 0.0
-        market_cap = float(fi.market_cap) if fi.market_cap else 0.0
-        fifty_day_avg = float(fi.fifty_day_average) if fi.fifty_day_average else 0.0
+        # 1. Attempt fast_info
+        try:
+            fi = ticker.fast_info
+            price = float(fi.last_price) if fi.last_price else 0.0
+            prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+            day_high = float(fi.day_high) if fi.day_high else 0.0
+            day_low = float(fi.day_low) if fi.day_low else 0.0
+            open_price = float(fi.open) if fi.open else 0.0
+            volume = float(fi.last_volume) if fi.last_volume else 0.0
+            market_cap = float(fi.market_cap) if fi.market_cap else 0.0
+            fifty_day_avg = float(fi.fifty_day_average) if fi.fifty_day_average else 0.0
+        except Exception:
+            # 2. Fallback to ticker.history if fast_info raises KeyError: 'currentTradingPeriod'
+            try:
+                hist = ticker.history(period="5d")
+                if not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+                    day_high = float(hist["High"].iloc[-1])
+                    day_low = float(hist["Low"].iloc[-1])
+                    open_price = float(hist["Open"].iloc[-1])
+                    volume = float(hist["Volume"].iloc[-1])
+            except Exception:
+                pass
+
+        if not price or price <= 0:
+            return None
 
         change_pct = 0.0
         if prev_close and prev_close > 0:
             change_pct = round((price - prev_close) / prev_close * 100, 2)
 
-        # Try to get the human-readable name (can be slow, so wrap carefully)
         name = ticker_symbol.replace(".IS", "")
-        try:
-            info = ticker.info
-            name = info.get("shortName") or info.get("longName") or name
-        except Exception:
-            pass
-
-        # Attempt to get bid/ask from info if available
-        bid = 0.0
-        ask = 0.0
-        try:
-            if "info" not in dir() or info is None:
-                info = ticker.info
-            bid = float(info.get("bid", 0) or 0)
-            ask = float(info.get("ask", 0) or 0)
-        except Exception:
-            pass
 
         return {
             "symbol": ticker_symbol.replace(".IS", ""),
@@ -82,25 +91,31 @@ def fetch_bist_stock(symbol: str) -> Optional[dict]:
             "day_low": day_low,
             "open": open_price,
             "previous_close": prev_close,
-            "bid": bid,
-            "ask": ask,
+            "bid": 0.0,
+            "ask": 0.0,
             "market_cap": market_cap,
             "fifty_day_average": fifty_day_avg,
             "currency": "TRY",
             "market_type": "BIST",
         }
     except Exception as e:
-        logger.error("Failed to fetch BIST stock %s via yfinance: %s", symbol, e)
+        logger.warning("Failed to fetch BIST stock %s via yfinance: %s", symbol, e)
         return None
 
 
 def fetch_bist_stock_fallback(symbol: str) -> Optional[dict]:
-    """Fallback: scrape stock data from Google Finance."""
+    """Fallback: scrape stock data from Google Finance with EU consent bypass."""
     try:
         clean_symbol = symbol.replace(".IS", "")
         url = f"https://www.google.com/finance/quote/{clean_symbol}:IST"
 
-        with httpx.Client(headers=HEADERS, timeout=15, follow_redirects=True) as client:
+        # Cookie to bypass EU consent redirect on Railway
+        cookies = {
+            "SOCS": "CAISHAgCEhJnd3NfMjAyNDA2MDMtMF9SQzEaAmVuIAEaBgiA_L20Bg",
+            "CONSENT": "PENDING+987"
+        }
+
+        with httpx.Client(headers=HEADERS, cookies=cookies, timeout=10, follow_redirects=True) as client:
             resp = client.get(url)
             resp.raise_for_status()
 
@@ -203,12 +218,59 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
         soup = BeautifulSoup(resp.text, "html.parser")
         results: list[dict] = []
 
-        # Look for the gold price table/list
-        rows = soup.select("ul.mPrices li, div.tBody ul li")
+        def parse_price(text: str) -> float:
+            text = text.replace("%", "").replace("+", "").replace(".", "").replace(",", ".").strip()
+            try:
+                return float(text)
+            except ValueError:
+                return 0.0
 
+        # Primary approach: Bigpara uses table elements for market gold lists
+        tables = soup.find_all("table")
+        for table in tables:
+            rows = table.find_all("tr")
+            for tr in rows:
+                link = tr.find("a")
+                if not link:
+                    continue
+                href = link.get("href", "").lower()
+                matched_key = None
+                for key in GOLD_TYPE_MAP:
+                    if key in href:
+                        matched_key = key
+                        break
+                if not matched_key:
+                    continue
+
+                tds = tr.find_all("td")
+                if len(tds) < 3:
+                    continue
+
+                gold_type, display_name = GOLD_TYPE_MAP[matched_key]
+                # tds[1] is Alış (Buying), tds[2] is Satış (Selling), tds[3] is Fark (Change %)
+                buying_price = parse_price(tds[1].get_text(strip=True)) if len(tds) > 1 else 0.0
+                selling_price = parse_price(tds[2].get_text(strip=True)) if len(tds) > 2 else 0.0
+                change_pct = parse_price(tds[3].get_text(strip=True)) if len(tds) > 3 else 0.0
+
+                results.append({
+                    "gold_type": gold_type,
+                    "display_name": display_name,
+                    "buying_price": buying_price,
+                    "selling_price": selling_price,
+                    "change_pct": change_pct,
+                })
+
+            if results:
+                break
+
+        if results:
+            logger.info("Fetched %d gold types from bigpara table", len(results))
+            return results
+
+        # Fallback 1: Look for unordered list selectors
+        rows = soup.select("ul.mPrices li, div.tBody ul li")
         for row in rows:
             try:
-                # Try to find the link/identifier
                 link = row.find("a")
                 if not link:
                     continue
@@ -216,7 +278,6 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
                 href = link.get("href", "")
                 row_text = link.get_text(strip=True).lower()
 
-                # Match against known gold types
                 matched_key = None
                 for key in GOLD_TYPE_MAP:
                     if key in href.lower() or key.replace("-", " ") in row_text:
@@ -224,7 +285,6 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
                         break
 
                 if not matched_key:
-                    # Also try matching display names
                     for key, (_, display) in GOLD_TYPE_MAP.items():
                         if display.lower() in row_text:
                             matched_key = key
@@ -234,16 +294,8 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
                     continue
 
                 gold_type, display_name = GOLD_TYPE_MAP[matched_key]
-
-                # Extract prices — typically in span elements
                 spans = row.find_all("span")
-                prices = []
-                for span in spans:
-                    txt = span.get_text(strip=True).replace(".", "").replace(",", ".").strip()
-                    try:
-                        prices.append(float(txt))
-                    except ValueError:
-                        continue
+                prices = [parse_price(span.get_text(strip=True)) for span in spans]
 
                 buying_price = prices[0] if len(prices) > 0 else 0.0
                 selling_price = prices[1] if len(prices) > 1 else 0.0
@@ -259,54 +311,6 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
             except Exception as e:
                 logger.warning("Failed to parse gold row: %s", e)
                 continue
-
-        if results:
-            logger.info("Fetched %d gold types from bigpara", len(results))
-            return results
-
-        # Fallback: try alternate selectors
-        table = soup.find("div", class_="tBody")
-        if table:
-            items = table.find_all("ul")
-            for item in items:
-                try:
-                    cols = item.find_all("li")
-                    if len(cols) < 3:
-                        continue
-
-                    name_text = cols[0].get_text(strip=True).lower()
-                    matched_key = None
-                    for key, (_, display) in GOLD_TYPE_MAP.items():
-                        if display.lower() in name_text or key.replace("-", " ") in name_text:
-                            matched_key = key
-                            break
-
-                    if not matched_key:
-                        continue
-
-                    gold_type, display_name = GOLD_TYPE_MAP[matched_key]
-
-                    def parse_price(text: str) -> float:
-                        text = text.replace(".", "").replace(",", ".").strip()
-                        try:
-                            return float(text)
-                        except ValueError:
-                            return 0.0
-
-                    buying_price = parse_price(cols[1].get_text(strip=True))
-                    selling_price = parse_price(cols[2].get_text(strip=True))
-                    change_pct = parse_price(cols[3].get_text(strip=True)) if len(cols) > 3 else 0.0
-
-                    results.append({
-                        "gold_type": gold_type,
-                        "display_name": display_name,
-                        "buying_price": buying_price,
-                        "selling_price": selling_price,
-                        "change_pct": change_pct,
-                    })
-                except Exception as e:
-                    logger.warning("Fallback gold parse failed: %s", e)
-                    continue
 
         if results:
             logger.info("Fetched %d gold types from bigpara (fallback)", len(results))
