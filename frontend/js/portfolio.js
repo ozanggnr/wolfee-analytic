@@ -213,7 +213,8 @@ function calculateClientSideSummary(stocks) {
         else flat++;
 
         totalChange += change;
-        tickerChanges.push({ symbol: sym, change_pct: change, price, currency: curr });
+        const fullSym = s.symbol || (curr === 'TRY' ? `${sym}.IS` : sym);
+        tickerChanges.push({ symbol: sym, name: s.name || sym, change_pct: change, price, currency: curr, fullSymbol: fullSym });
 
         if (Math.abs(change) > maxAbs) {
             maxAbs = Math.abs(change);
@@ -299,11 +300,13 @@ function renderSummaryCardUI(data) {
     if (data.biggest_mover) {
         const m = data.biggest_mover;
         const mIsUp = m.change_pct >= 0;
-        const mColor = mIsUp ? 'var(--success-color)' : 'var(--danger-color)';
         const mIcon = mIsUp ? '▲' : '▼';
         const mCurr = m.currency === 'TRY' ? '₺' : '$';
+        const mFullSym = m.currency === 'TRY' && !m.symbol.endsWith('.IS') ? `${m.symbol}.IS` : m.symbol;
+        const escMoverSym = encodeURIComponent(mFullSym);
+        const escMoverName = encodeURIComponent(m.name || m.symbol);
         moverHTML = `
-            <div class="mover-content">
+            <div class="mover-content" style="cursor: pointer;" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escMoverSym}'), name:decodeURIComponent('${escMoverName}')})">
                 <span class="mover-symbol">${m.symbol}</span>
                 <span class="mover-badge ${mIsUp ? 'mover-up' : 'mover-down'}">
                     ${mIcon} ${Math.abs(m.change_pct).toFixed(2)}%
@@ -319,7 +322,8 @@ function renderSummaryCardUI(data) {
         const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
         const icon = isUp ? '▲' : '▼';
         const safeSym = typeof escapeHTML === 'function' ? escapeHTML(t.symbol) : t.symbol;
-        const escSym = encodeURIComponent(t.symbol || '');
+        const fullSym = t.fullSymbol || (t.currency === 'TRY' && !t.symbol.endsWith('.IS') ? `${t.symbol}.IS` : t.symbol);
+        const escSym = encodeURIComponent(fullSym || t.symbol || '');
         const escName = encodeURIComponent(t.name || t.symbol || '');
         return `
             <div class="ticker-pill" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escSym}'), name:decodeURIComponent('${escName}')})">

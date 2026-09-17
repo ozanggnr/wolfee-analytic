@@ -149,10 +149,31 @@
         document.querySelectorAll('.auth-form-view').forEach(view => view.classList.add('hidden'));
 
         const targetBtn = document.getElementById(`auth-tab-${tab}`);
-        const targetView = document.getElementById(`auth-view-${tab}`);
+        const targetView = document.getElementById(`${tab}-form`) || document.getElementById(`auth-view-${tab}`);
 
         if (targetBtn) targetBtn.classList.add('active');
         if (targetView) targetView.classList.remove('hidden');
+
+        const titleEl = document.getElementById('auth-modal-title');
+        const subEl = document.getElementById('auth-modal-subtitle');
+        if (titleEl && subEl) {
+            if (tab === 'login') {
+                titleEl.textContent = 'Welcome Back';
+                subEl.textContent = 'Sign in to access your cloud watchlist and live analytics.';
+            } else if (tab === 'register') {
+                titleEl.textContent = 'Create Account';
+                subEl.textContent = 'Create a secure Wolfee account to sync your portfolio anywhere.';
+            } else if (tab === 'forgot') {
+                titleEl.textContent = 'Reset Password';
+                subEl.textContent = 'Enter your account email to receive secure recovery instructions.';
+            } else if (tab === 'resend') {
+                titleEl.textContent = 'Resend Verification';
+                subEl.textContent = 'Enter your email to request a new account activation link.';
+            } else if (tab === 'reset') {
+                titleEl.textContent = 'New Password';
+                subEl.textContent = 'Create a strong, secure password for your Wolfee account.';
+            }
+        }
 
         clearAuthAlerts();
     };
