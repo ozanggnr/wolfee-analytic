@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body, Request
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -55,10 +55,39 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Wolfee Analytics shutting down")
 
 
-app = FastAPI(title="Wolfee Analytics", lifespan=lifespan)
+import re
+from fastapi.responses import JSONResponse
+
+# Valid stock tickers: e.g. THYAO.IS, AAPL, BRK.B, GC=F. Rejects path traversal and consecutive dots.
+SYMBOL_REGEX = re.compile(r"^[A-Za-z0-9]+(?:[\.\-=][A-Za-z0-9]+)*$")
+
+def validate_symbol_input(symbol: str) -> str:
+    """Sanitize and validate stock/commodity ticker symbols against injection."""
+    sym = (symbol or "").strip()
+    if not sym or len(sym) > 20 or not SYMBOL_REGEX.match(sym):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid symbol format. Symbols must be 1-20 alphanumeric characters, dots, or dashes."
+        )
+    return sym
+
+
+app = FastAPI(title="Wolfee Analytics", lifespan=lifespan, debug=False)
 
 # ============================================================
-# CORS
+# GLOBAL EXCEPTION HANDLERS (Prevent stack trace / DB error leakage)
+# ============================================================
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled server error on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please try again later."}
+    )
+
+
+# ============================================================
+# CORS (Strict origin allowlist - no wildcard with credentials)
 # ============================================================
 origins = [
     "http://localhost:8080",
@@ -74,15 +103,21 @@ railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 if railway_domain:
     origins.append(f"https://{railway_domain}")
 
+# Support custom allowed CORS origins from environment
+custom_cors = os.getenv("CORS_ORIGINS")
+if custom_cors:
+    origins.extend([o.strip() for o in custom_cors.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all for flexibility
+    allow_origins=origins,
+    allow_origin_regex=r"^https:\/\/.*\.up\.railway\.app$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
-# Register security middleware (IP rate limiting, CSRF validation, cookies)
+# Register security middleware (IP rate limiting, CSRF validation, security headers)
 app.add_middleware(SecurityMiddleware)
 
 # Register Authentication and Watchlist API routers
@@ -239,6 +274,7 @@ async def get_exchange_rates():
 @app.get("/api/analyze/{symbol}")
 async def get_stock_analysis_endpoint(symbol: str):
     """Returns analysis for a specific stock."""
+    symbol = validate_symbol_input(symbol)
     # Auto-append .IS if needed
     if "=" not in symbol and not symbol.endswith(".IS"):
         # Check if it's a global symbol
@@ -259,6 +295,7 @@ async def get_live_price(symbol: str, background_tasks: BackgroundTasks):
     Used when a user opens a stock detail modal to show the freshest possible price.
     Also queues a background DB update so the next poll sees fresh data.
     """
+    symbol = validate_symbol_input(symbol)
     # Resolve symbol
     if "=" not in symbol and not symbol.endswith(".IS"):
         if symbol.upper() not in [s.upper() for s in GLOBAL_SYMBOLS]:
@@ -292,13 +329,17 @@ async def get_live_price(symbol: str, background_tasks: BackgroundTasks):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Live price error for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Live price error for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Live price temporarily unavailable.")
 
 
 @app.get("/api/history/{symbol}")
 async def get_stock_history(symbol: str, period: str = "1y"):
     """Returns historical price data for charts."""
+    symbol = validate_symbol_input(symbol)
+    if period not in ["1d", "5d", "1wk", "1mo", "3mo", "6mo", "1y", "5y", "max"]:
+        raise HTTPException(status_code=400, detail="Invalid period parameter.")
+
     is_global = symbol.upper() in [s.upper() for s in GLOBAL_SYMBOLS]
     is_commodity = "=" in symbol
 
@@ -325,13 +366,17 @@ async def get_stock_history(symbol: str, period: str = "1y"):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"History error for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"History error for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Historical data temporarily unavailable.")
 
 
 @app.get("/api/chart/{symbol}/{period}")
 async def get_chart_data(symbol: str, period: str):
     """Chart data endpoint for frontend."""
+    symbol = validate_symbol_input(symbol)
+    if period not in ["1d", "5d", "1wk", "1mo", "3mo", "6mo", "1y", "5y", "max"]:
+        raise HTTPException(status_code=400, detail="Invalid period parameter.")
+
     is_global = symbol.upper() in [s.upper() for s in GLOBAL_SYMBOLS]
 
     if not symbol.endswith('.IS') and not is_global and "=" not in symbol:
@@ -469,6 +514,7 @@ async def get_insight():
 @app.get("/api/ai/analyze/{symbol}")
 async def get_ai_stock_analysis(symbol: str):
     """Get Gemini AI deep analysis for a specific stock."""
+    symbol = validate_symbol_input(symbol)
     # Try to get stock data from DB first
     try:
         async with AsyncSessionLocal() as session:
@@ -610,8 +656,8 @@ async def export_portfolio_post(payload: dict = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Portfolio export error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Portfolio export error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate portfolio export file.")
 
 
 @app.get("/api/export/portfolio")
@@ -619,11 +665,15 @@ async def export_portfolio_get(symbols: str, period: str):
     """Fallback GET export for portfolio — re-fetches live data per symbol."""
     try:
         if period not in ["daily", "weekly", "monthly"]:
-            raise HTTPException(status_code=400, detail="Invalid period")
+            raise HTTPException(status_code=400, detail="Invalid period. Use daily, weekly, or monthly.")
 
-        symbol_list = [s.strip() for s in symbols.split(',') if s.strip()]
-        if not symbol_list:
-            raise HTTPException(status_code=400, detail="No symbols provided")
+        raw_list = [s.strip() for s in symbols.split(',') if s.strip()]
+        if not raw_list:
+            raise HTTPException(status_code=400, detail="No symbols provided.")
+        if len(raw_list) > 50:
+            raise HTTPException(status_code=400, detail="Maximum 50 symbols allowed per export.")
+
+        symbol_list = [validate_symbol_input(s) for s in raw_list]
 
         results = []
         today = datetime.now().strftime("%Y-%m-%d")
@@ -691,8 +741,8 @@ async def export_portfolio_get(symbols: str, period: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Portfolio export error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Portfolio export error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate portfolio export file.")
 
 
 @app.get("/api/export/{period}")

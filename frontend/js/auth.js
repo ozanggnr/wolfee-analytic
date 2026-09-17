@@ -81,16 +81,33 @@
     };
 
     // ============================================================
+    // HTML ESCAPING HELPER (DOM XSS Mitigation)
+    // ============================================================
+    function escapeHTML(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+    window.escapeHTML = escapeHTML;
+
+    // ============================================================
     // UI UPDATES (Navbar buttons, profile badge)
     // ============================================================
     function updateAuthUI(user) {
         const desktopContainer = document.getElementById('nav-auth-container');
         const mobileContainer = document.getElementById('mobile-auth-container');
 
+        const safeEmail = user ? escapeHTML(user.email) : '';
+        const safeName = user ? escapeHTML(user.email.split('@')[0]) : '';
+
         const loggedInHTML = user ? `
-            <div class="user-chip" id="user-profile-chip" title="${user.email}">
+            <div class="user-chip" id="user-profile-chip" title="${safeEmail}">
                 <span class="user-avatar">👤</span>
-                <span class="user-email-text">${user.email.split('@')[0]}</span>
+                <span class="user-email-text">${safeName}</span>
                 <button class="icon-btn logout-btn" onclick="logoutUser()" title="Log out">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </button>

@@ -39,12 +39,35 @@ def invalidate_user_cache(user_id: int):
     _summary_cache.pop(user_id, None)
 
 
+import re
+from pydantic import BaseModel, Field, field_validator
+
+TICKER_REGEX = re.compile(r"^[A-Za-z0-9]+(?:[\.\-=][A-Za-z0-9]+)*$")
+
 # ============================================================
 # SCHEMAS
 # ============================================================
 class AddWatchlistRequest(BaseModel):
-    ticker: str
-    market: Optional[str] = None  # 'BIST100' or 'US'
+    ticker: str = Field(..., min_length=1, max_length=20)
+    market: Optional[str] = Field(None, max_length=20)
+
+    @field_validator("ticker")
+    @classmethod
+    def validate_ticker(cls, v: str) -> str:
+        clean = v.strip().upper()
+        if not TICKER_REGEX.match(clean):
+            raise ValueError("Invalid ticker format. Must be 1-20 alphanumeric characters, dots, or dashes.")
+        return clean
+
+    @field_validator("market")
+    @classmethod
+    def validate_market(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            clean = v.strip().upper()
+            if clean not in ("BIST100", "US", "GLOBAL", "COMMODITY"):
+                raise ValueError("Market must be BIST100, US, GLOBAL, or COMMODITY.")
+            return clean
+        return v
 
 
 class WatchlistItemResponse(BaseModel):

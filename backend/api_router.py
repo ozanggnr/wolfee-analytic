@@ -5,11 +5,14 @@ Falls back gracefully when APIs fail or hit rate limits
 """
 
 import os
+import logging
 import requests
 from typing import Optional, Dict
 import time
 from datetime import datetime
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger("api_router")
 
 
 class StockAPIRouter:
@@ -38,7 +41,7 @@ class StockAPIRouter:
         """Handle 429 and other errors"""
         if isinstance(e, requests.exceptions.HTTPError):
             if e.response.status_code == 429:
-                print(f"⚠️ {api_name} Rate Limit Hit (429). Cooling down for 60s...")
+                logger.warning(f"{api_name} rate limit hit (429). Cooling down for 60s...")
                 time.sleep(60) # Wait for limit reset
                 return True
         return False
@@ -88,10 +91,10 @@ class StockAPIRouter:
         except requests.exceptions.HTTPError as e:
             if self._handle_api_error(e, 'finnhub'): # Calls sleep(60) if 429
                 return None
-            print(f"Finnhub HTTP error for {symbol}: {e}")
+            logger.warning(f"Finnhub HTTP error for {symbol}: {e}")
             return None
         except Exception as e:
-            print(f"Finnhub error for {symbol}: {e}")
+            logger.warning(f"Finnhub error for {symbol}: {e}")
             return None
     
     def fetch_from_alpha_vantage(self, symbol: str) -> Optional[Dict]:
@@ -139,7 +142,7 @@ class StockAPIRouter:
             }
             
         except Exception as e:
-            print(f"Alpha Vantage error for {symbol}: {e}")
+            logger.warning(f"Alpha Vantage error for {symbol}: {e}")
             return None
     
     def fetch_from_polygon(self, symbol: str) -> Optional[Dict]:
@@ -181,10 +184,10 @@ class StockAPIRouter:
         except requests.exceptions.HTTPError as e:
             if self._handle_api_error(e, 'polygon'): # Calls sleep(60) if 429
                 return None
-            print(f"Polygon HTTP error for {symbol}: {e}")
+            logger.warning(f"Polygon HTTP error for {symbol}: {e}")
             return None
         except Exception as e:
-            print(f"Polygon error for {symbol}: {e}")
+            logger.warning(f"Polygon error for {symbol}: {e}")
             return None
     
     def fetch_scraped_data(self, symbol: str) -> Optional[Dict]:
@@ -356,7 +359,7 @@ class StockAPIRouter:
                 
                 response = requests.get(url, params=params, timeout=10)
                 if response.status_code == 429:
-                     print(f"Finnhub History 429 for {symbol}")
+                     logger.warning(f"Finnhub History 429 for {symbol}")
                      # Fallthrough
                 else:
                     data = response.json()
@@ -383,7 +386,7 @@ class StockAPIRouter:
                         return {"symbol": symbol, "history": history}
                     
             except Exception as e:
-                print(f"Finnhub history error: {e}")
+                logger.warning(f"Finnhub history error: {e}")
 
         # Try Polygon (US only)
         if self.polygon_key and not symbol.endswith(".IS"):
@@ -409,7 +412,7 @@ class StockAPIRouter:
                 response = requests.get(url, params=params, timeout=10)
                 
                 if response.status_code == 429:
-                    print(f"Polygon History 429 for {symbol}")
+                    logger.warning(f"Polygon History 429 for {symbol}")
                     # Fallthrough
                 else:
                     data = response.json()
@@ -429,7 +432,7 @@ class StockAPIRouter:
                         return {"symbol": symbol, "history": history}
                     
             except Exception as e:
-                print(f"Polygon history error: {e}")
+                logger.warning(f"Polygon history error: {e}")
 
         return None
 

@@ -117,25 +117,47 @@ def get_client_ip(request: Request) -> str:
 
 # ============================================================
 # SECURITY & CSRF MIDDLEWARE
+# Public API rate limiter: 120 requests per minute per IP for general endpoints
+PUBLIC_RATE_LIMIT_WINDOW_SECONDS = 60
+PUBLIC_RATE_LIMIT_MAX_REQUESTS = 120
+
+public_api_rate_limiter = IPRateLimiter(
+    window_seconds=PUBLIC_RATE_LIMIT_WINDOW_SECONDS,
+    max_requests=PUBLIC_RATE_LIMIT_MAX_REQUESTS
+)
+
+
+# ============================================================
+# SECURITY & CSRF MIDDLEWARE
 # ============================================================
 class SecurityMiddleware(BaseHTTPMiddleware):
     """
     Unified security middleware:
-    1. IP rate limiting on authentication routes
-    2. CSRF token validation on all state-changing endpoints
-    3. Auto-sets CSRF cookie on non-mutating requests if missing
+    1. Enforce HTTPS redirect on Railway / reverse proxy connections
+    2. IP rate limiting on auth (10/min) and general public API (120/min)
+    3. CSRF token validation on state-changing endpoints
+    4. Auto-sets CSRF cookie on non-mutating requests if missing
+    5. Injects strict HTTP security headers (CSP, HSTS, X-Content-Type-Options, etc.)
     """
     async def dispatch(self, request: Request, call_next):
         client_ip = get_client_ip(request)
         path = request.url.path
 
-        # 1. Check Rate Limiting for sensitive auth endpoints
+        # 0. Enforce HTTPS redirect in production behind reverse proxies
+        if is_connection_secure(request) and request.headers.get("X-Forwarded-Proto", "").lower() == "http":
+            https_url = str(request.url).replace("http://", "https://", 1)
+            return Response(
+                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                headers={"Location": https_url}
+            )
+
+        # 1. Rate Limiting:
+        # A) Auth endpoints (strict: 10 req/min)
         is_auth_route = any(path.startswith(prefix) for prefix in RATE_LIMITED_AUTH_PREFIXES)
         if is_auth_route and request.method in ("POST", "PUT"):
             allowed, retry_after = auth_rate_limiter.is_allowed(client_ip)
             if not allowed:
-                logger.warning(f"Rate limit exceeded for IP: {client_ip} on path: {path}")
-                # Log security rate limit hit
+                logger.warning(f"Auth rate limit exceeded for IP: {client_ip} on path: {path}")
                 try:
                     async with AsyncSessionLocal() as session:
                         log_entry = SecurityLog(
@@ -143,12 +165,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                             email=None,
                             ip_address=client_ip,
                             user_agent=request.headers.get("User-Agent", "")[:250],
-                            details=f"Exceeded {RATE_LIMIT_MAX_REQUESTS} requests/min on {path}"
+                            details=f"Exceeded {RATE_LIMIT_MAX_REQUESTS} auth reqs/min on {path}"
                         )
                         session.add(log_entry)
                         await session.commit()
                 except Exception as ex:
-                    logger.debug(f"Failed to log rate limit event: {ex}")
+                    logger.debug(f"Failed to log auth rate limit event: {ex}")
 
                 return Response(
                     content='{"detail": "Too many requests. Please slow down and try again later."}',
@@ -159,11 +181,21 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                     }
                 )
 
-        # 2. Check CSRF on state-changing methods (POST, PUT, DELETE, PATCH)
-        # Note: We exempt state-changing calls that do not require an active session
-        # or where a dedicated pre-auth CSRF token is verified.
-        # However, to meet strict requirements: "Add CSRF protection on all state-changing (POST/PUT/DELETE) endpoints"
-        # we enforce Double-Submit Cookie pattern for state-changing endpoints.
+        # B) General Public API endpoints (protect market data provider quotas: 120 req/min)
+        is_api_route = path.startswith("/api/") and path not in ("/api/health", "/api/healthz", "/api/csrf")
+        if is_api_route and not is_auth_route:
+            allowed, retry_after = public_api_rate_limiter.is_allowed(client_ip)
+            if not allowed:
+                logger.warning(f"Public API rate limit exceeded for IP: {client_ip} on path: {path}")
+                return Response(
+                    content='{"detail": "API rate limit exceeded. Please slow down your requests."}',
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "Content-Type": "application/json"
+                    }
+                )
+
         # 2. Check CSRF on state-changing methods (POST, PUT, DELETE, PATCH)
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
@@ -193,10 +225,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # 3. Ensure CSRF cookie is present on the client
-        # If client doesn't have a CSRF cookie yet, generate and set one
         if CSRF_COOKIE_NAME not in request.cookies:
             new_csrf_token = secrets.token_hex(32)
-            # SameSite=Strict, httpOnly=False so frontend JS can read and send it in X-CSRF-Token header
             is_secure = is_connection_secure(request)
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
@@ -207,6 +237,26 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 secure=is_secure,
                 samesite="strict"
             )
+
+        # 4. Inject Comprehensive HTTP Security Headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.plot.ly; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self' https:; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
+
+        if is_connection_secure(request):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
 
         return response
 

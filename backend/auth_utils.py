@@ -222,6 +222,17 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Wolfee Analytics <noreply@wolfee.com>")
 
+def get_app_base_url() -> str:
+    """Resolve base URL from APP_BASE_URL, RAILWAY_PUBLIC_DOMAIN, or localhost fallback."""
+    base_url = os.getenv("APP_BASE_URL")
+    if base_url:
+        return base_url.rstrip("/")
+    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+    if railway_domain:
+        return f"https://{railway_domain.rstrip('/')}"
+    return "http://localhost:8000"
+
+
 async def send_verification_email(to_email: str, raw_token: str, base_url: str = ""):
     """
     Send an email verification link.
@@ -229,7 +240,7 @@ async def send_verification_email(to_email: str, raw_token: str, base_url: str =
     Otherwise, logs the verification link to the console for development/staging.
     """
     if not base_url:
-        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+        base_url = get_app_base_url()
 
     verify_link = f"{base_url.rstrip('/')}/api/auth/verify-email?token={raw_token}"
     subject = "Verify your Wolfee Analytics account"
@@ -271,7 +282,7 @@ async def send_password_reset_email(to_email: str, raw_token: str, base_url: str
     Falls back to logger if SMTP is unconfigured.
     """
     if not base_url:
-        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+        base_url = get_app_base_url()
 
     reset_link = f"{base_url.rstrip('/')}/index.html?reset_token={raw_token}"
     subject = "Password Reset - Wolfee Analytics"

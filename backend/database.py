@@ -20,11 +20,18 @@ is_sqlite = DATABASE_URL.startswith("sqlite")
 
 engine_kwargs = {"echo": False}
 if not is_sqlite:
+    connect_args = {}
+    if "sslmode=" in DATABASE_URL:
+        import re
+        DATABASE_URL = re.sub(r'[\?\&]sslmode=[^&]+', '', DATABASE_URL)
+        connect_args["ssl"] = "require"
+
     engine_kwargs.update({
         "pool_size": 5,
         "max_overflow": 10,
         "pool_timeout": 30,
-        "pool_recycle": 1800
+        "pool_recycle": 1800,
+        "connect_args": connect_args
     })
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)

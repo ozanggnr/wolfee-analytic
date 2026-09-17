@@ -318,10 +318,12 @@ function renderSummaryCardUI(data) {
         const isUp = t.change_pct >= 0;
         const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
         const icon = isUp ? '▲' : '▼';
-        const curr = t.currency === 'TRY' ? '₺' : '$';
+        const safeSym = typeof escapeHTML === 'function' ? escapeHTML(t.symbol) : t.symbol;
+        const escSym = encodeURIComponent(t.symbol || '');
+        const escName = encodeURIComponent(t.name || t.symbol || '');
         return `
-            <div class="ticker-pill" onclick="if(typeof openModal === 'function') openModal({symbol:'${t.symbol}', name:'${t.name || t.symbol}'})">
-                <span class="pill-sym">${t.symbol}</span>
+            <div class="ticker-pill" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escSym}'), name:decodeURIComponent('${escName}')})">
+                <span class="pill-sym">${safeSym}</span>
                 <span class="pill-change" style="color:${color}">${icon} ${Math.abs(t.change_pct).toFixed(1)}%</span>
             </div>
         `;

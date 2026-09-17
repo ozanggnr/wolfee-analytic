@@ -50,6 +50,7 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+*.db
 
 # Node modules (if any)
 node_modules/
