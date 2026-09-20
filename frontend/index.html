@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="style.css?v=14.0">
+    <link rel="stylesheet" href="style.css?v=15.0">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -54,65 +54,83 @@
 
             <!-- Desktop Right Controls -->
             <div class="nav-right hidden-mobile">
-                <!-- Search -->
-                <div class="search-container">
-                    <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                    <input type="text" id="search-input" placeholder="Search stocks..." autocomplete="off">
-                    <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                    </button>
-                    <!-- Filter Popover -->
-                    <div id="filter-popover" class="filter-popover hidden">
-                        <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--nexa-accent);">Filter Market</h3>
-                        <div class="filter-grid-layout">
-                            <div class="filter-group">
-                                <label>Price Range (₺)</label>
-                                <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                                    <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
-                                    <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
+                <!-- Search & Filter Group -->
+                <div class="nav-search-group">
+                    <div class="search-container">
+                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                        <input type="text" id="search-input" placeholder="Search stocks..." autocomplete="off">
+                        <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        </button>
+                        <!-- Filter Popover -->
+                        <div id="filter-popover" class="filter-popover hidden">
+                            <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--nexa-accent);">Filter Market</h3>
+                            <div class="filter-grid-layout">
+                                <div class="filter-group">
+                                    <label>Price Range (₺)</label>
+                                    <div class="row-inputs" style="display:flex; gap:0.5rem;">
+                                        <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
+                                        <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
+                                    </div>
+                                </div>
+                                <div class="filter-group">
+                                    <label>Change % Range</label>
+                                    <div class="row-inputs" style="display:flex; gap:0.5rem;">
+                                        <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
+                                        <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="filter-group">
+                                    <label>Min Volume</label>
+                                    <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
                                 </div>
                             </div>
-                            <div class="filter-group">
-                                <label>Change % Range</label>
-                                <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                                    <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
-                                    <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
-                                </div>
-                            </div>
-                            <div class="filter-group">
-                                <label>Min Volume</label>
-                                <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
+                            <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
+                                <button onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply Filters</button>
+                                <button onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
                             </div>
                         </div>
-                        <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
-                            <button onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply Filters</button>
-                            <button onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
-                        </div>
+                        <div id="search-results" class="hidden"></div>
                     </div>
-                    <div id="search-results" class="hidden"></div>
                 </div>
 
-                <!-- Region Toggle -->
-                <div class="region-toggle-wrapper">
-                    <span id="region-label" class="region-label">TR</span>
-                    <label class="switch">
-                        <input type="checkbox" id="region-toggle" onchange="toggleRegion()">
-                        <span class="slider round"></span>
-                    </label>
+                <div class="nav-divider"></div>
+
+                <!-- Market & Status Controls Group -->
+                <div class="nav-status-group">
+                    <!-- Region Toggle -->
+                    <div class="region-toggle-wrapper" title="Switch Market (TR / Global)">
+                        <span id="region-label" class="region-label">TR</span>
+                        <label class="switch">
+                            <input type="checkbox" id="region-toggle" onchange="toggleRegion(this.checked)">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- Live Status -->
+                    <div id="live-status" class="live-status" title="Data Feed Live">
+                        <span id="live-dot" class="live-dot"></span>
+                        <span id="live-label">Live</span>
+                    </div>
                 </div>
 
-                <!-- Live Status -->
-                <div id="live-status" class="live-status">
-                    <span id="live-dot" class="live-dot"></span>
-                    <span id="live-label">Live</span>
-                </div>
+                <div class="nav-divider"></div>
 
                 <!-- Auth Status / Sign In Button -->
                 <div id="nav-auth-container" class="nav-auth-wrap"></div>
             </div>
 
-            <!-- Mobile Right: hamburger only -->
+            <!-- Mobile Right: quick controls & hamburger -->
             <div class="nav-mobile-right hidden-desktop">
+                <!-- Direct Mobile Region Switch -->
+                <div class="region-toggle-wrapper mobile-topbar-region" title="Switch Market">
+                    <span id="region-label-bar" class="region-label">TR</span>
+                    <label class="switch">
+                        <input type="checkbox" id="region-toggle-bar" onchange="toggleRegion(this.checked)">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+
                 <!-- Hamburger -->
                 <button class="hamburger-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Open menu" aria-expanded="false">
                     <span></span><span></span><span></span>
@@ -124,25 +142,28 @@
     <!-- Mobile Menu Drawer -->
     <div id="mobile-menu" class="mobile-menu" aria-hidden="true">
         <div class="mobile-menu-inner">
-            <button class="mobile-menu-close" onclick="toggleMobileMenu()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
-            <div class="mobile-menu-logo">
-                <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-m)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; padding: 4px; background: rgba(200,111,255,0.1); border: 1px solid rgba(200,111,255,0.3); border-radius: 50%;">
-                  <defs>
-                    <linearGradient id="logo-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stop-color="#c86fff" />
-                      <stop offset="100%" stop-color="#1c4eff" />
-                    </linearGradient>
-                  </defs>
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                </svg>
-                <span>Wolfee<span style="color:var(--nexa-accent)">.</span></span>
+            <div class="mobile-menu-header">
+                <div class="mobile-menu-logo">
+                    <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-m)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; padding: 4px; background: rgba(200,111,255,0.1); border: 1px solid rgba(200,111,255,0.3); border-radius: 50%;">
+                      <defs>
+                        <linearGradient id="logo-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stop-color="#c86fff" />
+                          <stop offset="100%" stop-color="#1c4eff" />
+                        </linearGradient>
+                      </defs>
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                    <span>Wolfee<span style="color:var(--nexa-accent)">.</span></span>
+                </div>
+                <button class="mobile-menu-close" onclick="toggleMobileMenu()" aria-label="Close menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
             <!-- Mobile Search -->
             <div class="mobile-menu-search-wrap">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
                 <input type="text" id="mobile-menu-search" placeholder="Search stocks..." autocomplete="off" class="mobile-menu-search-input">
+                <div id="mobile-search-results" class="mobile-search-results hidden"></div>
             </div>
             <nav class="mobile-nav-links">
                 <button class="mobile-nav-link tab-btn active" id="tab-market-m" onclick="switchTab('market'); toggleMobileMenu()">📈 Market</button>
@@ -150,16 +171,18 @@
                 <button class="mobile-nav-link tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities'); toggleMobileMenu()">🎯 Opportunities</button>
             </nav>
             <div class="mobile-menu-controls">
-                <div class="region-toggle-wrapper">
-                    <span id="region-label-m" class="region-label">TR</span>
-                    <label class="switch">
-                        <input type="checkbox" id="region-toggle-m" onchange="document.getElementById('region-toggle').checked = this.checked; toggleRegion()">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <div id="live-status-m" class="live-status">
-                    <span class="live-dot"></span>
-                    <span id="live-label-m">Live</span>
+                <div class="mobile-controls-row">
+                    <div class="region-toggle-wrapper">
+                        <span id="region-label-m" class="region-label">TR</span>
+                        <label class="switch">
+                            <input type="checkbox" id="region-toggle-m" onchange="toggleRegion(this.checked)">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div id="live-status-m" class="live-status">
+                        <span class="live-dot"></span>
+                        <span id="live-label-m">Live Feed</span>
+                    </div>
                 </div>
                 <div id="mobile-auth-container" class="mobile-auth-wrap"></div>
             </div>
@@ -446,14 +469,14 @@
     </div>
 
     <!-- ===== MODULAR SCRIPTS ===== -->
-    <script src="js/config.js?v=14.0"></script>
-    <script src="js/api.js?v=14.0"></script>
-    <script src="js/auth.js?v=14.0"></script>
-    <script src="js/ui.js?v=14.0"></script>
-    <script src="js/filter.js?v=14.0"></script>
-    <script src="js/chart.js?v=14.0"></script>
-    <script src="js/portfolio.js?v=14.0"></script>
-    <script src="js/main.js?v=14.0"></script>
+    <script src="js/config.js?v=15.0"></script>
+    <script src="js/api.js?v=15.0"></script>
+    <script src="js/auth.js?v=15.0"></script>
+    <script src="js/ui.js?v=15.0"></script>
+    <script src="js/filter.js?v=15.0"></script>
+    <script src="js/chart.js?v=15.0"></script>
+    <script src="js/portfolio.js?v=15.0"></script>
+    <script src="js/main.js?v=15.0"></script>
 
     <script>
         // Mobile Menu Toggle
@@ -468,34 +491,6 @@
             document.body.classList.toggle('no-scroll', isOpen);
         }
 
-        // Mobile search inside the mobile menu forwards to desktop search-input
-        document.addEventListener('DOMContentLoaded', () => {
-            const mobileSearch = document.getElementById('mobile-menu-search');
-            if (mobileSearch) {
-                mobileSearch.addEventListener('input', (e) => {
-                    const desktopInput = document.getElementById('search-input');
-                    if (desktopInput) {
-                        desktopInput.value = e.target.value;
-                        desktopInput.dispatchEvent(new Event('input'));
-                    }
-                });
-            }
-        });
-
-        // Override toggleRegion to also sync mobile region label
-        const _origToggleRegion = window.toggleRegion;
-        window.toggleRegion = function() {
-            if (_origToggleRegion) _origToggleRegion();
-            // Also sync the mobile toggle label
-            const toggle = document.getElementById('region-toggle');
-            const mLabel = document.getElementById('region-label-m');
-            const mToggle = document.getElementById('region-toggle-m');
-            if (toggle && mLabel) {
-                mLabel.innerText = toggle.checked ? 'GLOBAL' : 'TR';
-                mLabel.style.color = toggle.checked ? '#f87171' : '';
-            }
-            if (toggle && mToggle) mToggle.checked = toggle.checked;
-        };
 
         // Navbar scroll effect
         window.addEventListener('scroll', () => {

@@ -281,75 +281,118 @@ function processData(data) {
 }
 
 function initSearch() {
-    const searchInput = document.getElementById('search-input');
-    const searchResults = document.getElementById('search-results');
-    if (!searchInput || !searchResults) return;
-    
-    // Remove old listeners by cloning
-    const newInput = searchInput.cloneNode(true);
-    searchInput.parentNode.replaceChild(newInput, searchInput);
-    
-    newInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase().trim();
-        if (!query) { searchResults.classList.add('hidden'); return; }
+    function bindSearch(inputEl, resultsEl, isMobile = false) {
+        if (!inputEl || !resultsEl) return;
         
-        let matches = [];
-        if (typeof window.getFilteredStocks === 'function') {
-            matches = window.getFilteredStocks(allStocks, query);
-        } else {
-            const toggle = document.getElementById('region-toggle');
-            const isGlobalModeVal = toggle ? toggle.checked : false;
-            matches = allStocks.filter(stock => {
-                if (!stock.price || stock.price <= 0) return false;
-                const sym = stock.symbol || '';
-                const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
-                if (isGlobalModeVal !== isStockGlobal) return false;
-                return sym.toLowerCase().includes(query) || (stock.name || '').toLowerCase().includes(query);
-            });
-        }
+        // Remove old listeners by cloning
+        const newInput = inputEl.cloneNode(true);
+        inputEl.parentNode.replaceChild(newInput, inputEl);
         
-        if (matches.length > 0) {
-            searchResults.classList.remove('hidden');
-            searchResults.innerHTML = '';
-            matches.slice(0, 15).forEach(stock => {
-                const div = document.createElement('div');
-                div.className = 'search-result-item';
-                const currency = stock.currency === 'USD' ? '$' : '₺';
-                div.innerHTML = `
-                    <div>
-                        <div class="result-symbol">${(stock.symbol||'').replace('.IS', '')}</div>
-                        <div class="result-name">${stock.name || stock.symbol}</div>
-                    </div>
-                    <div class="result-price" style="color:${(stock.change_pct||0) >= 0 ? '#4ade80' : '#f87171'}">
-                        ${(stock.price||0).toFixed(2)} ${currency}
-                    </div>
-                `;
-                div.onclick = () => { openModal(stock); searchResults.classList.add('hidden'); newInput.value = ''; };
-                searchResults.appendChild(div);
-            });
-        } else {
-            searchResults.innerHTML = '<div class="search-result-item" style="color:var(--text-secondary)">No results found</div>';
-            searchResults.classList.remove('hidden');
-        }
-    });
-    
-    document.addEventListener('click', (e) => {
-        if (!newInput.contains(e.target) && !searchResults.contains(e.target)) {
-            searchResults.classList.add('hidden');
-        }
-    });
+        newInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            if (!query) { resultsEl.classList.add('hidden'); return; }
+            
+            let matches = [];
+            if (typeof window.getFilteredStocks === 'function') {
+                matches = window.getFilteredStocks(allStocks, query);
+            } else {
+                const toggle = document.getElementById('region-toggle') || document.getElementById('region-toggle-bar');
+                const isGlobalModeVal = toggle ? toggle.checked : false;
+                matches = allStocks.filter(stock => {
+                    if (!stock.price || stock.price <= 0) return false;
+                    const sym = stock.symbol || '';
+                    const isStockGlobal = !sym.endsWith('.IS') && stock.market_type !== 'BIST';
+                    if (isGlobalModeVal !== isStockGlobal) return false;
+                    return sym.toLowerCase().includes(query) || (stock.name || '').toLowerCase().includes(query);
+                });
+            }
+            
+            if (matches.length > 0) {
+                resultsEl.classList.remove('hidden');
+                resultsEl.innerHTML = '';
+                matches.slice(0, 15).forEach(stock => {
+                    const div = document.createElement('div');
+                    div.className = 'search-result-item';
+                    const currency = stock.currency === 'USD' ? '$' : '₺';
+                    div.innerHTML = `
+                        <div>
+                            <div class="result-symbol">${(stock.symbol||'').replace('.IS', '')}</div>
+                            <div class="result-name">${stock.name || stock.symbol}</div>
+                        </div>
+                        <div class="result-price" style="color:${(stock.change_pct||0) >= 0 ? '#4ade80' : '#f87171'}">
+                            ${(stock.price||0).toFixed(2)} ${currency}
+                        </div>
+                    `;
+                    div.onclick = () => { 
+                        openModal(stock); 
+                        resultsEl.classList.add('hidden'); 
+                        newInput.value = ''; 
+                        if (isMobile && typeof toggleMobileMenu === 'function') {
+                            toggleMobileMenu();
+                        }
+                    };
+                    resultsEl.appendChild(div);
+                });
+            } else {
+                resultsEl.innerHTML = '<div class="search-result-item" style="color:var(--text-secondary)">No results found</div>';
+                resultsEl.classList.remove('hidden');
+            }
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!newInput.contains(e.target) && !resultsEl.contains(e.target)) {
+                resultsEl.classList.add('hidden');
+            }
+        });
+    }
+
+    // Bind desktop search
+    bindSearch(document.getElementById('search-input'), document.getElementById('search-results'), false);
+
+    // Bind mobile drawer search
+    bindSearch(document.getElementById('mobile-menu-search'), document.getElementById('mobile-search-results'), true);
 }
 
-// Region toggle
-window.toggleRegion = function() {
-    const toggle = document.getElementById('region-toggle');
-    const label = document.getElementById('region-label');
-    if (toggle && label) {
-        label.innerText = toggle.checked ? 'GLOBAL' : 'TR';
-        label.style.color = toggle.checked ? '#f87171' : '#38bdf8';
+// Universal synchronized Region Toggle across Desktop navbar, Mobile topbar, and Mobile drawer
+window.toggleRegion = function(forcedChecked = null) {
+    const desktopToggle = document.getElementById('region-toggle');
+    const mobileBarToggle = document.getElementById('region-toggle-bar');
+    const mobileDrawerToggle = document.getElementById('region-toggle-m');
+
+    let isGlobal;
+    if (typeof forcedChecked === 'boolean') {
+        isGlobal = forcedChecked;
+    } else if (desktopToggle && document.activeElement === desktopToggle) {
+        isGlobal = desktopToggle.checked;
+    } else if (mobileBarToggle && document.activeElement === mobileBarToggle) {
+        isGlobal = mobileBarToggle.checked;
+    } else if (mobileDrawerToggle && document.activeElement === mobileDrawerToggle) {
+        isGlobal = mobileDrawerToggle.checked;
+    } else if (desktopToggle) {
+        isGlobal = desktopToggle.checked;
+    } else {
+        isGlobal = false;
     }
+
+    // Synchronize all checkbox states
+    if (desktopToggle) desktopToggle.checked = isGlobal;
+    if (mobileBarToggle) mobileBarToggle.checked = isGlobal;
+    if (mobileDrawerToggle) mobileDrawerToggle.checked = isGlobal;
+
+    // Synchronize all label texts and colors
+    const labelText = isGlobal ? 'GLOBAL' : 'TR';
+    const labelColor = isGlobal ? '#f87171' : '#38bdf8';
+
+    ['region-label', 'region-label-bar', 'region-label-m'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.innerText = labelText;
+            el.style.color = labelColor;
+        }
+    });
+
     processData({ stocks: allStocks });
-}
+};
 
 // Refresh
 window.refreshMarket = async function() {
