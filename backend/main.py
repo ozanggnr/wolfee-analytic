@@ -10,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response, FileResponse
 from sqlalchemy import select, desc, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import init_db, AsyncSessionLocal, engine
-from models import StockData, TurkishGold, ExchangeRate, AIInsight
+from database import init_db, AsyncSessionLocal, engine, get_db
+from models import StockData, TurkishGold, ExchangeRate, AIInsight, WatchlistItem
 from analysis import (
     analyze_stock, get_market_opportunities, get_bulk_analysis,
     BIST_SYMBOLS, GLOBAL_SYMBOLS, COMMODITIES_SYMBOLS
@@ -20,9 +21,10 @@ from analysis import (
 from ai_service import get_market_insight, get_stock_analysis
 from workers import refresh_all_data, start_periodic_refresh
 
-from security_middleware import SecurityMiddleware
+from security_middleware import SecurityMiddleware, get_optional_user
 import auth_routes
 import watchlist_routes
+from watchlist_routes import _enrich_watchlist_tickers
 
 # Configure logging
 logging.basicConfig(
@@ -591,10 +593,14 @@ async def get_opportunities_alias():
 # ============================================================
 
 @app.post("/api/export/portfolio")
-async def export_portfolio_post(payload: dict = Body(...)):
+async def export_portfolio_post(
+    request: Request,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    Export portfolio stocks to Excel using pre-fetched stock data sent from the frontend.
-    This avoids re-fetching live data (which can fail) and uses the already-cached session data.
+    Export portfolio stocks to Excel using pre-fetched stock data sent from the frontend,
+    or fallback to querying the authenticated user's database watchlist.
     """
     try:
         period = payload.get("period", "weekly")
@@ -602,13 +608,27 @@ async def export_portfolio_post(payload: dict = Body(...)):
 
         if period not in ["daily", "weekly", "monthly"]:
             raise HTTPException(status_code=400, detail="Invalid period")
+
+        # If frontend didn't pass stocks or passed an empty list, query user's watchlist from DB
         if not stocks:
-            raise HTTPException(status_code=400, detail="No stock data provided")
+            user = await get_optional_user(request, db)
+            if user:
+                result = await db.execute(
+                    select(WatchlistItem).where(WatchlistItem.user_id == user.id)
+                )
+                items = result.scalars().all()
+                if items:
+                    stocks = await _enrich_watchlist_tickers(db, items)
+
+        if not stocks:
+            raise HTTPException(status_code=400, detail="No stock data provided and your watchlist is empty.")
 
         today = datetime.now().strftime("%Y-%m-%d")
         results = []
 
         for stock in stocks:
+            sym = stock.get('symbol') or stock.get('ticker') or ''
+            name = stock.get('name') or sym
             price = stock.get('price', 0) or 0
             change_p = stock.get('change_pct', 0) or 0
             change_amt = price * (change_p / 100) if price else 0
@@ -628,9 +648,9 @@ async def export_portfolio_post(payload: dict = Body(...)):
                     trend = "➖ Stable"
 
             results.append({
-                "Symbol": stock.get('symbol', ''),
+                "Symbol": sym,
                 "Currency": stock.get('currency', 'USD') or 'USD',
-                "Name": stock.get('name', stock.get('symbol', '')),
+                "Name": name,
                 "Report Period": period.capitalize(),
                 "Analysis Date": today,
                 "Trend": trend,

@@ -368,42 +368,41 @@ window.refreshMarket = async function() {
     }
 }
 
-// Export
+// Portfolio Excel Export
 window.triggerExport = async function(period) {
     const btnContent = document.querySelector(`.export-card[onclick="triggerExport('${period}')"]`);
     const originalHTML = btnContent ? btnContent.innerHTML : '';
     if (btnContent) btnContent.innerHTML = '<div class="export-icon">⏳</div><div class="export-info"><h3>Exporting...</h3></div>';
     
     try {
-        const portfolioView = document.getElementById('portfolio-view');
-        const isPortfolioActive = portfolioView && !portfolioView.classList.contains('hidden');
-
-        let response;
-
-        if (isPortfolioActive) {
-            // Send full cached stock objects via POST — avoids backend re-fetching live data
-            const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
-            if (portfolio.length === 0) { 
-                alert('Portfolio is empty!'); 
-                if (btnContent) btnContent.innerHTML = originalHTML; 
-                return; 
-            }
-            response = await fetch(`${API_URL}/api/export/portfolio`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ period, stocks: portfolio })
-            });
-        } else {
-            response = await fetch(`${API_URL}/api/export/${period}`);
+        const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
+        if (portfolio.length === 0 && !window.currentUser) {
+            alert('Your portfolio is empty! Add some stocks before exporting.');
+            if (btnContent) btnContent.innerHTML = originalHTML;
+            return;
         }
 
-        if (!response.ok) throw new Error('Export failed');
+        const fetchFn = window.authFetch || fetch;
+        const response = await fetchFn(`${API_URL}/api/export/portfolio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ period, stocks: portfolio })
+        });
+
+        if (!response.ok) {
+            let detail = 'Export failed';
+            try {
+                const errData = await response.json();
+                if (errData && errData.detail) detail = errData.detail;
+            } catch (e) {}
+            throw new Error(detail);
+        }
         
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = isPortfolioActive ? `portfolio_${period}.xlsx` : `market_${period}.xlsx`;
+        a.download = `portfolio_${period}.xlsx`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -416,6 +415,7 @@ window.triggerExport = async function(period) {
         }, 1500);
     } catch (error) {
         console.error('Export error:', error);
+        alert(error.message || 'Failed to generate portfolio export file.');
         if (btnContent) btnContent.innerHTML = '<div class="export-icon">❌</div><div class="export-info"><h3>Failed</h3></div>';
         setTimeout(() => { if (btnContent) btnContent.innerHTML = originalHTML; }, 2000);
     }

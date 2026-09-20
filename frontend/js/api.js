@@ -75,60 +75,6 @@ async function loadOpportunities() {
     } catch (e) { console.error(e); }
 }
 
-async function triggerExport(period) {
-    const btnContent = document.querySelector(`.export-card[onclick="triggerExport('${period}')"]`);
-    const originalHTML = btnContent ? btnContent.innerHTML : '';
-    if (btnContent) btnContent.innerHTML = '<div class="export-icon">⏳</div><div class="export-info"><h3>Exporting...</h3></div>';
-
-    try {
-        // Check if we're on Portfolio tab
-        const portfolioView = document.getElementById('portfolio-view');
-        const isPortfolioActive = portfolioView && !portfolioView.classList.contains('hidden');
-
-        let response;
-
-        if (isPortfolioActive) {
-            // Export only portfolio stocks — send full stock objects via POST
-            const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
-            if (portfolio.length === 0) {
-                alert('Your portfolio is empty! Add some stocks first.');
-                if (btnContent) btnContent.innerHTML = originalHTML;
-                return;
-            }
-
-            response = await fetch(`${API_URL}/api/export/portfolio`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ period, stocks: portfolio })
-            });
-        } else {
-            response = await fetch(`${API_URL}/api/export/${period}`);
-        }
-
-        if (!response.ok) throw new Error('Export failed');
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = isPortfolioActive ? `portfolio_${period}.xlsx` : `market_${period}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-
-        if (btnContent) btnContent.innerHTML = '<div class="export-icon">✅</div><div class="export-info"><h3>Downloaded!</h3></div>';
-        setTimeout(() => {
-            if (btnContent) btnContent.innerHTML = originalHTML;
-            if (typeof closeExportModal === 'function') closeExportModal();
-        }, 1500);
-    } catch (error) {
-        console.error('Export error:', error);
-        if (btnContent) btnContent.innerHTML = '<div class="export-icon">❌</div><div class="export-info"><h3>Failed</h3></div>';
-        setTimeout(() => { if (btnContent) btnContent.innerHTML = originalHTML; }, 2000);
-    }
-}
-
 // Refresh Button Logic
 window.refreshMarket = function () {
     // Clear ALL cache keys

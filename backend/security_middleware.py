@@ -208,12 +208,14 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 "/api/auth/forgot-password",
                 "/api/auth/resend-verification",
                 "/api/auth/reset-password",
-                "/api/export/portfolio",
             ])
+            # Safe read/export calculation endpoint that does not mutate any user or database state
+            is_safe_export_route = (path == "/api/export/portfolio")
 
             # Strictly require matching X-CSRF-Token header whenever a session cookie is present,
-            # or for all non-pre-auth state-changing mutations (e.g. /api/watchlist, /api/auth/logout)
-            if session_cookie or (not is_pre_auth_route and csrf_cookie):
+            # or for all non-pre-auth state-changing mutations (e.g. /api/watchlist, /api/auth/logout).
+            # Read-only report export is exempt from mutation CSRF requirements.
+            if not is_safe_export_route and (session_cookie or (not is_pre_auth_route and csrf_cookie)):
                 if not csrf_header or not csrf_cookie or not secrets.compare_digest(csrf_header, csrf_cookie):
                     logger.warning(f"CSRF validation failed for IP {client_ip} on {request.method} {path}")
                     return Response(

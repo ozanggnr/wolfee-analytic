@@ -107,12 +107,6 @@
                     <span id="live-label">Live</span>
                 </div>
 
-                <!-- Export Button (gradient pill) -->
-                <button id="export-btn" class="gradient-btn" onclick="openExportModal()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Export
-                </button>
-
                 <!-- Auth Status / Sign In Button -->
                 <div id="nav-auth-container" class="nav-auth-wrap"></div>
             </div>
@@ -154,7 +148,6 @@
                 <button class="mobile-nav-link tab-btn active" id="tab-market-m" onclick="switchTab('market'); toggleMobileMenu()">📈 Market</button>
                 <button class="mobile-nav-link tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio'); toggleMobileMenu()">💼 Portfolio</button>
                 <button class="mobile-nav-link tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities'); toggleMobileMenu()">🎯 Opportunities</button>
-                <button class="mobile-nav-link" onclick="openExportModal(); toggleMobileMenu()">📊 Export Excel</button>
             </nav>
             <div class="mobile-menu-controls">
                 <div class="region-toggle-wrapper">
@@ -241,6 +234,10 @@
                         <input type="text" id="portfolio-add-input" placeholder="Add ticker to watchlist (e.g. THYAO, NVDA, AAPL)..." onkeydown="if(event.key==='Enter') addTickerFromPortfolioInput()">
                     </div>
                     <button class="gradient-btn" onclick="addTickerFromPortfolioInput()">+ Add Ticker</button>
+                    <button id="portfolio-export-btn" class="gradient-btn" onclick="openExportModal()" title="Export Portfolio to Excel">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export
+                    </button>
                 </div>
 
                 <div id="portfolio-grid" class="stock-grid-style">
@@ -273,8 +270,8 @@
         <div class="modal-content export-content">
             <span class="close-modal" onclick="closeExportModal()">&times;</span>
             <div class="modal-header-badge">📊 Export</div>
-            <h2 style="margin: 0.5rem 0 0.5rem;">Market Analysis Export</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.9rem;">Select a time period for your detailed Excel export:</p>
+            <h2 style="margin: 0.5rem 0 0.5rem;">Portfolio & Watchlist Export</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.9rem;">Select a time period to export your tracked stocks to Excel:</p>
             <div class="export-options">
                 <button class="export-card" onclick="triggerExport('daily')">
                     <div class="export-icon">📅</div>
