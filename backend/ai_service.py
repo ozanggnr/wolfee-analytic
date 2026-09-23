@@ -8,12 +8,61 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-FALLBACK_MODELS = [DEFAULT_MODEL, "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+FALLBACK_MODELS = [
+    DEFAULT_MODEL,
+    "gemini-3.6-flash",
+    "gemini-3.1-pro-preview",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-exp",
+    "gemini-2.5-flash",
+]
+
+_working_gemini_model: Optional[str] = None
+_discovered_models: Optional[list[str]] = None
+
+
+def _get_candidate_models(genai) -> list[str]:
+    """Get sorted candidate models, trying dynamic listing first."""
+    global _working_gemini_model, _discovered_models
+
+    if _working_gemini_model:
+        return [_working_gemini_model]
+
+    if _discovered_models is None:
+        try:
+            available = []
+            for m in genai.list_models():
+                methods = getattr(m, "supported_generation_methods", []) or []
+                if "generateContent" in methods:
+                    name = m.name.replace("models/", "")
+                    available.append(name)
+            if available:
+                def model_rank(m_name: str) -> int:
+                    m_lower = m_name.lower()
+                    if "3.6-flash" in m_lower: return 0
+                    if "3.1-pro" in m_lower: return 1
+                    if "2.0-flash" in m_lower: return 2
+                    if "flash" in m_lower: return 3
+                    if "pro" in m_lower: return 4
+                    return 5
+                available.sort(key=model_rank)
+                _discovered_models = available
+                logger.info(f"Discovered {len(available)} available Gemini models. Preferred: {_discovered_models[:3]}")
+        except Exception as e:
+            logger.debug(f"Dynamic Gemini model discovery failed: {e}")
+            _discovered_models = []
+
+    if _discovered_models:
+        return _discovered_models
+
+    seen = set()
+    return [m for m in FALLBACK_MODELS if m and not (m in seen or seen.add(m))]
 
 
 def _generate_with_gemini(prompt: str) -> Optional[str]:
-    """Attempt generation across supported Gemini models with fallback."""
+    """Attempt generation across supported Gemini models with fallback and working-model caching."""
+    global _working_gemini_model
     if not GEMINI_API_KEY:
         return None
     try:
@@ -23,21 +72,27 @@ def _generate_with_gemini(prompt: str) -> Optional[str]:
         logger.error(f"Gemini configure error: {e}")
         return None
 
-    # Deduplicate while preserving order
-    seen = set()
-    models_to_try = [m for m in FALLBACK_MODELS if not (m in seen or seen.add(m))]
+    models_to_try = _get_candidate_models(genai)
+    last_err = None
 
     for model_name in models_to_try:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             if response and response.text:
+                if _working_gemini_model != model_name:
+                    _working_gemini_model = model_name
+                    logger.info(f"Gemini successfully generated content using model: {model_name}")
                 return response.text
         except Exception as e:
-            logger.warning(f"Gemini generation with model {model_name} failed: {e}")
+            last_err = e
+            # If the cached working model failed, invalidate cache and try others
+            if _working_gemini_model == model_name:
+                _working_gemini_model = None
+            logger.debug(f"Gemini model {model_name} failed: {e}")
             continue
 
-    logger.error("All Gemini model attempts failed.")
+    logger.warning(f"All Gemini model attempts failed (last error: {last_err})")
     return None
 
 
@@ -48,7 +103,8 @@ def _get_model():
         if not GEMINI_API_KEY:
             return None
         genai.configure(api_key=GEMINI_API_KEY)
-        return genai.GenerativeModel(DEFAULT_MODEL)
+        model_name = _working_gemini_model or DEFAULT_MODEL
+        return genai.GenerativeModel(model_name)
     except Exception as e:
         logger.error(f"Gemini init error: {e}")
         return None

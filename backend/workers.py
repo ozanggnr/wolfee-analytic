@@ -2,8 +2,10 @@ import os
 import asyncio
 import logging
 import time
-from datetime import datetime
-from sqlalchemy import select, delete
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from typing import Optional
+from sqlalchemy import select, delete, func, desc
 from database import AsyncSessionLocal
 from models import StockData, TurkishGold, ExchangeRate, AIInsight
 
@@ -13,52 +15,146 @@ logger = logging.getLogger(__name__)
 _refresh_running = False
 _last_refresh_time = 0
 MIN_REFRESH_INTERVAL_SECONDS = 90  # Don't refresh more than once per 90s
+AI_INSIGHT_CACHE_HOURS = int(os.getenv("AI_INSIGHT_CACHE_HOURS", "4"))
 
-async def refresh_all_data():
-    """Master refresh function — called every 10 minutes or on manual refresh"""
+
+def is_bist_open(dt: Optional[datetime] = None) -> bool:
+    """Borsa Istanbul: Monday to Friday 09:55 to 18:30 Istanbul time (UTC+3)."""
+    tz = ZoneInfo("Europe/Istanbul")
+    now = dt.astimezone(tz) if (dt and dt.tzinfo) else (datetime.now(tz) if not dt else dt.replace(tzinfo=tz))
+    if now.weekday() >= 5:  # Saturday (5) or Sunday (6)
+        return False
+    t = now.time()
+    return (t.hour > 9 or (t.hour == 9 and t.minute >= 55)) and (t.hour < 18 or (t.hour == 18 and t.minute <= 30))
+
+
+def is_us_market_open(dt: Optional[datetime] = None) -> bool:
+    """US Markets (NYSE/NASDAQ): Monday to Friday 09:25 to 16:30 US Eastern time."""
+    tz = ZoneInfo("America/New_York")
+    now = dt.astimezone(tz) if (dt and dt.tzinfo) else (datetime.now(tz) if not dt else dt.replace(tzinfo=tz))
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    return (t.hour > 9 or (t.hour == 9 and t.minute >= 25)) and (t.hour < 16 or (t.hour == 16 and t.minute <= 30))
+
+
+def is_commodities_open(dt: Optional[datetime] = None) -> bool:
+    """Global commodities (CME/ICE): Sunday 18:00 ET to Friday 17:00 ET."""
+    tz = ZoneInfo("America/New_York")
+    now = dt.astimezone(tz) if (dt and dt.tzinfo) else (datetime.now(tz) if not dt else dt.replace(tzinfo=tz))
+    weekday = now.weekday()
+    t = now.time()
+    if weekday == 5:  # Saturday
+        return False
+    if weekday == 6 and t.hour < 18:  # Sunday before 18:00 ET
+        return False
+    if weekday == 4 and (t.hour > 17 or (t.hour == 17 and t.minute > 0)):  # Friday after 17:00 ET
+        return False
+    return True
+
+
+def is_turkish_gold_and_fx_active(dt: Optional[datetime] = None) -> bool:
+    """Turkish Gold & TCMB FX: Monday to Friday 09:00 to 18:30 TRT."""
+    tz = ZoneInfo("Europe/Istanbul")
+    now = dt.astimezone(tz) if (dt and dt.tzinfo) else (datetime.now(tz) if not dt else dt.replace(tzinfo=tz))
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    return 9 <= t.hour < 19
+
+
+async def refresh_all_data(force: bool = False):
+    """
+    Master refresh function — market-aware scheduling.
+    Only refreshes active markets unless force=True or database is uninitialized.
+    """
     global _refresh_running, _last_refresh_time
 
     if _refresh_running:
         logger.info("Refresh already in progress, skipping...")
         return False
 
-    # Throttle: don't allow refreshes faster than MIN_REFRESH_INTERVAL_SECONDS
     now = time.time()
-    if now - _last_refresh_time < MIN_REFRESH_INTERVAL_SECONDS:
+    if not force and (now - _last_refresh_time < MIN_REFRESH_INTERVAL_SECONDS):
         logger.info(f"Refresh throttled — last refresh was {now - _last_refresh_time:.0f}s ago")
         return False
-    
+
+    # Check baseline data counts in DB
+    async with AsyncSessionLocal() as session:
+        bist_count = (await session.execute(
+            select(func.count(StockData.id)).where(StockData.market_type == 'BIST')
+        )).scalar() or 0
+        global_count = (await session.execute(
+            select(func.count(StockData.id)).where(StockData.market_type == 'GLOBAL')
+        )).scalar() or 0
+        comm_count = (await session.execute(
+            select(func.count(StockData.id)).where(StockData.market_type == 'COMMODITY')
+        )).scalar() or 0
+        gold_count = (await session.execute(
+            select(func.count(TurkishGold.id))
+        )).scalar() or 0
+        exchange_count = (await session.execute(
+            select(func.count(ExchangeRate.id))
+        )).scalar() or 0
+
+    bist_active = force or is_bist_open() or bist_count == 0
+    us_active = force or is_us_market_open() or global_count == 0
+    comm_active = force or is_commodities_open() or comm_count == 0
+    gold_active = force or is_turkish_gold_and_fx_active() or gold_count == 0
+    exchange_active = force or is_turkish_gold_and_fx_active() or exchange_count == 0
+
+    if not (bist_active or us_active or comm_active or gold_active or exchange_active):
+        logger.info("⏸️ All markets closed & baseline data present — skipping background refresh.")
+        return True
+
     _refresh_running = True
-    logger.info("🔄 Starting full data refresh...")
     start_time = time.time()
-    
+
+    tasks = []
+    task_labels = []
+
+    if bist_active:
+        tasks.append(refresh_bist_stocks())
+        task_labels.append('BIST')
+    else:
+        logger.debug("⏸️ BIST closed — skipping BIST refresh")
+
+    if us_active:
+        tasks.append(refresh_global_stocks())
+        task_labels.append('Global')
+    else:
+        logger.debug("⏸️ US market closed — skipping Global refresh")
+
+    if comm_active:
+        tasks.append(refresh_commodities())
+        task_labels.append('Commodities')
+
+    if gold_active:
+        tasks.append(refresh_turkish_gold())
+        task_labels.append('Gold')
+
+    if exchange_active:
+        tasks.append(refresh_exchange_rates())
+        task_labels.append('Exchange')
+
+    logger.info(f"🔄 Starting refresh for active markets: {', '.join(task_labels)}...")
+
     try:
-        # Run all refreshes concurrently where possible
-        results = await asyncio.gather(
-            refresh_bist_stocks(),
-            refresh_global_stocks(),
-            refresh_commodities(),
-            refresh_turkish_gold(),
-            refresh_exchange_rates(),
-            return_exceptions=True
-        )
-        
-        # Log results
-        labels = ['BIST', 'Global', 'Commodities', 'Gold', 'Exchange']
-        for label, result in zip(labels, results):
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for label, result in zip(task_labels, results):
             if isinstance(result, Exception):
                 logger.error(f"{label} refresh failed: {result}")
             else:
                 logger.info(f"{label} refresh: {result} items")
-        
-        # Refresh AI insight (depends on stock data being fresh)
-        await refresh_ai_insight()
-        
+
+        # Refresh AI insight only if stock data was refreshed or forced
+        if bist_active or us_active or force:
+            await refresh_ai_insight(force=force)
+
         elapsed = time.time() - start_time
         _last_refresh_time = time.time()
-        logger.info(f"✅ Full refresh complete in {elapsed:.1f}s")
+        logger.info(f"✅ Refresh complete in {elapsed:.1f}s")
         return True
-        
     except Exception as e:
         logger.error(f"Full refresh error: {e}")
         return False
@@ -219,17 +315,36 @@ async def refresh_exchange_rates() -> int:
         logger.error(f"Exchange rate refresh error: {e}")
         return 0
 
-async def refresh_ai_insight() -> bool:
-    """Generate fresh AI insight"""
+async def refresh_ai_insight(force: bool = False) -> bool:
+    """Generate fresh AI insight with caching (max once per AI_INSIGHT_CACHE_HOURS, default 4h)"""
     try:
-        # Get current stock data from DB
         async with AsyncSessionLocal() as session:
+            # Check latest insight age
+            if not force:
+                latest_res = await session.execute(
+                    select(AIInsight)
+                    .where(AIInsight.insight_type == 'daily')
+                    .order_by(desc(AIInsight.created_at))
+                    .limit(1)
+                )
+                latest_insight = latest_res.scalar_one_or_none()
+                if latest_insight and latest_insight.created_at:
+                    created_at = latest_insight.created_at
+                    now_utc = datetime.now(timezone.utc)
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=timezone.utc)
+                    age_hours = (now_utc - created_at).total_seconds() / 3600.0
+                    if age_hours < AI_INSIGHT_CACHE_HOURS:
+                        logger.info(f"ℹ️ AI insight is fresh ({age_hours:.1f}h old < {AI_INSIGHT_CACHE_HOURS}h) — skipping regeneration.")
+                        return True
+
+            # Get current stock data from DB
             result = await session.execute(select(StockData))
             stocks = result.scalars().all()
-            
+
             if not stocks:
                 return False
-            
+
             market_data = [{
                 'symbol': s.symbol,
                 'name': s.name,
@@ -243,18 +358,26 @@ async def refresh_ai_insight() -> bool:
                 'day_low': s.day_low,
                 'previous_close': s.previous_close
             } for s in stocks]
-            
+
             from ai_service import get_market_insight
             insight_text = await asyncio.to_thread(get_market_insight, market_data)
-            
+
             # Save to DB
             insight = AIInsight(
                 insight_type='daily',
                 insight_text=insight_text
             )
             session.add(insight)
+
+            # Prune old insights beyond latest 10 to keep database compact
+            subq = select(AIInsight.id).where(AIInsight.insight_type == 'daily').order_by(desc(AIInsight.created_at)).offset(10)
+            old_ids = (await session.execute(subq)).scalars().all()
+            if old_ids:
+                await session.execute(delete(AIInsight).where(AIInsight.id.in_(old_ids)))
+
             await session.commit()
-            
+            logger.info("✅ Generated fresh AI market insight.")
+
         return True
     except Exception as e:
         logger.error(f"AI insight refresh error: {e}")
@@ -374,19 +497,22 @@ async def _upsert_stock(session, data: dict):
         )
         session.add(stock)
 
-async def start_periodic_refresh(interval_minutes: int = 10):
-    """Start the periodic refresh loop"""
+async def start_periodic_refresh(interval_minutes: int = 30):
+    """Start the periodic refresh loop with intelligent market-aware scheduling"""
     interval_env = os.getenv("REFRESH_INTERVAL_MINUTES")
     if interval_env:
         try:
             interval_minutes = int(interval_env)
         except ValueError:
             pass
-    logger.info(f"Starting periodic refresh every {interval_minutes} minutes")
-    
-    # Initial refresh on startup
-    await refresh_all_data()
-    
+    logger.info(f"Starting market-aware periodic refresh (interval: {interval_minutes} min)")
+
+    # Initial refresh on startup (loads baseline data if DB is empty)
+    await refresh_all_data(force=False)
+
     while True:
         await asyncio.sleep(interval_minutes * 60)
-        await refresh_all_data()
+        try:
+            await refresh_all_data(force=False)
+        except Exception as e:
+            logger.error(f"Error in periodic refresh cycle: {e}")

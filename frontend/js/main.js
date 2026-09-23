@@ -2,7 +2,20 @@
 let allStocks = [];
 let currentSymbol = null;
 let _pollInterval = null;
-const POLL_INTERVAL_MS = 30000; // 30 seconds
+const POLL_INTERVAL_MS = 60000; // 60 seconds
+
+// Pause auto-polling when browser tab is inactive to reduce bandwidth and server load
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (_pollInterval) {
+            clearInterval(_pollInterval);
+            _pollInterval = null;
+        }
+    } else {
+        pollForUpdates();
+        startAutoPoll();
+    }
+});
 
 async function init() {
     const loader = document.getElementById('loader');

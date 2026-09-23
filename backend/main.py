@@ -33,6 +33,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress noisy 3rd-party HTTP client logs to eliminate console clutter
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("yfinance").setLevel(logging.WARNING)
+
 # ============================================================
 # APP LIFECYCLE
 # ============================================================
@@ -46,10 +52,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ Database initialized")
 
-    # Start background refresh worker (10 min default, configurable via REFRESH_INTERVAL_MINUTES)
-    refresh_interval = int(os.getenv("REFRESH_INTERVAL_MINUTES", "10"))
+    # Start background refresh worker (30 min default, configurable via REFRESH_INTERVAL_MINUTES)
+    refresh_interval = int(os.getenv("REFRESH_INTERVAL_MINUTES", "30"))
     refresh_task = asyncio.create_task(start_periodic_refresh(interval_minutes=refresh_interval))
-    logger.info(f"✅ Background refresh worker started (every {refresh_interval} min)")
+    logger.info(f"✅ Background refresh worker started (every {refresh_interval} min, market-aware)")
 
     yield
 
@@ -564,12 +570,12 @@ async def trigger_refresh_get(background_tasks: BackgroundTasks):
     return {"status": "Refresh triggered"}
 
 
-def _sync_refresh():
+def _sync_refresh(force: bool = True):
     """Run async refresh in sync context (for BackgroundTasks)."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(refresh_all_data())
+        loop.run_until_complete(refresh_all_data(force=force))
     finally:
         loop.close()
 

@@ -213,3 +213,72 @@ def test_portfolio_export_empty_watchlist_returns_400():
     assert res.status_code == 400
     assert "watchlist is empty" in res.json()["detail"].lower()
 
+
+def test_market_hours_schedule():
+    """Verify market hours logic correctly detects active vs closed sessions."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    from workers import is_bist_open, is_us_market_open, is_commodities_open, is_turkish_gold_and_fx_active
+
+    tr_tz = ZoneInfo("Europe/Istanbul")
+    ny_tz = ZoneInfo("America/New_York")
+
+    # BIST tests (Mon-Fri 09:55 - 18:30 TRT)
+    wed_open_tr = datetime(2026, 9, 23, 14, 0, tzinfo=tr_tz)
+    assert is_bist_open(wed_open_tr) is True
+
+    wed_closed_tr = datetime(2026, 9, 23, 3, 0, tzinfo=tr_tz)
+    assert is_bist_open(wed_closed_tr) is False
+
+    sat_tr = datetime(2026, 9, 26, 14, 0, tzinfo=tr_tz)
+    assert is_bist_open(sat_tr) is False
+
+    # US Market tests (Mon-Fri 09:25 - 16:30 ET)
+    wed_open_ny = datetime(2026, 9, 23, 11, 0, tzinfo=ny_tz)
+    assert is_us_market_open(wed_open_ny) is True
+
+    wed_closed_ny = datetime(2026, 9, 23, 8, 0, tzinfo=ny_tz)
+    assert is_us_market_open(wed_closed_ny) is False
+
+    sun_ny = datetime(2026, 9, 27, 14, 0, tzinfo=ny_tz)
+    assert is_us_market_open(sun_ny) is False
+
+    # Commodities tests (Sun 18:00 to Fri 17:00 ET)
+    sun_comm_open = datetime(2026, 9, 27, 19, 0, tzinfo=ny_tz)
+    assert is_commodities_open(sun_comm_open) is True
+
+    sat_comm_closed = datetime(2026, 9, 26, 12, 0, tzinfo=ny_tz)
+    assert is_commodities_open(sat_comm_closed) is False
+
+    # Turkish Gold & FX (Mon-Fri 09:00 - 18:30 TRT)
+    assert is_turkish_gold_and_fx_active(wed_open_tr) is True
+    assert is_turkish_gold_and_fx_active(sat_tr) is False
+
+
+def test_ai_insight_caching_skips_recent():
+    """Verify refresh_ai_insight skips regeneration when latest insight is less than 4h old."""
+    import asyncio
+    from datetime import datetime, timezone, timedelta
+    from unittest.mock import patch
+    from database import AsyncSessionLocal
+    from models import AIInsight
+    from workers import refresh_ai_insight
+
+    async def setup_recent_insight():
+        async with AsyncSessionLocal() as session:
+            recent = AIInsight(
+                insight_type='daily',
+                insight_text='Recent cached market insight',
+                created_at=datetime.now(timezone.utc) - timedelta(minutes=30)
+            )
+            session.add(recent)
+            await session.commit()
+
+    asyncio.run(setup_recent_insight())
+
+    with patch("ai_service.get_market_insight") as mock_gemini:
+        res = asyncio.run(refresh_ai_insight(force=False))
+        assert res is True
+        mock_gemini.assert_not_called()
+
+
