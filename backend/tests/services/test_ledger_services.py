@@ -274,3 +274,37 @@ def test_other_integrity_failures_are_not_disguised_as_conflicts():
             await transaction_service.void_transaction(session, user_id, portfolio.id, created.id, None)
 
     run_with_session(scenario)
+
+
+# ------------------------------------------------------------------
+# Ledger size cap and seed validation
+# ------------------------------------------------------------------
+
+def test_a_full_ledger_accepts_no_more_rows(monkeypatch):
+    from services import ledger_adapter
+
+    monkeypatch.setattr(ledger_adapter, "MAX_TRANSACTIONS_PER_PORTFOLIO", 2)
+
+    async def scenario(session):
+        user_id = await add_user(session)
+        portfolio = await add_portfolio(session, user_id)
+        for _ in range(2):
+            await transaction_service.record_transaction(session, user_id, portfolio.id, deposit())
+        with pytest.raises(ConflictError, match="limit"):
+            await transaction_service.record_transaction(session, user_id, portfolio.id, deposit())
+        return await session.scalar(select(func.count()).select_from(Transaction))
+
+    assert run_with_session(scenario) == 2
+
+
+def test_sync_upper_cases_identity_fields_and_rejects_duplicate_seeds():
+    async def scenario(session):
+        lower = Seed("thyao", "bist", "thyao.is", "try", "equity", None)
+        await instrument_service.sync_instruments(session, [lower])
+        row = await session.scalar(select(Instrument))
+        with pytest.raises(ValueError, match="more than once"):
+            await instrument_service.sync_instruments(session, [AAPL, AAPL])
+        count = await session.scalar(select(func.count()).select_from(Instrument))
+        return (row.symbol, row.exchange, row.provider_symbol, row.currency), count
+
+    assert run_with_session(scenario) == (("THYAO", "BIST", "THYAO.IS", "TRY"), 1)

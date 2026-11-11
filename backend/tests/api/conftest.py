@@ -129,3 +129,25 @@ def make_instrument():
 @pytest.fixture
 def instrument(make_instrument) -> dict:
     return make_instrument()
+
+
+async def _insert_quote(symbol: str, price: float, currency: str, age):
+    from datetime import datetime, timezone
+
+    from models import StockData
+
+    updated_at = datetime.now(timezone.utc).replace(tzinfo=None) - age  # the cache stores naive UTC
+    async with AsyncSessionLocal() as session:
+        session.add(StockData(symbol=symbol, name=symbol, price=price, currency=currency, updated_at=updated_at))
+        await session.commit()
+
+
+@pytest.fixture
+def add_quote():
+    """Write a row into the latest-quote cache, `age` old (a timedelta)."""
+    from datetime import timedelta
+
+    def _add(symbol: str, price: float, currency: str = "TRY", age=timedelta(minutes=5)) -> None:
+        asyncio.run(_insert_quote(symbol, price, currency, age))
+
+    return _add

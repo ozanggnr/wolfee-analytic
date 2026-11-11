@@ -2,6 +2,9 @@
 
 This module stores what the user recorded. It does no portfolio arithmetic:
 holdings, cost basis and profit or loss are derived from these rows by the quant layer.
+Before a write is committed, the whole ledger including the new row is replayed by
+the quant layer, so a write that would make the ledger unreplayable (selling more
+than is held, now or at any earlier date) is rejected instead of stored.
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ from models import Instrument, Transaction
 from repositories import instrument_repository, transaction_repository
 from schemas.common import Page
 from schemas.transaction import TransactionCreate, TransactionOut
-from services import portfolio_service
+from services import ledger_adapter, portfolio_service
 from services.errors import ConflictError, InvalidInputError, NotFoundError, is_unique_violation
 
 ONE = Decimal(1)
@@ -27,6 +30,30 @@ INSTRUMENT_CURRENCY_TYPES = frozenset({"BUY", "SELL", "SPLIT"})
 NOT_FOUND = "Transaction not found."
 ALREADY_VOIDED = "This transaction has already been voided."
 REVERSAL_NOT_VOIDABLE = "A reversal cannot be voided. Record the transaction again instead."
+LEDGER_FULL = (
+    f"This portfolio has reached the limit of {ledger_adapter.MAX_TRANSACTIONS_PER_PORTFOLIO} transactions."
+)
+
+
+async def _ensure_ledger_accepts(
+    db: AsyncSession, user_id: int, portfolio_id: int, candidate: Transaction, *, enforce_cap: bool
+) -> None:
+    """Reject `candidate` if the ledger is full or would no longer replay with it.
+
+    The size cap applies to new entries only, so a full ledger can still be corrected by voids.
+
+    Called while load_writable holds the portfolio row lock, so concurrent writes to
+    one portfolio are checked one at a time on Postgres.
+    """
+    rows = await transaction_repository.all_for_portfolio(db, user_id, portfolio_id)
+    if enforce_cap and len(rows) >= ledger_adapter.MAX_TRANSACTIONS_PER_PORTFOLIO:
+        raise ConflictError(LEDGER_FULL)
+    next_id = max((row.id for row in rows), default=0) + 1  # new rows get the highest id
+    ledger = [ledger_adapter.to_quant(row) for row in rows]
+    ledger.append(ledger_adapter.to_quant(candidate, id_override=next_id))
+    reason = await ledger_adapter.first_replay_error(ledger)
+    if reason is not None:
+        raise ConflictError(f"The ledger would become inconsistent: {reason}")
 
 
 def _to_schema(row: Transaction, voided_by: Optional[int] = None) -> TransactionOut:
@@ -123,6 +150,7 @@ async def record_transaction(
         created_at=datetime.now(timezone.utc),
         created_by_user_id=user_id,
     )
+    await _ensure_ledger_accepts(db, user_id, portfolio.id, row, enforce_cap=True)
     db.add(row)
     await db.commit()
     await db.refresh(row)
@@ -159,6 +187,7 @@ async def void_transaction(
         created_at=datetime.now(timezone.utc),
         created_by_user_id=user_id,
     )
+    await _ensure_ledger_accepts(db, user_id, portfolio.id, reversal, enforce_cap=False)
     db.add(reversal)
     try:
         await db.commit()

@@ -56,3 +56,20 @@ async def reversals_of(db: AsyncSession, transaction_ids: Sequence[int]) -> dict
         )
     )
     return {voided_id: reversal_id for voided_id, reversal_id in rows.all()}
+
+
+async def count_for_portfolio(db: AsyncSession, user_id: int, portfolio_id: int) -> int:
+    total = await db.scalar(
+        select(func.count(Transaction.id)).where(*_in_owned_portfolio(user_id, portfolio_id))
+    )
+    return total or 0
+
+
+async def all_for_portfolio(db: AsyncSession, user_id: int, portfolio_id: int) -> Sequence[Transaction]:
+    """The whole ledger of one owned portfolio, in replay order. Callers cap its size."""
+    rows = await db.scalars(
+        select(Transaction)
+        .where(*_in_owned_portfolio(user_id, portfolio_id))
+        .order_by(Transaction.trade_date, Transaction.id)
+    )
+    return rows.all()

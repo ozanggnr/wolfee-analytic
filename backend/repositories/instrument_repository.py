@@ -26,3 +26,7 @@ async def get_by_identity(db: AsyncSession, symbol: str, exchange: str) -> Optio
     return await db.scalar(
         select(Instrument).where(Instrument.symbol == symbol, Instrument.exchange == exchange)
     )
+
+
+async def all_instruments(db: AsyncSession) -> Sequence[Instrument]:
+    return (await db.scalars(select(Instrument))).all()

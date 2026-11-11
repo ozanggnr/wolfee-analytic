@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unicodedata
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Context, Decimal
 from typing import Annotated, Any, Generic, List, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, PlainSerializer
@@ -39,10 +39,16 @@ def reject_unprintable(value: str, *, allowed: str = "") -> str:
     return value
 
 
+# Wide enough to quantize any product of two stored amounts without InvalidOperation.
+_OUTPUT_CONTEXT = Context(prec=60, rounding=ROUND_HALF_EVEN)
+
+
 def fixed_scale(scale: int) -> PlainSerializer:
-    """Serialise a Decimal as a plain string with exactly `scale` decimal places."""
+    """Serialise a Decimal as a plain string with exactly `scale` decimal places (half-even)."""
     quantum = Decimal(1).scaleb(-scale)
-    return PlainSerializer(lambda value: format(value.quantize(quantum), "f"), return_type=str)
+    return PlainSerializer(
+        lambda value: format(value.quantize(quantum, context=_OUTPUT_CONTEXT), "f"), return_type=str
+    )
 
 
 def to_utc_iso(value: datetime) -> str:

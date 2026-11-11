@@ -42,13 +42,45 @@ def _refresh_descriptive_fields(row: Instrument, seed: InstrumentSeedLike) -> bo
     return changed
 
 
+def _normalized(seed: InstrumentSeedLike) -> InstrumentSeedLike:
+    """Upper-case identity fields so lookups (which match upper case) always find the row."""
+    return _Seed(
+        symbol=seed.symbol.strip().upper(),
+        exchange=seed.exchange.strip().upper(),
+        provider_symbol=seed.provider_symbol.strip().upper(),
+        currency=seed.currency.strip().upper(),
+        asset_class=seed.asset_class.strip(),
+        name=seed.name,
+    )
+
+
+@dataclass(frozen=True)
+class _Seed:
+    symbol: str
+    exchange: str
+    provider_symbol: str
+    currency: str
+    asset_class: str
+    name: Optional[str]
+
+
 async def sync_instruments(db: AsyncSession, seeds: Iterable[InstrumentSeedLike]) -> SyncResult:
-    """Insert missing instruments and refresh descriptive fields. Never deletes,
-    deactivates or reactivates a row."""
+    """Insert missing instruments and refresh descriptive fields, in one transaction.
+
+    Idempotent: a second run with the same seed changes nothing. Never deletes,
+    deactivates or reactivates a row. Raises ValueError, before writing anything,
+    if the seed lists one (symbol, exchange) twice.
+    """
+    normalized = [_normalized(seed) for seed in seeds]
+    identities = [(seed.symbol, seed.exchange) for seed in normalized]
+    if len(set(identities)) != len(identities):
+        raise ValueError("instrument seed lists the same (symbol, exchange) more than once")
+
+    existing = {(row.symbol, row.exchange): row for row in await instrument_repository.all_instruments(db)}
     inserted = 0
     updated = 0
-    for seed in seeds:
-        row = await instrument_repository.get_by_identity(db, seed.symbol, seed.exchange)
+    for seed in normalized:
+        row = existing.get((seed.symbol, seed.exchange))
         if row is None:
             db.add(Instrument(
                 symbol=seed.symbol,
@@ -64,3 +96,25 @@ async def sync_instruments(db: AsyncSession, seeds: Iterable[InstrumentSeedLike]
             updated += 1
     await db.commit()
     return SyncResult(inserted=inserted, updated=updated)
+
+
+async def sync_from_quant_seed() -> SyncResult:
+    """Load quant.symbols.instrument_seed() into the configured database (DATABASE_URL)."""
+    from database import AsyncSessionLocal
+    from quant.symbols import instrument_seed
+
+    async with AsyncSessionLocal() as db:
+        return await sync_instruments(db, instrument_seed())
+
+
+def main() -> None:
+    """Command line: `python -m services.instrument_service`, run from backend/ after
+    `alembic upgrade head`. Safe to run on every deploy."""
+    import asyncio
+
+    result = asyncio.run(sync_from_quant_seed())
+    print(f"instruments synced: {result.inserted} inserted, {result.updated} updated")
+
+
+if __name__ == "__main__":
+    main()

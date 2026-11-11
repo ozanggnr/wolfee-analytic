@@ -134,9 +134,10 @@ app.include_router(auth_routes.router)
 app.include_router(watchlist_routes.router)
 
 # /api/v1 routers (API_CONTRACT §5). Imported here so they register before the static mount.
-from routers import portfolios as portfolio_router, transactions as transaction_router
+from routers import analytics as analytics_router, portfolios as portfolio_router, transactions as transaction_router
 app.include_router(portfolio_router.router)
 app.include_router(transaction_router.router)
+app.include_router(analytics_router.router)
 
 
 # ============================================================
