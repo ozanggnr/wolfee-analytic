@@ -283,6 +283,15 @@ function calculateClientSideSummary(stocks) {
     };
 }
 
+/**
+ * Encodes a value for use inside decodeURIComponent('...') in an inline
+ * handler. encodeURIComponent leaves the apostrophe alone, which would end
+ * the string literal.
+ */
+function encodeHandlerArg(value) {
+    return encodeURIComponent(value).replace(/'/g, '%27');
+}
+
 function roundNumber(num, dec) {
     return Math.round(num * Math.pow(10, dec)) / Math.pow(10, dec);
 }
@@ -364,8 +373,8 @@ function renderSummaryCardUI(data) {
         const icon = isUp ? '▲' : '▼';
         const safeSym = esc(t.symbol);
         const fullSym = t.fullSymbol || (t.currency === 'TRY' && !t.symbol.endsWith('.IS') ? `${t.symbol}.IS` : t.symbol);
-        const escSym = encodeURIComponent(fullSym || t.symbol || '');
-        const escName = encodeURIComponent(t.name || t.symbol || '');
+        const escSym = encodeHandlerArg(fullSym || t.symbol || '');
+        const escName = encodeHandlerArg(t.name || t.symbol || '');
         return `
             <div class="ticker-pill" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escSym}'), name:decodeURIComponent('${escName}')})">
                 <span class="pill-sym">${safeSym}</span>
