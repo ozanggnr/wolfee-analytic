@@ -117,27 +117,33 @@ Existing response shapes listed in API_CONTRACT §2 are frozen: fields may be ad
 | ID | Decision | Detail in |
 |----|----------|-----------|
 | D1 | ~~Approve the proposed architecture, ownership and branch strategy~~ — **APPROVED by the user on 2026-11-11** (architecture and shared contracts). D2–D9 remain open | this document, TEAM_STRUCTURE |
-| D2 | Cost-basis method for realised P/L (FIFO or weighted average) | DATABASE_CONTRACT §3.6 |
-| D3 | Portfolio base currency and the FX source used for conversion | DATABASE_CONTRACT §3.6 |
+| D2 | ~~Cost-basis method for realised P/L~~ — **DECIDED 2026-11-11: default weighted average; FIFO stays available as a request parameter** | DATABASE_CONTRACT §3.6, API_CONTRACT §5.2 |
+| D3 | ~~Portfolio base currency and FX source~~ — **DECIDED 2026-11-11: base currency TRY; FX from the existing `exchange_rates` source; a foreign position without a rate is marked `missing_fx_rate` and the rest is still totalled** | DATABASE_CONTRACT §3.6, API_CONTRACT §5.2 |
 | D4 | Whether to stop returning estimated RSI / MA20 / day range as real values, which changes what existing cards show | IMPLEMENTATION_STATUS §5 (R1) |
 | D5 | Wording and guardrails of AI output (current prompts ask the model to speak as a financial adviser and recommend entries) | IMPLEMENTATION_STATUS §5 (R2) |
 | D6 | Frontend direction: keep vanilla JS, or introduce a build step and TypeScript | IMPLEMENTATION_STATUS §6 |
 | D7 | Location of the "Trader Skill" referenced in CLAUDE.md — not found in the repository or in the local skills directory | IMPLEMENTATION_STATUS §6 |
-| D8 | Permission to inspect the production database read-only to establish Alembic state | DATABASE_CONTRACT §2.1 |
+| D8 | ~~Inspect the production database~~ — **RESOLVED 2026-11-11: production moves to Fly.io and starts with an empty database; Railway data is disposable; no export or baseline stamp** | DEPLOYMENT.md |
 | D9 | Whether `/api/refresh` and `/api/export/{period}` should require authentication | IMPLEMENTATION_STATUS §5 (R5) |
 
 Decision status after the first branch review (2026-11-11). Every one of D2–D9 is still open:
 
 | ID | Blocks merge of first branches? | Blocks next work? |
 |----|--------------------------------|-------------------|
-| D2 | No — quant takes the method as a parameter | Yes: the holdings and performance routes need a stored default |
-| D3 | No — backend limits base currency to `TRY`/`USD` as a placeholder | Yes: valuation needs an FX source; foreign trades have no automatic rate |
+| D2 | Decided — REQ-13 | — |
+| D3 | Decided — REQ-14, REQ-15 | — |
 | D4 | No — `quant.signals` keeps the legacy proxies value for value | Yes: Phase 1 integrity fix |
 | D5 | No — new AI layer already has guardrails and a disclaimer; legacy prompts unchanged | Yes: legacy `/api/ai/analyze` and `/api/insight` still use adviser wording |
 | D6 | No — Agent 4 stayed with vanilla JS and added a `node --test` runner without dependencies | Yes: before building portfolio screens |
 | D7 | No | Only Phase 5 |
-| D8 | **Yes, for `agent/backend`** — see DATABASE_CONTRACT §5 | Yes |
+| D8 | Resolved (empty Fly database) | — |
 | D9 | No | Security hardening; unchanged by these branches |
+
+Also approved by the user on 2026-11-11 (Agent 2's choices on `agent/backend` `6170686`):
+
+- Quote freshness labels: every cached quote is `delayed` at best, and `stale` when older than one hour (`quote_service.QUOTE_DELAYED_MAX_AGE`). Nothing is labelled real-time.
+- A cap of 10,000 transactions per portfolio (`ledger_adapter.MAX_TRANSACTIONS_PER_PORTFOLIO`); the next write is refused with a clear message.
+- Summing realised P/L per currency and into the base currency stays in Agent 2's `analytics_service` for now. Moving it into `quant` is a later refactor, not a blocker.
 
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
@@ -214,6 +220,43 @@ Why:       every Postgres migration failed (DEPLOYMENT §2 F1)
 Blocking:  yes, for any Postgres deploy
 Status:    CLOSED 2026-11-11 — fixed by Agent 2 on agent/backend in 6170686. Not duplicated on
            integration; it arrives with the agent/backend merge (Step 2).
+```
+
+```
+ID:        REQ-13
+From:      Agent 1 (decision D2)
+To:        Agent 2
+Needs:     analytics_service.DEFAULT_COST_BASIS_METHOD = WEIGHTED_AVERAGE (currently FIFO);
+           responses keep reporting cost_basis_method; tests updated
+Why:       D2
+Blocking:  yes, for the holdings/performance defaults
+Status:    open
+
+ID:        REQ-14
+From:      Agent 1 (decision D3)
+To:        Agent 3
+Needs:     quant.valuation.value_positions: when some positions cannot be valued, still return
+           total_market_value / total_cost_basis / total_unrealized_pnl summed over the valued
+           positions, with is_complete=false and unvalued_symbols listing the rest; weights are
+           computed against that partial total. No estimate for the missing positions.
+           Update API_CONTRACT §6.1 note and tests.
+Why:       D3 — "mark missing_fx_rate but still total the rest"
+Blocking:  yes, for foreign positions in holdings
+Status:    open
+
+ID:        REQ-15
+From:      Agent 1 (decision D3)
+To:        Agent 2 (Agent 3 for any conversion helper)
+Needs:     supply FxRate values to value_positions from the exchange_rates table: pair "USD/TRY"
+           etc. → FxRate(base=<foreign>, quote="TRY", rate=<selling, as Decimal from its string
+           form>, as_of=updated_at, source="exchange_rates"). Missing or zero rate → no FxRate
+           (position reports missing_fx_rate). Accept only TRY as portfolio base currency for
+           now (remove USD from SUPPORTED_BASE_CURRENCIES; no data exists yet). Remove the
+           "no automatic rates until D3" note from analytics_service.
+Why:       D3
+Blocking:  yes, for foreign positions in holdings
+Status:    open — choice of selling vs buying rate: selling, as shown in the existing UI;
+           Agent 1 to confirm if the user wants buying or mid
 ```
 
 REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the Step 2 merge before the request is closed.
