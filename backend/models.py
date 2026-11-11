@@ -1,4 +1,7 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, Boolean, Text, Index, ForeignKey, UniqueConstraint
+from sqlalchemy import (
+    Column, String, Float, Integer, BigInteger, DateTime, Date, JSON, Boolean, Text, Numeric, CHAR,
+    Index, ForeignKey, UniqueConstraint, CheckConstraint, event, text,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -157,3 +160,119 @@ class AIInsight(Base):
     symbol = Column(String(20), nullable=True)  # null for daily insights
     insight_text = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+
+
+# ============================================================
+# PORTFOLIO LEDGER (DATABASE_CONTRACT §3.1–§3.3)
+# Money and quantities are NUMERIC; these tables never use Float.
+# ============================================================
+PORTFOLIO_KINDS = ("real", "paper")
+TRANSACTION_TYPES = ("BUY", "SELL", "DIVIDEND", "FEE", "DEPOSIT", "WITHDRAWAL", "SPLIT")
+TRANSACTION_SOURCES = ("manual", "import", "paper_fill")
+
+# SQLite only auto-increments an INTEGER primary key; Postgres gets BIGINT.
+_BigIntPK = BigInteger().with_variant(Integer, "sqlite")
+
+
+def _in_list(column: str, values: tuple) -> str:
+    quoted = ", ".join(f"'{v}'" for v in values)
+    return f"{column} IN ({quoted})"
+
+
+class Instrument(Base):
+    """One canonical identity per tradable thing."""
+    __tablename__ = "instruments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False)
+    exchange = Column(String(10), nullable=False)
+    provider_symbol = Column(String(30), nullable=False)
+    name = Column(String(200), nullable=True)
+    currency = Column(CHAR(3), nullable=False)
+    asset_class = Column(String(20), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "exchange", name="uq_instruments_symbol_exchange"),
+    )
+
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # RESTRICT: deleting a user must never silently erase a ledger.
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    name = Column(String(100), nullable=False)
+    base_currency = Column(CHAR(3), nullable=False)
+    kind = Column(String(10), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(_in_list("kind", PORTFOLIO_KINDS), name="ck_portfolios_kind"),
+        Index("ix_portfolios_user_id", "user_id"),
+        Index(
+            "uq_portfolios_user_name_active", "user_id", "name", unique=True,
+            postgresql_where=text("archived_at IS NULL"),
+            sqlite_where=text("archived_at IS NULL"),
+        ),
+    )
+
+
+class Transaction(Base):
+    """
+    Append-only ledger row and the source of truth for holdings.
+    A correction is a new row whose voids_transaction_id points at the row it reverses.
+    """
+    __tablename__ = "transactions"
+
+    id = Column(_BigIntPK, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id", ondelete="RESTRICT"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("instruments.id", ondelete="RESTRICT"), nullable=True)
+    type = Column(String(12), nullable=False)
+    quantity = Column(Numeric(24, 8), nullable=False)
+    price = Column(Numeric(20, 6), nullable=True)
+    fee = Column(Numeric(20, 6), nullable=False, default=0, server_default=text("0"))
+    currency = Column(CHAR(3), nullable=False)
+    fx_rate_to_base = Column(Numeric(20, 8), nullable=True)
+    trade_date = Column(Date, nullable=False)
+    executed_at = Column(DateTime(timezone=True), nullable=True)
+    note = Column(String(500), nullable=True)
+    source = Column(String(20), nullable=False)
+    voids_transaction_id = Column(
+        _BigIntPK, ForeignKey("transactions.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+
+    instrument = relationship("Instrument", lazy="joined")
+
+    __table_args__ = (
+        CheckConstraint(_in_list("type", TRANSACTION_TYPES), name="ck_transactions_type"),
+        CheckConstraint(_in_list("source", TRANSACTION_SOURCES), name="ck_transactions_source"),
+        CheckConstraint("quantity >= 0", name="ck_transactions_quantity_non_negative"),
+        CheckConstraint("fee >= 0", name="ck_transactions_fee_non_negative"),
+        CheckConstraint("price IS NULL OR price >= 0", name="ck_transactions_price_non_negative"),
+        CheckConstraint(
+            "fx_rate_to_base IS NULL OR fx_rate_to_base > 0", name="ck_transactions_fx_rate_positive"
+        ),
+        Index("ix_transactions_portfolio_date_id", "portfolio_id", "trade_date", "id"),
+        Index("ix_transactions_instrument_id", "instrument_id"),
+        # A row can be reversed at most once, even under concurrent requests.
+        Index("uq_transactions_voids_transaction_id", "voids_transaction_id", unique=True),
+    )
+
+
+class LedgerImmutableError(RuntimeError):
+    """Raised when application code tries to change or remove a ledger row."""
+
+
+@event.listens_for(Transaction, "before_update")
+def _forbid_transaction_update(mapper, connection, target):
+    raise LedgerImmutableError("transactions are append-only; record a reversal instead of editing")
+
+
+@event.listens_for(Transaction, "before_delete")
+def _forbid_transaction_delete(mapper, connection, target):
+    raise LedgerImmutableError("transactions are append-only; record a reversal instead of deleting")
