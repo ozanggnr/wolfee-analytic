@@ -126,6 +126,82 @@ Existing response shapes listed in API_CONTRACT §2 are frozen: fields may be ad
 | D8 | Permission to inspect the production database read-only to establish Alembic state | DATABASE_CONTRACT §2.1 |
 | D9 | Whether `/api/refresh` and `/api/export/{period}` should require authentication | IMPLEMENTATION_STATUS §5 (R5) |
 
+Decision status after the first branch review (2026-11-11). Every one of D2–D9 is still open:
+
+| ID | Blocks merge of first branches? | Blocks next work? |
+|----|--------------------------------|-------------------|
+| D2 | No — quant takes the method as a parameter | Yes: the holdings and performance routes need a stored default |
+| D3 | No — backend limits base currency to `TRY`/`USD` as a placeholder | Yes: valuation needs an FX source; foreign trades have no automatic rate |
+| D4 | No — `quant.signals` keeps the legacy proxies value for value | Yes: Phase 1 integrity fix |
+| D5 | No — new AI layer already has guardrails and a disclaimer; legacy prompts unchanged | Yes: legacy `/api/ai/analyze` and `/api/insight` still use adviser wording |
+| D6 | No — Agent 4 stayed with vanilla JS and added a `node --test` runner without dependencies | Yes: before building portfolio screens |
+| D7 | No | Only Phase 5 |
+| D8 | **Yes, for `agent/backend`** — see DATABASE_CONTRACT §5 | Yes |
+| D9 | No | Security hardening; unchanged by these branches |
+
+Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
+
 ### Requests between agents
 
-None yet.
+REQ-1 to REQ-5 were raised in the agents' own reports. Agent 1 has not seen them, so they are not copied here. They will be added when relayed.
+
+```
+ID:        REQ-6
+From:      Agent 4
+To:        Agent 1
+Needs:     remove the stale "legacy api.js" references from the docs. api.js, mock-data.js
+           and yahoo-client.js are deleted on agent/frontend.
+Why:       docs would describe callers that no longer exist
+Blocking:  no
+Status:    done in docs (API_CONTRACT §2.4, IMPLEMENTATION_STATUS §1.6). The /opportunities and
+           /insight aliases stay — removing an endpoint is a contract change needing approval.
+
+ID:        REQ-7
+From:      Agent 1
+To:        Agent 2 (call site), Agent 3 (seed already provided: quant.symbols.instrument_seed)
+Needs:     a single, idempotent way to run sync_instruments(db, instrument_seed()) — e.g. a CLI
+           command or start-up step after migrations — plus a test that a BUY of THYAO succeeds
+           on a freshly migrated database
+Why:       instruments is empty after migration, so every instrument transaction returns 422
+Blocking:  yes, for the ledger being usable
+Status:    open
+
+ID:        REQ-8
+From:      Agent 1
+To:        Agent 2
+Needs:     new tables must not appear in production through init_db() create_all before the
+           migration path is approved (DATABASE_CONTRACT §5 P1). Proposal for Agent 1 review.
+Why:       merging agent/backend would otherwise create tables in production on the next deploy
+Blocking:  yes, for merging agent/backend to main
+Status:    open
+
+ID:        REQ-9
+From:      Agent 1
+To:        Agent 2
+Needs:     run backend/tests and alembic upgrade/downgrade against a disposable PostgreSQL;
+           report results (DATABASE_CONTRACT §5 P4)
+Why:       every test so far ran on SQLite
+Blocking:  yes, for production; no, for integration
+Status:    open
+
+ID:        REQ-10
+From:      Agent 1
+To:        Agent 2
+Needs:     replace workers._enrich_stock_data (and main.py's import of it) with
+           quant.signals.enrich_quote, in one dedicated PR, with a characterization test
+           (TEAM_STRUCTURE H1)
+Why:       there are still two copies of the enrichment logic
+Blocking:  no
+Status:    open — after agent/quant-ai is merged
+
+ID:        REQ-11
+From:      Agent 1
+To:        Agents 2, 3 and 4
+Needs:     make backend tests independent of the working directory. Run from backend/, three
+           tests in test_performance_and_sources.py fail on main too, because they patch
+           "backend.data_sources…"; run from the repo root, all pass. Agree one command:
+           `python -m pytest backend/tests` from the repository root.
+Why:       explains Agent 2's "3 pre-existing failures"
+Blocking:  no
+Status:    open (test file owner: Agent 2)
+```

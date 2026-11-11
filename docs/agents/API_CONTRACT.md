@@ -1,9 +1,10 @@
 # API Contract
 
-Last updated: 2026-11-11 by Agent 1 (audit of commit `66ddcab`).
+Last updated: 2026-11-11 by Agent 1 (audit of commit `66ddcab`; branch review of `agent/backend` `d4af8bd`, `agent/quant-ai` `19d0501`, `agent/frontend` `cc3fcc3`).
 
-- §1–§3 are **VERIFIED**: read from `backend/main.py`, `backend/auth_routes.py`, `backend/watchlist_routes.py` and `backend/security_middleware.py`.
-- §4–§6 are **PROPOSED**: nothing in them exists yet.
+- §1–§3 are **VERIFIED** on `main`: read from `backend/main.py`, `backend/auth_routes.py`, `backend/watchlist_routes.py` and `backend/security_middleware.py`.
+- §4–§6 started as **PROPOSED**. Items marked **IMPLEMENTED ON BRANCH** were read from an unmerged agent branch and tested there; they are not on `main` and nothing in them is deployed.
+- §7 records the frontend rendering rules for AI text and other untrusted strings.
 
 Response examples in §2 list the fields the code returns. They were read from source, not captured from a running server.
 
@@ -127,9 +128,9 @@ Accepted `period` values: `1d, 5d, 1wk, 1mo, 3mo, 6mo, 1y, 5y, max`. The data-so
 | Method | Path | Auth | Used by frontend | Response |
 |--------|------|------|------------------|----------|
 | GET | `/api/opportunities` | no | yes | `{"opportunities": [Stock]}` — up to 15 rows where `is_favorable` and `change_pct > 0.5`, BIST first. On error: 200 with `[]` |
-| GET | `/opportunities` | no | legacy `api.js` | Alias |
+| GET | `/opportunities` | no | no caller once `agent/frontend` merges (REQ-6) — was legacy `api.js` | Alias |
 | GET | `/api/insight` | no | yes | `{"insight": string}` — latest `ai_insights` row of type `daily`, or generated on the fly. Never fails; returns a placeholder string on error |
-| GET | `/insight` | no | legacy `api.js` | Alias |
+| GET | `/insight` | no | no caller once `agent/frontend` merges (REQ-6) — was legacy `api.js` | Alias |
 | GET | `/api/ai/analyze/{symbol}` | no | yes (stock modal) | `{"symbol", "analysis": string}`. `404` if the stock is unknown. On other errors: 200 with a placeholder string |
 
 The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template. The response does not say which.
@@ -250,6 +251,48 @@ Listed to reserve names and let the agents plan. Field-level schemas are written
 
 `TransactionCreate` (draft): `type` (`BUY`, `SELL`, `DIVIDEND`, `FEE`, `DEPOSIT`, `WITHDRAWAL`, `SPLIT`), `symbol`, `quantity`, `price`, `fee`, `currency`, `fx_rate_to_base` (optional), `trade_date`, `note`.
 
+#### 5.1.1 As implemented — IMPLEMENTED ON BRANCH `agent/backend` `d4af8bd` (not merged)
+
+All eight routes above exist with these paths. Every route needs a session; writes need the CSRF header. Responses carry `Cache-Control: no-store`. Errors: unknown or another user's resource → `404` (never `403`, so ids are not confirmed); conflict → `409`; validation → `422`. Request bodies reject unknown fields.
+
+| Route | Detail |
+|-------|--------|
+| `GET /api/v1/portfolios` | Query `include_archived` (default false), `limit`, `offset`. Returns `Page[PortfolioOut]` |
+| `POST /api/v1/portfolios` | `PortfolioCreate{name, base_currency, kind="real"}`. `base_currency` limited to `TRY`, `USD` until D3 is decided. Duplicate active name → `409` |
+| `PATCH /api/v1/portfolios/{id}` | `PortfolioUpdate{name}` only. An archived portfolio → `409` |
+| `DELETE /api/v1/portfolios/{id}` | Archives; returns `PortfolioOut` with `archived_at`. Repeating it keeps the first time |
+| `GET …/transactions` | Newest first (`trade_date` desc, `id` desc). `Page[TransactionOut]` |
+| `POST …/transactions` | `201`. Archived portfolio → `409` |
+| `POST …/transactions/{tx_id}/void` | `201`, optional body `TransactionVoid{note}`. Appends a reversal row; the original is untouched. A second void, or voiding a reversal → `409` |
+
+`PortfolioOut`: `id, name, base_currency, kind, created_at, archived_at`. The owner id is not exposed.
+
+`TransactionCreate` **adds** to the draft:
+
+- `exchange` (optional). Needed only when a symbol is listed on more than one exchange; otherwise ambiguous symbols are `422`.
+- `executed_at` (optional, must carry a UTC offset; stored in UTC).
+- Money and quantity fields must be JSON strings or integers. Floats and booleans are rejected, so no binary rounding enters the ledger.
+- `trade_date` must be between 1900-01-01 and today + 1 day.
+
+Rules enforced by `TransactionCreate` and the service:
+
+| Type | `symbol` | `quantity` | `price` | `fee` |
+|------|----------|------------|---------|-------|
+| `BUY`, `SELL`, `DIVIDEND` | required | > 0 | required | ≥ 0 |
+| `SPLIT` | required | > 0, the ratio of new units per old unit | — | must be 0 |
+| `FEE` | optional | must be 0 | — | > 0 |
+| `DEPOSIT`, `WITHDRAWAL` | not allowed | > 0, the cash amount | — | must be 0 |
+
+`—` in the price column means the field is rejected. `currency` is required whenever there is no symbol.
+
+- The symbol must resolve to an active row in `instruments`. The canonical form or the provider form both work (`THYAO` or `THYAO.IS`). An unknown symbol → `422`; it is never guessed.
+- For `BUY`, `SELL` and `SPLIT` the currency must equal the instrument's currency.
+- When the trade currency equals the portfolio base currency, `fx_rate_to_base` is stored as `1`, and any other value is rejected. For a foreign currency, a missing rate stays `null` and is never looked up or estimated.
+
+`TransactionOut` **adds** to the draft: `symbol`, `exchange`, `source`, `voids_transaction_id`, `voided_by_transaction_id`, `created_at`. Decimals are serialised as strings at fixed scale: quantity 8, money 6, rate 8.
+
+A reversal row copies the original's `type`, amounts and instrument, and sets `voids_transaction_id`. Consumers must ignore **both** the reversal and the row it voids. `quant.positions` already does this.
+
 ### 5.2 Portfolio analytics — maths by Agent 3, routes by Agent 2
 
 | Method | Path | Purpose |
@@ -275,6 +318,58 @@ Listed to reserve names and let the agents plan. Field-level schemas are written
 | GET | `/api/v1/ai/insights?scope=` | Stored insights, with `model`, `generated_at`, `is_fallback` and a disclaimer field |
 
 AI responses always include: `generated_by` (`model name` or `template`), `generated_at`, the `inputs_as_of` timestamp of the data used, and `disclaimer`.
+
+#### 5.4.1 AI layer as implemented — IMPLEMENTED ON BRANCH `agent/quant-ai` `19d0501` (not merged; no route exists yet)
+
+The pieces behind `POST /api/v1/portfolios/{id}/ai/summary` exist as library code in `backend/ai/`. No endpoint uses them yet. Agent 2 builds the route once holdings exist (§5.2).
+
+```python
+# backend/ai/facts.py
+def portfolio_facts(valuation: PortfolioValuation, risk: RiskMetrics | None = None
+                    ) -> tuple[tuple[Fact, ...], datetime | None]: ...   # facts, inputs_as_of (oldest quote)
+
+# backend/ai/explain.py
+def explain_portfolio(facts: Sequence[Fact], *, now: datetime, inputs_as_of: datetime | None,
+                      generate: Callable[[str], Generation | None] | None = None) -> AIResult: ...
+
+# backend/ai/provider.py
+def gemini_generate(prompt: str) -> Generation | None: ...   # wraps ai_service; synchronous network I/O
+
+# backend/ai/guardrails.py
+@dataclass(frozen=True)
+class Fact:       label: str; value: str              # already formatted by deterministic code
+@dataclass(frozen=True)
+class Generation: text: str; model: str
+@dataclass(frozen=True)
+class AIResult:
+    text: str
+    generated_by: str            # model name, or "template"
+    generated_at: datetime       # supplied by the caller (`now`)
+    inputs_as_of: datetime | None
+    is_fallback: bool
+    disclaimer: str              # guardrails.DISCLAIMER
+    violations: tuple[str, ...] = ()
+def find_violations(text: object, facts: Sequence[Fact]) -> tuple[str, ...]: ...
+```
+
+Behaviour:
+
+- The model receives only `Fact` lines and returns prose. Its text is used only when `find_violations` returns nothing. Otherwise, and on any provider error or empty output, the deterministic template is returned with `is_fallback=True`. `explain_portfolio` never raises because of the model. It raises `ValueError` only when `facts` is empty.
+- Values of `violations`: `empty`, `no_output`, `too_long` (over 2,000 characters), `ungrounded_number`, `number_word`, `prohibited_language` (advice, prediction or guarantee wording), `markup`, `provider_error`.
+- **`violations` is for logs and audit only.** The route must not return it to the browser and the UI must not display it. Log it server-side together with `generated_by`.
+- `Fact` must never be built from free text a user typed, such as a portfolio name or a note. Numbers in it become figures the model is allowed to quote.
+- `gemini_generate` and `explain_portfolio` block. From an async route, call them with `await asyncio.to_thread(explain_portfolio, …)`.
+
+Response shape the route will return (fixed now so Agent 4 can build against it):
+
+```json
+{ "text": "string, plain text, may contain \n",
+  "generated_by": "gemini-… | template",
+  "generated_at": "ISO-8601 UTC", "inputs_as_of": "ISO-8601 UTC | null",
+  "is_fallback": true, "disclaimer": "string" }
+```
+
+Frontend rendering requirements for this response are in §7.
 
 ### 5.5 Paper trading — later phase
 
@@ -307,3 +402,75 @@ def risk_metrics(daily_values: Sequence[DatedValue]) -> RiskMetrics: ...
 ```
 
 Rules: inputs and outputs are immutable dataclasses using `Decimal`; no I/O; same input always gives the same output; insufficient data returns `None`, never an estimate.
+
+### 6.1 As implemented — IMPLEMENTED ON BRANCH `agent/quant-ai` `034313e` (not merged)
+
+The draft signatures above are honoured, with the additions below. All types are frozen dataclasses in `backend/quant/types.py`. Every public function runs in a fixed `Decimal` context (precision 60, ROUND_HALF_EVEN). Tests pass on Python 3.11.9, the production version.
+
+```python
+# quant/symbols.py
+def normalize_symbol(raw: str, market_hint: str | None = None) -> CanonicalSymbol   # ValueError if invalid
+def instrument_seed() -> tuple[InstrumentSeed, ...]   # 361 rows: 119 BIST/TRY, 229 US/USD, 13 CMDTY/USD
+#   market_hint accepts both vocabularies: BIST, BIST100, US, GLOBAL, COMMODITY, CMDTY, FX
+
+# quant/positions.py — raise LedgerError (a ValueError) on an invalid ledger
+def build_positions(transactions: Sequence[Transaction], method: CostBasisMethod) -> list[Position]
+def realized_pnl(transactions: Sequence[Transaction], method: CostBasisMethod) -> list[RealizedLot]
+def cash_summary(transactions: Sequence[Transaction]) -> CashSummary            # added
+
+# quant/valuation.py
+def value_positions(positions, quotes: Mapping[str, PriceQuote], fx: Mapping[str, FxRate],
+                    base_currency: str) -> PortfolioValuation
+#   fx maps a currency to FxRate(base=<currency>, quote=<base_currency>)
+
+# quant/allocation.py                                                            # added
+def allocation_by(valuation: PortfolioValuation, group_of: Mapping[str, str]) -> tuple[AllocationSlice, ...] | None
+def concentration(weights: Mapping[str, Decimal]) -> Concentration | None
+
+# quant/indicators.py
+def rsi(closes, period: int = 14, method: RsiMethod = RsiMethod.WILDER) -> Decimal | None   # `method` added
+def sma(closes, window: int) -> Decimal | None
+def annualized_volatility_pct(closes, ...) -> Decimal | None                    # added
+
+# quant/risk.py
+def risk_metrics(daily_values: Sequence[DatedValue], periods_per_year: int = 252) -> RiskMetrics
+
+# quant/signals.py — legacy float enrichment, moved out of analysis.py value for value (H1)
+def enrich_quote(data: Mapping[str, object], market_type: str, currency: str) -> dict
+```
+
+Key types:
+
+| Type | Fields |
+|------|--------|
+| `Transaction` (input) | `id, type: TransactionType, trade_date, currency, quantity=0, price=None, fee=0, symbol=None, fx_rate_to_base=None, voids_transaction_id=None` |
+| `Position` | `symbol, currency, quantity, cost_basis, average_cost, cost_basis_base, lots` |
+| `RealizedLot` | `…, pnl, pnl_base, buy_transaction_id, sell_transaction_id` |
+| `CashSummary` | `balances, dividends, fees, net_deposits` — each a tuple of `CurrencyAmount(currency, amount)` |
+| `PriceQuote` | `symbol, price, currency, as_of, freshness: Freshness, source` |
+| `FxRate` | `base, quote, rate, as_of, source` |
+| `PortfolioValuation` | `base_currency, positions: tuple[ValuedPosition], total_market_value, total_cost_basis, total_unrealized_pnl, is_complete, unvalued_symbols` |
+| `ValuedPosition` | position fields, value and P/L in both currencies, weight, quote provenance, `unavailable_reason` (`missing_quote`, `quote_currency_mismatch`, `missing_fx_rate`, `quote_symbol_mismatch`, `invalid_quote_price`) |
+| `RiskMetrics` | `observations, start, end, period_return_pct, daily_volatility_pct, annualized_volatility_pct, max_drawdown_pct, max_drawdown_peak, max_drawdown_trough` |
+| `CostBasisMethod` | `fifo`, `weighted_average` (D2 decides the stored default) |
+
+Semantics the adapter must respect:
+
+- Agent 2's ORM → `quant.types.Transaction` adapter is not written yet. It is the first task of Phase 3.
+- `fx_rate_to_base` is passed through as stored. A `null` rate makes the `*_base` fields `None`. It is never filled in.
+- Positions are keyed by `symbol` alone. The current seed has no symbol listed on two exchanges, which was checked. If that ever changes, the adapter must pass a unique key, for example `provider_symbol`.
+- A reversal and its target are both excluded. Selling more than is held raises `LedgerError`; shorts are not supported.
+- The functions are CPU-bound. For large ledgers, call them through `asyncio.to_thread`.
+- `value_positions` uses quotes whatever their freshness, and carries the label through. The route must show it.
+- If any position cannot be valued, the totals and weights are `None` and `is_complete` is false. The route returns that as it is and does not substitute partial totals.
+
+---
+
+## 7. Frontend rendering rules (IMPLEMENTED ON BRANCH `agent/frontend` `cc3fcc3` for existing views; binding for new ones)
+
+- Text from the API that is not markup is rendered as **plain text**. This covers AI output, instrument and provider names, portfolio names, notes and error messages. Use `textContent`, or `escapeHTML` from `frontend/js/core/safe-html.js` before any `innerHTML`.
+- AI text (`/api/insight`, `/api/ai/analyze/{symbol}`, and the future §5.4 `text`) goes only through `aiTextToHTML()`. It strips markdown, escapes everything and turns `\n` into `<br>`. Never insert it as HTML or markdown.
+- Every AI view shows `disclaimer`, and shows `generated_by` and `inputs_as_of` when the API returns them. `violations` is never sent to the browser.
+- Symbols typed by the user are checked with `isValidSymbol()`, the §1.5 pattern, before any request. In URLs they are wrapped in `encodeURIComponent`.
+- Existing classic scripts reach the helpers through `window.WolfeeSafe`, set by the module `js/core/globals.js`. New code imports `safe-html.js` directly.
+- Financial figures for real portfolios are displayed exactly as the API returns them, as decimal strings. The frontend does no portfolio arithmetic (TEAM_STRUCTURE H10).

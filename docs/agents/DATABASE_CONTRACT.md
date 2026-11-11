@@ -1,6 +1,6 @@
 # Database Contract
 
-Last updated: 2026-11-11 by Agent 1 (audit of commit `66ddcab`).
+Last updated: 2026-11-11 by Agent 1 (audit of commit `66ddcab`; branch review of `agent/backend` `d4af8bd` — see §4.1 and §5).
 
 - §1–§2 are **VERIFIED** from `backend/models.py`, `backend/database.py`, `backend/alembic/` and the code that reads and writes each table.
 - §3–§4 are **PROPOSED**. No proposed table exists. Nothing here authorises a migration.
@@ -249,3 +249,47 @@ A unique constraint on `stock_data.symbol` is desirable but **not additive**: du
 | later | De-duplicate `stock_data` and add the unique constraint | user approval |
 
 Each step is one migration by Agent 2, reviewed by Agent 1, tested for upgrade and downgrade on a copy of the data.
+
+### 4.1 Migrations written so far — IMPLEMENTED ON BRANCH `agent/backend` `d4af8bd` (not merged, **not approved for production**)
+
+| Revision | Down revision | Plan step | Creates |
+|----------|---------------|-----------|---------|
+| `a1f3c9d27b10` create_instruments | `8c15c00878ff` (existing head) | M1, schema only | `instruments` |
+| `b2e4d8a31c55` create_portfolios_and_transactions | `a1f3c9d27b10` | M2 | `portfolios`, `transactions` |
+
+- The chain is linear with a single head. No other branch adds a revision.
+- Neither migration alters or drops an existing table. Both downgrades drop only the tables they created.
+- **M1 deviation:** the migration does not seed rows. Seeding is meant to happen through `services.instrument_service.sync_instruments(db, quant.symbols.instrument_seed())`, but **nothing calls it yet** (REQ-7). With an empty `instruments` table every `BUY`, `SELL`, `DIVIDEND` and `SPLIT` returns `422`.
+- **M0 was skipped.** The Alembic state of production is still unknown (§2.1, D8).
+
+Differences from the §3.1–3.3 proposal (all additive and accepted by Agent 1):
+
+| Table | Difference |
+|-------|------------|
+| `instruments` | `is_active` has `server_default true`. Constraint named `uq_instruments_symbol_exchange` |
+| `portfolios` | `created_at` `server_default now()`. CHECK `ck_portfolios_kind`. Index `ix_portfolios_user_id`. "Unique name among non-archived rows" is a **partial unique index** `uq_portfolios_user_name_active … WHERE archived_at IS NULL` |
+| `transactions` | `id` and `voids_transaction_id` are BigInteger on Postgres and Integer on SQLite, so SQLite autoincrement works. `fee` `server_default 0`. `created_at` `server_default now()` |
+| `transactions` CHECKs | `type` in the seven types; `source` in `manual`, `import`, `paper_fill`; `quantity >= 0`; `fee >= 0`; `price IS NULL OR price >= 0`; `fx_rate_to_base IS NULL OR fx_rate_to_base > 0` |
+| `transactions` FKs | All four (`portfolio_id`, `instrument_id`, `voids_transaction_id`, `created_by_user_id`) are `ON DELETE RESTRICT` |
+| `transactions` indexes | `ix_transactions_portfolio_date_id (portfolio_id, trade_date, id)`, `ix_transactions_instrument_id`, and **unique** `uq_transactions_voids_transaction_id`, so a row can be voided only once even under a race |
+| ORM guard | `models.Transaction` has `before_update` and `before_delete` listeners that raise `LedgerError`. They cover ORM unit-of-work changes only. Bulk `update()`/`delete()` statements and raw SQL bypass them. A database-level guard (trigger or revoked privileges) is still open (§5) |
+
+Verified locally on 2026-11-11 against SQLite with Python 3.11.9: `upgrade head` → `downgrade base` → `upgrade head` all ran cleanly. **Not verified against PostgreSQL.**
+
+---
+
+## 5. Production database blockers (open)
+
+None of these is resolved. Until they are, neither migration may run against production, and `agent/backend` must not reach `main`. `main` is what Railway deploys.
+
+| # | Blocker | Why it matters | Needs |
+|---|---------|----------------|-------|
+| P1 | **`init_db()` runs `Base.metadata.create_all` on every start** (§1) | Merging `agent/backend` and deploying **creates `instruments`, `portfolios` and `transactions` in production immediately**, through `create_all` and not Alembic, whatever was approved. `alembic_version` would then not match the tables | A decision on how new tables reach production: either `create_all` stops creating new tables, or the user explicitly accepts it. Agent 2 change after Agent 1 sign-off |
+| P2 | Production Alembic state unknown (§2.1, D8) | `start.sh` runs `alembic upgrade head \|\| echo …`, so a failure is **swallowed** and the app starts anyway. Reproduced on SQLite: on a database built by `create_all`, `upgrade head` fails at `8c15c00878ff` with "table users already exists" | D8: read-only inspection of `alembic_version` and the table list, then M0 (stamp or baseline) |
+| P3 | Migration chain does not cover the whole model | `alembic check` on a fully migrated database reports 8 differences: `stock_data`, `turkish_gold`, `exchange_rates`, `ai_insights` and their indexes, plus `ix_auth_tokens_user_id`, exist only through `create_all`. A database built only from migrations lacks them | M0 baseline revision |
+| P4 | Never run on PostgreSQL | Untested: partial unique index; `SELECT … FOR UPDATE` in `load_writable`; BigInteger self-FK; CHECK constraints; `server_default true` and `now()`; NUMERIC round-trip through asyncpg; `IntegrityError` → `409` mapping with asyncpg's error types | Run the full `backend/tests` suite and upgrade/downgrade against a disposable Postgres matching the production major version |
+| P5 | No data-level append-only guard | ORM listeners do not stop bulk statements or manual SQL | Decide: a Postgres trigger rejecting UPDATE/DELETE on `transactions`, or accept ORM-level only |
+| P6 | Instruments not seeded | The ledger is unusable without rows (REQ-7) | Seeding path chosen and run, idempotently |
+| P7 | No backup or rollback rehearsal | First schema change to a live financial database | Snapshot before migrating; downgrade rehearsed on a copy |
+
+The user has **not** approved either migration for production. Agent 1 does not approve them either.

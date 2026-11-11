@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-11-11 by Agent 1 (audit of commit `66ddcab`).
+Last updated: 2026-11-11 by Agent 1 (audit of commit `66ddcab`; branch review in §9).
 
 Status values:
 
@@ -92,7 +92,7 @@ Status values:
 | Auth modal (login, register, forgot, resend) | DONE | |
 | Search and filters, responsive layout | DONE | |
 | Auto-polling every 60 s | DONE | |
-| Unused scripts | PARTIAL | `mock-data.js` and `yahoo-client.js` are not loaded by `index.html`. `api.js` is loaded but calls legacy paths (`/stocks`, `/analyze/…`) that do not exist |
+| Unused scripts | PARTIAL | `mock-data.js` and `yahoo-client.js` are not loaded by `index.html`. `api.js` is loaded but calls legacy paths (`/stocks`, `/analyze/…`) that do not exist. **On `agent/frontend` all three files are deleted and `index.html` no longer loads `api.js`. Every function it defined that is still called is defined in `main.js`** (REQ-6) |
 | Types, modules, tests | MISSING | `style.css` is 2,698 lines; no frontend tests |
 
 ### 1.7 Deployment and operations
@@ -265,3 +265,58 @@ Run on `integration` after every merge:
 8. Add and remove a watchlist ticker; summary card updates.
 9. Portfolio export downloads an `.xlsx`.
 10. Guest watchlist persists across a reload.
+
+---
+
+## 9. Branch review — 2026-11-11 (Agent 1)
+
+Nothing below is on `main`. All three branches are unmerged and unchanged by the review.
+
+### 9.1 Branches reviewed
+
+| Branch | Commits | Size | Verdict |
+|--------|---------|------|---------|
+| `agent/backend` | `d4af8bd` | 25 files, +2,272 | Code sound. **Blocked for `main`** by DATABASE_CONTRACT §5 (P1, P2, P4, P6) |
+| `agent/quant-ai` | `034313e`, `19d0501` | 26 files, +3,175 / −200 | Ready to integrate. Library only, with no new route and no schema |
+| `agent/frontend` | `43f2b2b`, `718d7c3`, `cc3fcc3` | escaping fixes, removes 3 dead scripts | Ready to integrate **after a browser smoke test** (§8), which is not yet done |
+
+No file is changed by more than one branch. Pairwise and three-way `git merge-tree` produced no conflicts.
+
+### 9.2 Test evidence (Python 3.11.9 — the production version — in a throwaway virtualenv)
+
+| Tree | Run from repo root (`pytest backend/tests`) | Run from `backend/` (`pytest tests`) |
+|------|---------------------------------------------|--------------------------------------|
+| `main` `de0575a` (baseline) | 26 passed | 23 passed, **3 failed** |
+| `agent/backend` | 143 passed | 140 passed, same 3 failed |
+| `agent/quant-ai` | 205 passed | 202 passed, same 3 failed |
+| backend + quant-ai merged (in memory) | **322 passed** | not run |
+| `agent/frontend` `node --test` | 9 passed | — |
+
+The three failures are `test_fetch_bist_stock_handles_fast_info_keyerror`, `test_fetch_global_stock_handles_fast_info_keyerror` and `test_turkish_gold_parser_html_mock`. They are **pre-existing and depend on the working directory**: they patch `backend.data_sources…`, which only imports when the repository root is on `sys.path`. They also fail on `main`. They are not caused by Agent 2's change (REQ-11).
+
+Alembic on SQLite (merged tree): `upgrade head`, `downgrade base`, `upgrade head` all clean, single head `b2e4d8a31c55`. Not run on PostgreSQL.
+
+Frontend static serving, checked with the ASGI test client on `agent/frontend`: `js/core/globals.js` and `safe-html.js` are served as `application/javascript`, and `js/api.js` returns 404. No real browser was run.
+
+### 9.3 Target feature status after integration (if merged)
+
+| Feature | Status on branch | Gap |
+|---------|------------------|-----|
+| Instrument registry and symbol normaliser | PARTIAL | Table, service and seed exist; nothing runs the seed (REQ-7) |
+| Portfolios | DONE on branch | Postgres not tested |
+| Transaction ledger, append-only | DONE on branch | ORM-level guard only (DB §5 P5) |
+| Holdings, cost basis, realised/unrealised P/L, cash | PARTIAL | Pure functions done (FIFO and weighted average). No ORM adapter or route; D2 |
+| Currency conversion | PARTIAL | Uses stored trade rates and supplied `FxRate`. No FX source (D3), no history table |
+| Price history | MISSING | M3 not started |
+| Real indicators | PARTIAL | Wilder and simple RSI, SMA and volatility in `quant.indicators`; not wired; legacy proxies still displayed (D4) |
+| Risk metrics, allocation, concentration | PARTIAL | Functions done; need price history |
+| Provenance and freshness | PARTIAL | Carried in `PriceQuote` and valuation; `stock_data` columns (M4) not added |
+| AI explanations with guardrails | PARTIAL | Library done (API_CONTRACT §5.4.1); no route |
+| Escaping of untrusted text in the UI | DONE on branch | Browser smoke test pending |
+| Portfolio UI | MISSING | Next frontend milestone (§9.4) |
+
+### 9.4 Next frontend milestone (Agent 4)
+
+1. **Run the browser smoke test** (§8) on `agent/frontend` with the backend running, in a real browser, and report results. This is what gates merging. Check especially the stock modal AI text, opportunities, watchlist add and remove with an invalid ticker, the ticker pills, and the exchange-rate click handler.
+2. Then build the portfolio screens against API_CONTRACT §5.1.1, which is stable now: portfolio list, create, rename and archive; ledger list with pagination; add-transaction form following the type rules table; void with confirmation. Render Decimal strings as given and do no arithmetic. Handle `401`, `404`, `409` and `422` with user-facing messages. Work against a locally running `agent/backend`; do not merge it.
+3. Holdings and AI summary views wait for §5.2 and §5.4 routes from Agent 2.
