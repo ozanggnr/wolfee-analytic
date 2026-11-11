@@ -159,7 +159,7 @@ function updateChangedCards(newStocks) {
                     sigChip.style.color = sig.color;
                     sigChip.style.background = sig.bg;
                     sigChip.style.borderColor = sig.border;
-                    sigChip.innerHTML = `${sig.icon} ${sig.label}`;
+                    sigChip.innerHTML = `${sig.icon} ${esc(sig.label)}`;
                 }
             }
         });

@@ -353,8 +353,8 @@ function renderSummaryCardUI(data) {
         const mIcon = mIsUp ? '▲' : '▼';
         const mCurr = m.currency === 'TRY' ? '₺' : '$';
         const mFullSym = m.currency === 'TRY' && !m.symbol.endsWith('.IS') ? `${m.symbol}.IS` : m.symbol;
-        const escMoverSym = encodeURIComponent(mFullSym);
-        const escMoverName = encodeURIComponent(m.name || m.symbol);
+        const escMoverSym = encodeHandlerArg(mFullSym);
+        const escMoverName = encodeHandlerArg(m.name || m.symbol);
         moverHTML = `
             <div class="mover-content" style="cursor: pointer;" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escMoverSym}'), name:decodeURIComponent('${escMoverName}')})">
                 <span class="mover-symbol">${esc(m.symbol)}</span>
