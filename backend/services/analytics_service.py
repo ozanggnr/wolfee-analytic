@@ -1,12 +1,13 @@
 """Holdings and performance of one portfolio, computed by the quant package.
 
-This module loads the caller's ledger and the cached quotes, hands them to quant,
-and shapes the results. The only arithmetic here is adding up figures quant
-already produced (realised P/L per currency); nothing is estimated.
+This module loads the caller's ledger, cached quotes and FX rates, hands them to
+quant, and shapes the results. The only arithmetic here is adding up figures quant
+already produced (realised P/L per currency, and portfolio totals over the
+positions that could be valued); nothing is estimated.
 
-FX: no automatic rates are supplied until decision D3 names a source, so a
-position in a currency other than the portfolio's base currency reports
-`missing_fx_rate` and the portfolio totals stay null.
+FX (decision D3): foreign positions convert into TRY at the cached TCMB rate. A
+position without a usable quote or rate is reported unvalued, and the totals
+cover the remaining positions only, with `is_complete` false.
 """
 from __future__ import annotations
 
@@ -30,13 +31,11 @@ from repositories import transaction_repository
 from schemas.analytics import (
     CurrencyAmountOut, FxRateOut, HoldingOut, HoldingsOut, PerformanceOut, QuoteOut, RealizedLotOut,
 )
-from services import ledger_adapter, portfolio_service, quote_service
+from services import fx_service, ledger_adapter, portfolio_service, quote_service
 from services.errors import ConflictError
 
-# Pending decision D2. Agent 1's recommendation: FIFO by default, method as a parameter.
-DEFAULT_COST_BASIS_METHOD = CostBasisMethod.FIFO
-# Pending decision D3: no FX source is approved, so none is used.
-NO_FX_RATES: Mapping[str, FxRate] = {}
+# Decision D2: weighted average by default, FIFO as a parameter.
+DEFAULT_COST_BASIS_METHOD = CostBasisMethod.WEIGHTED_AVERAGE
 
 Clock = Callable[[], datetime]
 
@@ -75,12 +74,39 @@ async def _compute(
         raise ConflictError(f"The stored ledger cannot be replayed: {exc}") from exc
 
     held = {p.symbol: ledger.instruments[p.symbol] for p in positions}
+    base_currency = portfolio.base_currency.strip()
     quotes = await quote_service.latest_quotes(db, held, now)
-    valuation = await asyncio.to_thread(
-        value_positions, positions, quotes, NO_FX_RATES, portfolio.base_currency.strip()
-    )
+    fx = await fx_service.rates_to_base(db, {p.currency for p in positions}, base_currency)
+    valuation = await asyncio.to_thread(value_positions, positions, quotes, fx, base_currency)
     average_costs = {p.symbol: p.average_cost for p in positions}
     return _Computed(portfolio, method, now, ledger.instruments, average_costs, valuation, realized, cash)
+
+
+@dataclass(frozen=True)
+class _Totals:
+    market_value: Optional[Decimal]
+    cost_basis: Optional[Decimal]
+    unrealized_pnl: Optional[Decimal]
+
+
+def _sum_or_none(values: Sequence[Optional[Decimal]]) -> Optional[Decimal]:
+    if any(v is None for v in values):
+        return None
+    return sum(values, Decimal(0))
+
+
+def _totals(valuation: PortfolioValuation) -> _Totals:
+    """Quant's totals when every position is valued; otherwise the sum over valued positions."""
+    if valuation.is_complete:
+        return _Totals(valuation.total_market_value, valuation.total_cost_basis, valuation.total_unrealized_pnl)
+    valued = [v for v in valuation.positions if v.market_value_base is not None]
+    if not valued:  # nothing could be valued: no total, rather than a misleading zero
+        return _Totals(None, None, None)
+    return _Totals(
+        market_value=_sum_or_none([v.market_value_base for v in valued]),
+        cost_basis=_sum_or_none([v.cost_basis_base for v in valued]),
+        unrealized_pnl=_sum_or_none([v.unrealized_pnl_base for v in valued]),
+    )
 
 
 def _quote_out(quote: Optional[PriceQuote]) -> Optional[QuoteOut]:
@@ -163,15 +189,16 @@ async def holdings(
 ) -> HoldingsOut:
     computed = await _compute(db, user_id, portfolio_id, method, clock)
     valuation = computed.valuation
+    totals = _totals(valuation)
     return HoldingsOut(
         **_header(computed),
         positions=[
             _holding_out(v, computed.instruments[v.symbol], computed.average_costs[v.symbol])
             for v in valuation.positions
         ],
-        total_market_value=valuation.total_market_value,
-        total_cost_basis=valuation.total_cost_basis,
-        total_unrealized_pnl=valuation.total_unrealized_pnl,
+        total_market_value=totals.market_value,
+        total_cost_basis=totals.cost_basis,
+        total_unrealized_pnl=totals.unrealized_pnl,
     )
 
 
@@ -185,7 +212,7 @@ async def performance(
         **_header(computed),
         realized_pnl=_realized_by_currency(computed.realized),
         realized_pnl_base=_realized_in_base(computed.realized),
-        unrealized_pnl_base=computed.valuation.total_unrealized_pnl,
+        unrealized_pnl_base=_totals(computed.valuation).unrealized_pnl,
         dividends=_amounts(cash.dividends),
         fees=_amounts(cash.fees),
         net_deposits=_amounts(cash.net_deposits),

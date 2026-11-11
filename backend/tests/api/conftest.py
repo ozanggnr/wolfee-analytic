@@ -151,3 +151,32 @@ def add_quote():
         asyncio.run(_insert_quote(symbol, price, currency, age))
 
     return _add
+
+
+async def _replace_fx_rate(pair: str, buying):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete
+
+    from models import ExchangeRate
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(ExchangeRate).where(ExchangeRate.pair == pair))
+        if buying is not None:
+            session.add(ExchangeRate(pair=pair, display_name=pair, buying=buying, selling=buying,
+                                     updated_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+        await session.commit()
+
+
+@pytest.fixture
+def fx_rate():
+    """Set (or with None, remove) a cached `XXX/TRY` rate; every pair touched is removed afterwards."""
+    touched = set()
+
+    def _set(pair: str, buying) -> None:
+        touched.add(pair)
+        asyncio.run(_replace_fx_rate(pair, buying))
+
+    yield _set
+    for pair in touched:
+        asyncio.run(_replace_fx_rate(pair, None))

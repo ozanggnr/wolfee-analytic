@@ -1,6 +1,6 @@
 """Holdings and performance endpoints, with hand-checked figures.
 
-Scenario used by most tests (TRY portfolio, one TRY instrument, FIFO):
+Scenario used by most tests (TRY portfolio, one TRY instrument, FIFO requested explicitly):
 
     DEPOSIT 10000
     BUY   10 @ 100, fee 5   -> lot 1 cost 1005
@@ -17,6 +17,8 @@ Weighted average: pool 20 units for 2210 -> sell 15 costs 1657.5 -> realised 282
 remaining 5 units cost 552.5 -> unrealised 147.5.
 """
 from datetime import timedelta
+
+FIFO = {"cost_basis_method": "fifo"}
 
 import pytest
 from starlette.testclient import TestClient
@@ -56,7 +58,7 @@ def scenario(user, instrument, add_quote):
 # ------------------------------------------------------------------
 
 def test_holdings_are_derived_from_the_ledger_and_valued_at_the_cached_quote(user, scenario):
-    body = user.get(url(scenario["portfolio"], "holdings")).json()
+    body = user.get(url(scenario["portfolio"], "holdings"), params=FIFO).json()
 
     assert body["portfolio_id"] == scenario["portfolio"]["id"]
     assert body["base_currency"] == "TRY"
@@ -85,8 +87,8 @@ def test_holdings_are_derived_from_the_ledger_and_valued_at_the_cached_quote(use
     assert quote["as_of"].endswith("+00:00")
 
 
-def test_weighted_average_cost_basis_is_available_as_a_parameter(user, scenario):
-    body = user.get(url(scenario["portfolio"], "holdings"), params={"cost_basis_method": "weighted_average"}).json()
+def test_weighted_average_cost_basis_is_the_default(user, scenario):
+    body = user.get(url(scenario["portfolio"], "holdings")).json()
 
     [position] = body["positions"]
     assert body["cost_basis_method"] == "weighted_average"
@@ -150,8 +152,9 @@ def test_a_quote_in_another_currency_is_not_used(user, instrument, add_quote):
     assert position["market_value"] is None
 
 
-def test_a_foreign_currency_position_is_not_converted_without_an_approved_fx_source(
-        user, make_instrument, add_quote):
+def test_a_foreign_currency_position_without_a_cached_rate_is_not_converted(
+        user, make_instrument, add_quote, fx_rate):
+    fx_rate("USD/TRY", None)
     portfolio = user.create_portfolio(base_currency="TRY")
     us_stock = make_instrument(exchange="US", currency="USD")
     record(user, portfolio, {**trade("BUY", us_stock["symbol"], "2", "150"), "fx_rate_to_base": "38.5"})
@@ -194,7 +197,7 @@ def test_voided_trades_do_not_count(user, instrument, add_quote):
 # ------------------------------------------------------------------
 
 def test_performance_reports_realised_unrealised_dividends_fees_and_cash(user, scenario):
-    body = user.get(url(scenario["portfolio"], "performance")).json()
+    body = user.get(url(scenario["portfolio"], "performance"), params=FIFO).json()
 
     assert body["realized_pnl"] == [{"currency": "TRY", "amount": "332.500000"}]
     assert body["realized_pnl_base"] == "332.500000"
@@ -217,9 +220,10 @@ def test_performance_reports_realised_unrealised_dividends_fees_and_cash(user, s
     assert first["symbol"] == scenario["instrument"]["symbol"]
 
 
-def test_weighted_average_changes_realised_profit(user, scenario):
-    body = user.get(url(scenario["portfolio"], "performance"),
-                    params={"cost_basis_method": "weighted_average"}).json()
+def test_weighted_average_is_the_default_for_realised_profit(user, scenario):
+    body = user.get(url(scenario["portfolio"], "performance")).json()
+
+    assert body["cost_basis_method"] == "weighted_average"
 
     assert body["realized_pnl"] == [{"currency": "TRY", "amount": "282.500000"}]
     assert body["unrealized_pnl_base"] == "147.500000"
@@ -307,7 +311,7 @@ def test_another_users_analytics_are_not_found(make_user, scenario):
 def test_an_archived_portfolio_still_reports_its_history(user, scenario):
     user.delete(f"/api/v1/portfolios/{scenario['portfolio']['id']}")
 
-    response = user.get(url(scenario["portfolio"], "performance"))
+    response = user.get(url(scenario["portfolio"], "performance"), params=FIFO)
 
     assert response.status_code == 200
     assert response.json()["realized_pnl"] == [{"currency": "TRY", "amount": "332.500000"}]
@@ -358,3 +362,73 @@ def test_instruments_sharing_a_symbol_on_two_exchanges_stay_separate_and_unprice
 
     assert sorted((p["exchange"], p["quantity"]) for p in positions) == [("CMDTY", "2.00000000"), ("US", "1.00000000")]
     assert all(p["unavailable_reason"] == "missing_quote" for p in positions)
+
+
+# ------------------------------------------------------------------
+# FX (decision D3): foreign positions convert into TRY at the cached TCMB rate
+# ------------------------------------------------------------------
+
+def test_a_foreign_position_is_converted_into_try_at_the_cached_rate(user, make_instrument, add_quote, fx_rate):
+    # 2 @ 150 USD bought at 38.5 -> cost 11550 TRY; quote 160 USD at 40 -> 12800 TRY; P/L 1250 TRY
+    portfolio = user.create_portfolio(base_currency="TRY")
+    us_stock = make_instrument(exchange="US", currency="USD")
+    record(user, portfolio, {**trade("BUY", us_stock["symbol"], "2", "150"), "fx_rate_to_base": "38.5"})
+    add_quote(us_stock["provider_symbol"], 160.0, currency="USD")
+    fx_rate("USD/TRY", 40.0)
+
+    body = user.get(url(portfolio, "holdings")).json()
+
+    [position] = body["positions"]
+    assert position["unavailable_reason"] is None
+    assert (position["market_value_base"], position["cost_basis_base"], position["unrealized_pnl_base"]) == (
+        "12800.000000", "11550.000000", "1250.000000")
+    fx = position["fx_rate"]
+    assert (fx["base"], fx["quote"], fx["rate"], fx["source"]) == ("USD", "TRY", "40.00000000", "tcmb_forex_buying")
+    assert body["is_complete"] is True
+    assert (body["total_market_value"], body["total_unrealized_pnl"]) == ("12800.000000", "1250.000000")
+
+
+def test_a_missing_rate_leaves_only_that_position_out_of_the_totals(
+        user, instrument, make_instrument, add_quote, fx_rate):
+    fx_rate("USD/TRY", None)
+    portfolio = user.create_portfolio(base_currency="TRY")
+    us_stock = make_instrument(exchange="US", currency="USD")
+    record(user, portfolio, trade("BUY", instrument["symbol"], "5", "120"))
+    record(user, portfolio, {**trade("BUY", us_stock["symbol"], "1", "100"), "fx_rate_to_base": "38"})
+    add_quote(instrument["provider_symbol"], 140.0)
+    add_quote(us_stock["provider_symbol"], 110.0, currency="USD")
+
+    body = user.get(url(portfolio, "holdings")).json()
+
+    reasons = {p["symbol"]: p["unavailable_reason"] for p in body["positions"]}
+    assert reasons == {instrument["symbol"]: None, us_stock["symbol"]: "missing_fx_rate"}
+    assert body["is_complete"] is False
+    assert body["unvalued_symbols"] == [us_stock["symbol"]]
+    assert (body["total_market_value"], body["total_cost_basis"], body["total_unrealized_pnl"]) == (
+        "700.000000", "600.000000", "100.000000")
+    performance = user.get(url(portfolio, "performance")).json()
+    assert performance["unrealized_pnl_base"] == "100.000000"
+
+
+def test_a_failed_rate_fetch_stored_as_zero_is_never_used(user, make_instrument, add_quote, fx_rate):
+    portfolio = user.create_portfolio(base_currency="TRY")
+    us_stock = make_instrument(exchange="US", currency="USD")
+    record(user, portfolio, {**trade("BUY", us_stock["symbol"], "1", "100"), "fx_rate_to_base": "38"})
+    add_quote(us_stock["provider_symbol"], 110.0, currency="USD")
+    fx_rate("USD/TRY", 0.0)
+
+    body = user.get(url(portfolio, "holdings")).json()
+
+    assert body["positions"][0]["unavailable_reason"] == "missing_fx_rate"
+    assert body["total_market_value"] is None
+
+
+def test_a_usd_portfolio_gets_no_inverted_rate_for_try_positions(user, instrument, add_quote, fx_rate):
+    portfolio = user.create_portfolio(base_currency="USD")
+    record(user, portfolio, {**trade("BUY", instrument["symbol"], "1", "100"), "fx_rate_to_base": "0.025"})
+    add_quote(instrument["provider_symbol"], 110.0)
+    fx_rate("USD/TRY", 40.0)
+
+    body = user.get(url(portfolio, "holdings")).json()
+
+    assert body["positions"][0]["unavailable_reason"] == "missing_fx_rate"
