@@ -17,8 +17,13 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "Ne
 
 - [x] 7. DATABASE_CONTRACT §4.2 approved migration + §5 status; COORDINATION REQ-16 (supersedes REQ-8)
 
+- [x] Final report sent (2026-11-11)
+
 ## In progress
-- [ ] Final report to user, then wait
+- Nothing. **Waiting for the user's approval** before Step 2 (merge `agent/backend` into `integration`).
+
+## Next (only after approval)
+- Step 2: merge `agent/backend` (needs REQ-13, REQ-15, REQ-16 from Agent 2 and REQ-14 from Agent 3, or an explicit decision to merge first)
 
 ## Notes for whoever resumes
 - D3 "total the rest" conflicts with current `quant.value_positions` (totals None when incomplete) and Agent 2's `analytics_service` (no FX supplied) → REQ for Agents 3 and 2.
