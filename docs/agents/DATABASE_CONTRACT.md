@@ -278,7 +278,44 @@ Verified locally on 2026-11-11 against SQLite with Python 3.11.9: `upgrade head`
 
 ---
 
+## 4.2 Approved: migration that completes the chain (APPROVED by the user 2026-11-11 — Agent 2 to write)
+
+One new Alembic revision by Agent 2, `down_revision = "b2e4d8a31c55"`. It makes a database built **only** from migrations identical to the models. After it, `alembic check` on a freshly migrated database must report no differences.
+
+| Object | Definition (must match `models.py` exactly — what `create_all` builds today) |
+|--------|------------------------------------------------------------------------------|
+| `stock_data` | `id` Integer PK; `symbol` String(20) NOT NULL; `name` String(200); `price`, `change_pct`, `volume`, `day_high`, `day_low`, `open_price`, `previous_close`, `bid`, `ask` Float; `rsi` Float; `ma_20` Float; `volatility` String(10); `currency` String(5); `market_type` String(20); `prediction` String(500); `reason` String(500); `is_favorable`, `is_buyable` Boolean; `market_cap` Float; `extra_data` JSON; `updated_at` DateTime `server_default now()`. Indexes `ix_stock_data_symbol (symbol)`, `idx_stock_symbol_updated (symbol, updated_at)`, `idx_stock_market_type (market_type)` |
+| `turkish_gold` | `id` Integer PK; `gold_type` String(50) NOT NULL **unique**; `display_name` String(100); `buying_price`, `selling_price`, `change_pct` Float; `updated_at` DateTime `server_default now()` |
+| `exchange_rates` | `id` Integer PK; `pair` String(10) NOT NULL **unique**; `display_name` String(50); `buying`, `selling`, `change_pct` Float; `updated_at` DateTime `server_default now()` |
+| `ai_insights` | `id` Integer PK; `insight_type` String(20); `symbol` String(20) NULL; `insight_text` Text; `created_at` DateTime `server_default now()` |
+| `ix_auth_tokens_user_id` | index on `auth_tokens(user_id)` (declared `index=True` in the model, missing from `8c15c00878ff`) |
+| `uq_instruments_provider_symbol` | **unique** constraint on `instruments(provider_symbol)`. Checked: the 361-row seed has 361 distinct `provider_symbol` values. Also lets `find_active` resolve a provider spelling to exactly one row |
+
+Rules for this migration:
+
+- Python-side defaults in the models (`default=0`, `'TRY'`, `'BIST'`, `dict`) stay Python-side. The migration adds no `server_default` the models do not declare, so `alembic check` stays clean. The existing model types (Float prices on the display cache) are kept as they are; this migration is about coverage, not redesign.
+- `downgrade` drops exactly these objects, in reverse order.
+- Tested by Agent 2 on PostgreSQL 16 and SQLite: `upgrade head` → `downgrade base` → `upgrade head`, then `alembic check` with no differences. Report the commands and output.
+
+**Migrations become the only way tables are created in production.** In the same change, Agent 2 limits `init_db()`'s `Base.metadata.create_all` to SQLite (local development and tests). With a Postgres `DATABASE_URL`, start-up creates nothing. On Fly the release command (`alembic upgrade head`, then `python -m services.instrument_service`) builds and seeds the schema before the app starts. If a table is missing, the app fails loudly instead of creating it quietly. This closes REQ-8 and §5 P1–P3.
+
+---
+
 ## 5. Production database blockers (open)
+
+Status after the decisions of 2026-11-11 (Fly.io, empty database — DEPLOYMENT.md):
+
+| # | Status |
+|---|--------|
+| P1 | Closed once §4.2 is merged (`create_all` limited to SQLite) |
+| P2 | **Resolved** — production starts empty on Fly; the release command runs `alembic upgrade head` and a failure aborts the deploy. `start.sh` fixed in `5afdb26` |
+| P3 | Closed once §4.2 is merged |
+| P4 | Migrations verified on PostgreSQL 16 (DEPLOYMENT §8). API tests on Postgres still blocked by test fixtures (REQ-9) |
+| P5 | Open — ORM-level append-only guard only |
+| P6 | Seed CLI exists on `agent/backend` `6170686` and runs in the release command; verified at Step 2 |
+| P7 | Reduced — data is disposable; take a volume snapshot before risky migrations |
+
+The original analysis follows.
 
 None of these is resolved. Until they are, neither migration may run against production, and `agent/backend` must not reach `main`. `main` is what Railway deploys.
 

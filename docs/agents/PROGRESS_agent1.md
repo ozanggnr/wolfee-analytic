@@ -15,8 +15,9 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "Ne
 
 - [x] 6. API_CONTRACT §5.2.1 holdings/performance shapes, §6.1 note updated for D3
 
+- [x] 7. DATABASE_CONTRACT §4.2 approved migration + §5 status; COORDINATION REQ-16 (supersedes REQ-8)
+
 ## In progress
-- [ ] 7. DATABASE_CONTRACT — approve migration M0b: stock_data, turkish_gold, exchange_rates, ai_insights, ix_auth_tokens_user_id, unique instruments.provider_symbol; migrations-only table creation in production
 - [ ] Final report to user, then wait
 
 ## Notes for whoever resumes

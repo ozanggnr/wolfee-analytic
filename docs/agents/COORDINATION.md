@@ -259,4 +259,19 @@ Status:    open — choice of selling vs buying rate: selling, as shown in the e
            Agent 1 to confirm if the user wants buying or mid
 ```
 
+```
+ID:        REQ-16
+From:      Agent 1 (approved by the user 2026-11-11)
+To:        Agent 2
+Needs:     the migration in DATABASE_CONTRACT §4.2 (stock_data, turkish_gold, exchange_rates,
+           ai_insights, ix_auth_tokens_user_id, uq_instruments_provider_symbol) and, in the same
+           change, init_db() create_all limited to SQLite; evidence: upgrade/downgrade/upgrade and
+           a clean `alembic check` on PostgreSQL 16 and SQLite
+Why:       migrations become the only way tables are created in production; closes REQ-8
+Blocking:  yes, before the first Fly deploy
+Status:    open
+```
+
+REQ-8 is superseded by REQ-16.
+
 REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the Step 2 merge before the request is closed.
