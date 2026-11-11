@@ -225,8 +225,8 @@ A unique constraint on `stock_data.symbol` is desirable but **not additive**: du
 
 | ID | Question | Agent 1 recommendation |
 |----|----------|------------------------|
-| D2 | Cost-basis method | FIFO as the stored default, with the method passed as a parameter so weighted average can be offered later. Tax relevance for Turkish investors should be confirmed by the user, not assumed |
-| D3 | Base currency and FX source | Base currency chosen per portfolio (`TRY` or `USD`). TCMB daily rates as the FX history source, stored with their date; the rate used for each trade is saved on the transaction |
+| D2 | Cost-basis method | **DECIDED by the user 2026-11-11:** default **weighted average**; FIFO available as the `cost_basis_method` request parameter. Not stored per portfolio; nothing in the schema changes (REQ-13) |
+| D3 | Base currency and FX source | **DECIDED by the user 2026-11-11:** base currency **TRY** (the only accepted value for now). Valuation FX comes from the existing `exchange_rates` table (latest row per pair, e.g. `USD/TRY`), not a new history table. The rate a user gives on a transaction is still stored on that transaction and used for cost in TRY. A foreign position with no usable rate is reported as `missing_fx_rate`; the other positions are still valued and totalled (REQ-14, REQ-15). TCMB history (§3.4) is deferred |
 | — | Is cash tracked? | Yes, through `DEPOSIT` / `WITHDRAWAL` rows, optional per portfolio |
 | — | Turkish gold and FX as holdings | Supported through `instruments` rows with `asset_class` `gold` / `fx`, in a later phase |
 

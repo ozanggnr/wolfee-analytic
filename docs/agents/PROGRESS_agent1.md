@@ -11,8 +11,9 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "Ne
 
 - [x] 1. REQ-12 closed in COORDINATION and DEPLOYMENT (fixed by Agent 2 in `agent/backend` `6170686`; not duplicated)
 
+- [x] 5. Decisions recorded — `b2c5415` (COORDINATION §9: D2, D3, D8 resolved, approvals, REQ-13/14/15) + follow-up commit for DATABASE_CONTRACT §3.6
+
 ## In progress
-- [ ] 5. Record decisions D2 (weighted average default, FIFO parameter), D3 (TRY base, FX from exchange_rates, missing_fx_rate per position but total the rest), approvals (delayed/stale labels, 10,000-transaction cap, realised P/L summing in Agent 2's service)
 - [ ] 6. API_CONTRACT §5.2 — Agent 2's holdings/performance shapes (from `agent/backend` `6170686` `schemas/analytics.py`)
 - [ ] 7. DATABASE_CONTRACT — approve migration M0b: stock_data, turkish_gold, exchange_rates, ai_insights, ix_auth_tokens_user_id, unique instruments.provider_symbol; migrations-only table creation in production
 - [ ] Final report to user, then wait
