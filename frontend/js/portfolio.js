@@ -52,6 +52,7 @@ window.getPortfolio = function() {
 window.togglePortfolioItem = async function(customSymbol = null) {
     const symbolToToggle = customSymbol || currentSymbol;
     if (!symbolToToggle) return;
+    if (!window.WolfeeSafe.isValidSymbol(symbolToToggle)) return;
 
     const baseSym = symbolToToggle.replace('.IS', '').trim().toUpperCase();
 
@@ -63,7 +64,7 @@ window.togglePortfolioItem = async function(customSymbol = null) {
         try {
             if (exists) {
                 // Remove via API
-                const res = await (window.authFetch || fetch)(`${API_URL}/api/watchlist/${baseSym}`, {
+                const res = await (window.authFetch || fetch)(`${API_URL}/api/watchlist/${encodeURIComponent(baseSym)}`, {
                     method: 'DELETE'
                 });
                 if (!res.ok) throw new Error('Failed to remove ticker');
@@ -134,6 +135,13 @@ window.addTickerFromPortfolioInput = async function() {
     if (!input) return;
     const ticker = input.value.trim().toUpperCase();
     if (!ticker) return;
+
+    if (!window.WolfeeSafe.isValidSymbol(ticker)) {
+        input.setCustomValidity('Enter a valid ticker, for example THYAO, NVDA or GC=F.');
+        input.reportValidity();
+        return;
+    }
+    input.setCustomValidity('');
 
     input.value = '';
     await togglePortfolioItem(ticker);
@@ -340,7 +348,7 @@ function renderSummaryCardUI(data) {
         const escMoverName = encodeURIComponent(m.name || m.symbol);
         moverHTML = `
             <div class="mover-content" style="cursor: pointer;" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escMoverSym}'), name:decodeURIComponent('${escMoverName}')})">
-                <span class="mover-symbol">${m.symbol}</span>
+                <span class="mover-symbol">${esc(m.symbol)}</span>
                 <span class="mover-badge ${mIsUp ? 'mover-up' : 'mover-down'}">
                     ${mIcon} ${Math.abs(m.change_pct).toFixed(2)}%
                 </span>
@@ -354,7 +362,7 @@ function renderSummaryCardUI(data) {
         const isUp = t.change_pct >= 0;
         const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
         const icon = isUp ? '▲' : '▼';
-        const safeSym = typeof escapeHTML === 'function' ? escapeHTML(t.symbol) : t.symbol;
+        const safeSym = esc(t.symbol);
         const fullSym = t.fullSymbol || (t.currency === 'TRY' && !t.symbol.endsWith('.IS') ? `${t.symbol}.IS` : t.symbol);
         const escSym = encodeURIComponent(fullSym || t.symbol || '');
         const escName = encodeURIComponent(t.name || t.symbol || '');

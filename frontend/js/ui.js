@@ -1,3 +1,8 @@
+/** Escapes untrusted text before it is placed in innerHTML. */
+function esc(value) {
+    return window.WolfeeSafe.escapeHTML(value);
+}
+
 function getCurrencySymbol(code) {
     const map = {
         'USD': '$', 'EUR': '\u20ac', 'GBP': '\u00a3', 'TRY': '\u20ba',
@@ -75,7 +80,7 @@ function renderStockCard(stock) {
     if (!baseSym) return;
 
     // Strict DOM guard: NEVER render duplicate card for the same symbol
-    if (grid.querySelector(`[data-stock-symbol="${baseSym}"]`)) {
+    if (grid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`)) {
         return;
     }
 
@@ -95,8 +100,8 @@ function renderStockCard(stock) {
     card.innerHTML = `
         <div class="stock-header">
             <div class="symbol-group">
-                <span class="stock-symbol">${baseSym}</span>
-                <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 22)}${(stock.name || '').length > 22 ? '...' : ''}</span>
+                <span class="stock-symbol">${esc(baseSym)}</span>
+                <span class="stock-name" title="${esc(stock.name)}">${esc((stock.name || '').substring(0, 22))}${(stock.name || '').length > 22 ? '...' : ''}</span>
             </div>
             <div>
                 <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
@@ -120,7 +125,7 @@ function renderStockCard(stock) {
             </div>
         </div>
         <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
-            ${sig.icon} ${sig.label}
+            ${sig.icon} ${esc(sig.label)}
         </div>
     `;
 
@@ -152,7 +157,7 @@ function renderGoldCards(goldData) {
     goldData.forEach(g => {
         html += `
             <div class="gold-card">
-                <div class="gold-name">${g.display_name}</div>
+                <div class="gold-name">${esc(g.display_name)}</div>
                 <div class="gold-price">${(g.selling_price || 0).toFixed(2)} ₺</div>
                 <div class="gold-detail">
                     Buy: ${(g.buying_price || 0).toFixed(2)} ₺ 
@@ -194,19 +199,21 @@ function renderExchangeRates(rates) {
     }
     
     ticker.style.display = '';
-    let html = '';
+    ticker.innerHTML = '';
     rates.forEach(r => {
         const color = (r.change_pct || 0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         const icon = (r.change_pct || 0) >= 0 ? '▲' : '▼';
-        html += `
-            <div class="exchange-item" style="cursor: pointer;" onclick="openExchangeModal('${r.pair}', ${r.selling || 0}, ${r.change_pct || 0})">
-                <span class="pair">${r.pair}</span>
-                <span class="rate">${(r.selling || 0).toFixed(4)}</span>
-                <span style="color:${color}; font-size:0.75rem;">${icon} ${Math.abs(r.change_pct||0).toFixed(2)}%</span>
-            </div>
+        const item = document.createElement('div');
+        item.className = 'exchange-item';
+        item.style.cursor = 'pointer';
+        item.innerHTML = `
+            <span class="pair">${esc(r.pair)}</span>
+            <span class="rate">${(r.selling || 0).toFixed(4)}</span>
+            <span style="color:${color}; font-size:0.75rem;">${icon} ${Math.abs(r.change_pct||0).toFixed(2)}%</span>
         `;
+        item.addEventListener('click', () => openExchangeModal(r.pair, r.selling || 0, r.change_pct || 0));
+        ticker.appendChild(item);
     });
-    ticker.innerHTML = html;
 }
 
 window.openExchangeModal = function(pair, price, change_pct) {
@@ -267,7 +274,7 @@ window.renderOpportunitiesPage = function() {
     grid.innerHTML = '';
     opportunities.forEach(stock => {
         const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
-        if (grid.querySelector(`[data-stock-symbol="${baseSym}"]`)) return;
+        if (grid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`)) return;
 
         const currency = getCurrencySymbol(stock.currency);
         const isUp = (stock.change_pct || 0) >= 0;
@@ -286,8 +293,8 @@ window.renderOpportunitiesPage = function() {
         card.innerHTML = `
             <div class="stock-header">
                 <div class="symbol-group">
-                    <span class="stock-symbol">${(stock.symbol||'').replace('.IS', '')}</span>
-                    <span class="stock-name" title="${stock.name}">${(stock.name || '').substring(0, 22)}${(stock.name || '').length > 22 ? '...' : ''}</span>
+                    <span class="stock-symbol">${esc((stock.symbol||'').replace('.IS', ''))}</span>
+                    <span class="stock-name" title="${esc(stock.name)}">${esc((stock.name || '').substring(0, 22))}${(stock.name || '').length > 22 ? '...' : ''}</span>
                 </div>
                 <div>
                     <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
@@ -312,9 +319,9 @@ window.renderOpportunitiesPage = function() {
             </div>
             <div style="margin: 5px 0;">${badges}</div>
             <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
-                ${sig.icon} ${sig.label}
+                ${sig.icon} ${esc(sig.label)}
             </div>
-            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${stock.reason || 'Positive signals detected.'}</div>
+            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${esc(stock.reason || 'Positive signals detected.')}</div>
         `;
         card.onclick = () => openModal(stock);
         grid.appendChild(card);
@@ -328,7 +335,7 @@ function openModal(stock) {
     
     // Add AI button to header
     const title = document.getElementById('modal-title');
-    title.innerHTML = `${stock.name || stock.symbol} <span style="font-size:0.8rem;color:var(--text-secondary)">${stock.symbol}</span>`;
+    title.innerHTML = `${esc(stock.name || stock.symbol)} <span style="font-size:0.8rem;color:var(--text-secondary)">${esc(stock.symbol)}</span>`;
     
     const currency = getCurrencySymbol(stock.currency);
     
@@ -346,7 +353,8 @@ function openModal(stock) {
             chartControls.parentNode.insertBefore(aiSection, chartControls);
         }
     }
-    aiSection.innerHTML = `<button class="ai-analyze-btn" onclick="askWolfeeAI('${stock.symbol}')">🐺 Ask Wolfee AI for Deep Analysis</button>`;
+    aiSection.innerHTML = '<button class="ai-analyze-btn">🐺 Ask Wolfee AI for Deep Analysis</button>';
+    aiSection.querySelector('.ai-analyze-btn').addEventListener('click', () => askWolfeeAI(stock.symbol));
 
     updatePortfolioButtonUI(stock.symbol);
     modal.classList.remove('hidden');
@@ -432,28 +440,21 @@ async function _fetchLivePriceForModal(symbol) {
     }
 }
 
+const AI_ANALYSIS_LABELS = ['Decision', 'Why this decision', 'Why someone should buy it', 'Why to wait', 'Risk to watch'];
+
 window.askWolfeeAI = async function(symbol) {
     const aiSection = document.getElementById('ai-analysis-section');
     if (!aiSection) return;
     
-    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${symbol.replace('.IS','')}...</span></div>`;
+    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${esc(symbol.replace('.IS',''))}...</span></div>`;
     
     try {
-        const res = await fetch(`${API_URL}/api/ai/analyze/${symbol}`);
+        const res = await fetch(`${API_URL}/api/ai/analyze/${encodeURIComponent(symbol)}`);
         if (!res.ok) throw new Error('Analysis failed');
         const data = await res.json();
-        let raw = data.analysis || 'Analysis unavailable';
-        // Strip residual markdown
-        raw = raw
-            .replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/\*(.*?)\*/g, '$1')
-            .replace(/#{1,6}\s/g, '')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-        // Highlight section labels like "Decision:", "Risk to watch:" etc.
-        raw = raw.replace(/^(Decision|Why this decision|Why someone should buy it|Why to wait|Risk to watch):/gm,
-            '<span style="color:var(--accent-color);font-weight:600;">$1:</span>');
-        const text = raw.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+        const text = window.WolfeeSafe.aiTextToHTML(data.analysis || 'Analysis unavailable', {
+            highlightLabels: AI_ANALYSIS_LABELS
+        });
         aiSection.innerHTML = `<div class="ai-response">${text}</div>`;
     } catch(e) {
         aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline. Please try again in a moment.</div>`;
