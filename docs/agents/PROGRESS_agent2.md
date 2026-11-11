@@ -5,7 +5,7 @@ Resume protocol: `git status`, read this file, continue from "In progress" / "Ne
 
 Test commands (from the worktree root, Python 3.11.9 venv in the session scratchpad):
 - Full suite: `python -m pytest backend/tests -q -p no:cacheprovider -W ignore`
-- Postgres: see item 3 once committed.
+- Postgres API tests (empty, disposable DB): `WOLFEE_TEST_POSTGRES_URL=postgresql://postgres@127.0.0.1:55432/wolfee_tests python -m pytest backend/tests/api -q -p no:cacheprovider -W ignore`
 
 ## Current task (user instructions after D2/D3 decisions)
 
@@ -19,7 +19,11 @@ Test commands (from the worktree root, Python 3.11.9 venv in the session scratch
    - `ix_auth_tokens_user_id`
    - a unique constraint on `instruments.provider_symbol`
 2. No `create_all` at startup on Postgres. **Next.** This depends on item 1.
-3. Postgres test harness in the repo: a no-pool engine selected by an env var. **Next.** This does not depend on item 1.
+3. Postgres test harness in the repo. **Done.**
+   - `DB_POOL=null` in `database.py` gives a NullPool engine.
+   - `tests/conftest.py` reads `WOLFEE_TEST_POSTGRES_URL`.
+   - The API fixtures run `alembic upgrade head` on Postgres before the tests.
+   - Result: 132/132 API tests pass on empty Postgres 16; 357/357 pass on SQLite.
 4. Re-run all of these, then report. **Pending.**
    - full suite on SQLite
    - API tests on empty Postgres 16

@@ -114,3 +114,16 @@ def test_migrations_roll_back_to_base_and_forward_again(migrated_database):
 
     run_backend(["-m", "alembic", "upgrade", "head"], url)
     assert LEDGER_TABLES <= tables(path)
+
+
+def pool_class_for(db_pool: str):
+    env = {**os.environ, "DATABASE_URL": "postgresql://user@127.0.0.1:1/none", "DB_POOL": db_pool}
+    return subprocess.run([sys.executable, "-c", "import database; print(type(database.engine.pool).__name__)"],
+                          cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=60)
+
+
+def test_db_pool_null_gives_an_unpooled_engine_and_unknown_values_are_refused():
+    assert pool_class_for("null").stdout.strip() == "NullPool"
+    assert pool_class_for("queue").stdout.strip() == "AsyncAdaptedQueuePool"
+    refused = pool_class_for("bogus")
+    assert refused.returncode != 0 and "DB_POOL must be" in refused.stderr

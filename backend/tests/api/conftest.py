@@ -11,7 +11,7 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-from database import AsyncSessionLocal, init_db  # noqa: E402
+from database import AsyncSessionLocal, init_db, is_sqlite  # noqa: E402
 from main import app  # noqa: E402
 from models import Instrument, User  # noqa: E402
 from security_middleware import (  # noqa: E402
@@ -24,8 +24,20 @@ from security_middleware import (  # noqa: E402
 )
 
 
+def upgrade_to_head() -> None:
+    """Run `alembic upgrade head` against DATABASE_URL, as the deploy release step does."""
+    import subprocess
+
+    result = subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=BACKEND_DIR,
+                            capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError("alembic upgrade head failed:\n" + result.stdout + result.stderr)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def database_tables():
+    if not is_sqlite:  # Postgres run: build the schema the way a deploy does
+        upgrade_to_head()
     asyncio.run(init_db())
 
 
