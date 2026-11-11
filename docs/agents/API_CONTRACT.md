@@ -302,6 +302,68 @@ A reversal row copies the original's `type`, amounts and instrument, and sets `v
 | GET | `/api/v1/portfolios/{id}/allocation` | Weights by instrument, market, currency |
 | GET | `/api/v1/portfolios/{id}/risk` | Volatility, drawdown, concentration, computed from stored price history |
 
+#### 5.2.1 Holdings and performance as implemented — IMPLEMENTED ON BRANCH `agent/backend` `6170686` (not merged)
+
+`allocation` and `risk` do not exist yet. Both routes below need a session, return `404` for another user's portfolio, carry `Cache-Control: no-store`, and take the query parameter `cost_basis_method` = `weighted_average` | `fifo`.
+
+**Default: `weighted_average` (decision D2).** The branch still defaults to `fifo` until REQ-13 is done.
+
+All amounts are decimal strings at fixed scale: quantity 8, money 6, rate 8, weight 10. A figure that cannot be computed is `null`; it is never estimated.
+
+Common header (`AnalyticsHeader`):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `portfolio_id` | int | |
+| `base_currency` | string | `TRY` (D3) |
+| `cost_basis_method` | `weighted_average` \| `fifo` | the method actually used |
+| `computed_at` | UTC datetime | |
+| `is_complete` | bool | false when any position could not be valued |
+| `unvalued_symbols` | string[] | positions without a value in base currency |
+
+`GET /api/v1/portfolios/{id}/holdings` → `HoldingsOut` = header +
+
+| Field | Type |
+|-------|------|
+| `positions` | `HoldingOut[]` |
+| `total_market_value`, `total_cost_basis`, `total_unrealized_pnl` | money \| null, in base currency |
+
+`HoldingOut`:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `symbol`, `exchange`, `name` (nullable), `currency` | string | |
+| `quantity`, `average_cost`, `cost_basis` | decimal | in the instrument's currency |
+| `cost_basis_base` | money \| null | at each trade's stored FX rate |
+| `market_value`, `unrealized_pnl` | money \| null | instrument currency |
+| `market_value_base`, `unrealized_pnl_base` | money \| null | base currency |
+| `weight` | ratio \| null | share of the valued total |
+| `quote` | `QuoteOut` \| null | `{price, currency, as_of, freshness, source}` |
+| `fx_rate` | `FxRateOut` \| null | `{base, quote, rate, as_of (date), source}` |
+| `unavailable_reason` | string \| null | `missing_quote`, `quote_currency_mismatch`, `missing_fx_rate`, `quote_symbol_mismatch`, `invalid_quote_price` |
+
+`GET /api/v1/portfolios/{id}/performance` → `PerformanceOut` = header +
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `realized_pnl` | `{currency, amount}[]` | per trade currency |
+| `realized_pnl_base` | money \| null | null if any lot lacks a base-currency figure |
+| `unrealized_pnl_base` | money \| null | same figure as holdings `total_unrealized_pnl` |
+| `dividends`, `fees`, `net_deposits`, `cash_balances` | `{currency, amount}[]` | from `quant.cash_summary` |
+| `realized_lots` | `RealizedLotOut[]` | `symbol, exchange, currency, quantity, acquired, disposed, cost, proceeds, pnl, cost_base?, proceeds_base?, pnl_base?, buy_transaction_id?, sell_transaction_id` |
+
+Approved behaviour (user, 2026-11-11):
+
+- `freshness` is `delayed` for a cached quote up to one hour old and `stale` after that. The cache is never labelled `realtime`. `source` is `wolfee_quote_cache`.
+- A portfolio is limited to **10,000 transactions**. At the limit, new transactions are refused with a message naming the limit; reading still works.
+- Realised P/L is summed per currency, and into base currency, in `analytics_service` (Agent 2). Every other figure comes from `quant`.
+
+Changes required by D3 (TRY base, FX from `exchange_rates`), not yet on the branch:
+
+- **REQ-15:** a position in a foreign currency gets `fx_rate` from the latest `exchange_rates` row (`USD/TRY`, …, `source` `exchange_rates`). With no usable rate it reports `missing_fx_rate`. Today every foreign position reports `missing_fx_rate`.
+- **REQ-14:** when some positions are unvalued, the totals still sum the valued positions, `is_complete` is false, `unvalued_symbols` lists the rest, and `weight` is relative to that partial total. Today the totals are `null` whenever anything is unvalued.
+- The frontend shows `is_complete=false` as "partial total — N positions not valued" and lists `unvalued_symbols` next to the totals. A partial total must never be presented as the whole.
+
 ### 5.3 Market data additions — Agent 3 and Agent 2
 
 | Method | Path | Purpose |
@@ -462,7 +524,7 @@ Semantics the adapter must respect:
 - A reversal and its target are both excluded. Selling more than is held raises `LedgerError`; shorts are not supported.
 - The functions are CPU-bound. For large ledgers, call them through `asyncio.to_thread`.
 - `value_positions` uses quotes whatever their freshness, and carries the label through. The route must show it.
-- If any position cannot be valued, the totals and weights are `None` and `is_complete` is false. The route returns that as it is and does not substitute partial totals.
+- If any position cannot be valued, the totals and weights are currently `None` and `is_complete` is false. **Changing under D3 (REQ-14):** the totals will sum the valued positions, with `is_complete=false` and `unvalued_symbols` naming what is missing. Callers always pass `is_complete` through to the client.
 
 ---
 

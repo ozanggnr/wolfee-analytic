@@ -13,8 +13,9 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "Ne
 
 - [x] 5. Decisions recorded — `b2c5415` (COORDINATION §9: D2, D3, D8 resolved, approvals, REQ-13/14/15) + follow-up commit for DATABASE_CONTRACT §3.6
 
+- [x] 6. API_CONTRACT §5.2.1 holdings/performance shapes, §6.1 note updated for D3
+
 ## In progress
-- [ ] 6. API_CONTRACT §5.2 — Agent 2's holdings/performance shapes (from `agent/backend` `6170686` `schemas/analytics.py`)
 - [ ] 7. DATABASE_CONTRACT — approve migration M0b: stock_data, turkish_gold, exchange_rates, ai_insights, ix_auth_tokens_user_id, unique instruments.provider_symbol; migrations-only table creation in production
 - [ ] Final report to user, then wait
 
