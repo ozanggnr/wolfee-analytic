@@ -1,0 +1,8 @@
+# Files executed or parsed on Linux (Fly image, release machine) keep LF endings,
+# even when checked out on Windows.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+fly.toml        text eol=lf
+requirements*.txt text eol=lf
+requirements.lock text eol=lf
