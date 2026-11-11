@@ -1,0 +1,17 @@
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.venv
+**/venv
+**/node_modules
+*.db
+*.sqlite
+*.xlsx
+.env
+**/.env
+backend/tests
+frontend/tests
+frontend/package.json
+docs

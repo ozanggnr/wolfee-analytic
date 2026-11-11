@@ -1,0 +1,49 @@
+# Fly.io configuration — see docs/agents/DEPLOYMENT.md.
+# Sized for a handful of users: one small machine that stops when idle.
+# Nothing has been created on Fly yet; `app` must be globally unique, adjust before `fly apps create`.
+app = "wolfee-analytics"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Runs in a temporary machine from the new image, in /app/backend, before the
+  # new version starts. Any non-zero exit aborts the deploy and keeps the old version.
+  # 1. Migrations are the only way tables are created in production.
+  # 2. Instrument seed is idempotent; safe on every deploy.
+  release_command = "sh -c 'alembic upgrade head && python -m services.instrument_service'"
+  strategy = "immediate"
+
+[env]
+  COOKIE_SECURE = "true"
+  APP_BASE_URL = "https://wolfee-analytics.fly.dev"
+  CORS_ORIGINS = "https://wolfee-analytics.fly.dev"
+  REQUIRE_EMAIL_VERIFICATION = "true"
+  REFRESH_INTERVAL_MINUTES = "30"
+  # Secrets (set with `fly secrets set`, never here): DATABASE_URL (via `fly postgres attach`),
+  # GEMINI_API_KEY, CAPTCHA_SECRET_KEY, one e-mail provider key, optional data-source keys.
+  # Must never be set in production: ALLOW_DEV_CAPTCHA_BYPASS, AUTO_VERIFY_DEV.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 80
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
