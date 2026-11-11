@@ -23,12 +23,13 @@ Audience: the user and a few friends. Sizing is the smallest that works, with ma
 
 | # | Blocker | Owner | Detail |
 |---|---------|-------|--------|
-| F1 | **`alembic/env.py` picks a driver that is not installed** | Agent 2 | `env.py` rewrites the URL to `postgresql://`. With SQLAlchemy 2.1 (what `sqlalchemy[asyncio]>=2.0.0` installs today: 2.1.8) that means **psycopg 3**, which is not in `requirements.txt`. `alembic upgrade head` fails with `ModuleNotFoundError: No module named 'psycopg'` on any Postgres. Present on `main`, not introduced by `agent/backend`. Fix: replace with `postgresql+psycopg2://` (psycopg2-binary is already required). REQ-12 |
-| F2 | `start.sh` hides migration failures | Agent 1 | §7. Not used on Fly (the release command replaces it), but fix it so no path hides failures |
+| F1 | **`alembic/env.py` picks a driver that is not installed** | Agent 2 | `env.py` rewrites the URL to `postgresql://`. With SQLAlchemy 2.1 (what `sqlalchemy[asyncio]>=2.0.0` installs today: 2.1.8) that means **psycopg 3**, which is not in `requirements.txt`. `alembic upgrade head` fails with `ModuleNotFoundError: No module named 'psycopg'` on any Postgres. Present on `main`, not introduced by `agent/backend`. Fix: replace with `postgresql+psycopg2://` (psycopg2-binary is already required). REQ-12 — **CLOSED**: fixed on `agent/backend` `6170686`, arrives with Step 2 |
+| F2 | `start.sh` hides migration failures | Agent 1 | **DONE** `5afdb26` (§7) |
 | F3 | Cookies are only `Secure` when Railway env vars exist | config | Set `COOKIE_SECURE=true` on Fly (§4). Without it, session cookies are sent without `Secure` |
 | F4 | `init_db()` `create_all` still creates `stock_data`, `turkish_gold`, `exchange_rates`, `ai_insights` (no migration covers them, DATABASE_CONTRACT §5 P3) | Agent 2 | Works on an empty database because Alembic runs first. Clean-up: a migration for those four tables, then limit `create_all` to SQLite. Not blocking a first deploy |
 | F5 | Instruments not seeded (REQ-7) | Agent 2 | Only matters once `agent/backend` is deployed. Add the seed step to the release command when it exists |
-| F6 | Unpinned dependencies | Agent 1 | Every requirement is `>=`. F1 is what that costs. Add a lock file (`uv pip compile` → `requirements.lock`) and build from it |
+| F6 | Unpinned dependencies | Agent 1 | **DONE** `5afdb26`: exact pins in `backend/requirements.txt`; hash-pinned `backend/requirements.lock` (Linux, py3.11) installed by the Dockerfile |
+| F7 | `Dockerfile`, `.dockerignore`, `fly.toml` | Agent 1 | **DONE** `4885064`, plus `.gitattributes` for LF endings `97a5ac1`. The release command needs `services.instrument_service`, which arrives with `agent/backend` (Step 2) |
 
 ---
 
@@ -255,7 +256,7 @@ Needs:     backend/alembic/env.py: use "postgresql+psycopg2://" (not "postgresql
 Why:       with SQLAlchemy 2.1 "postgresql://" selects psycopg 3, which is not installed;
            every Postgres migration fails (DEPLOYMENT §2 F1)
 Blocking:  yes, for any Postgres deploy
-Status:    open
+Status:    CLOSED 2026-11-11 — fixed by Agent 2 on agent/backend 6170686 (arrives with Step 2)
 ```
 
 REQ-9 (Postgres test run) is updated by §8: migrations verified, API test fixtures need to be made Postgres-safe.
