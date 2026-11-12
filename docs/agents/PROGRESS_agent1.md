@@ -1,31 +1,21 @@
 # Agent 1 progress — current task
 
-Task (user, 2026-11-11): integration-branch follow-ups after Step 1. Work in `../wolfee-integration` on `integration`. Commit locally after each item; **never push**; no Fly resources. Stop and report when done.
+Work in `../wolfee-integration` on `integration`. Commit locally after each item; **never push**; no Fly resources; main checkout stays on `main`.
 
-Resume: `git -C ../wolfee-integration status`, read this file, continue with "Next".
+Resume: `git -C ../wolfee-integration status`, read this file, continue with "In progress" / "Next".
 
 ## Done
-- [x] 2. Pin dependencies — `5afdb26` (requirements.txt exact pins, requirements.lock hashed for Linux py3.11; 205 tests pass)
-- [x] 3. start.sh fails loudly — `5afdb26` (verified: exit 1, uvicorn not started on migration failure)
-- [x] 4. Dockerfile, .dockerignore, fly.toml — `4885064`; LF endings `.gitattributes` — `97a5ac1`
-
-- [x] 1. REQ-12 closed in COORDINATION and DEPLOYMENT (fixed by Agent 2 in `agent/backend` `6170686`; not duplicated)
-
-- [x] 5. Decisions recorded — `b2c5415` (COORDINATION §9: D2, D3, D8 resolved, approvals, REQ-13/14/15) + follow-up commit for DATABASE_CONTRACT §3.6
-
-- [x] 6. API_CONTRACT §5.2.1 holdings/performance shapes, §6.1 note updated for D3
-
-- [x] 7. DATABASE_CONTRACT §4.2 approved migration + §5 status; COORDINATION REQ-16 (supersedes REQ-8)
-
-- [x] Final report sent (2026-11-11)
+- Step 1 — `agent/quant-ai` merged: `723bf19`
+- Follow-ups 1–7 (2026-11-11): REQ-12 closed `018cf34`; pins + start.sh `5afdb26`; Fly files `4885064`, `97a5ac1`; decisions `b2c5415`, `30dde71`, `fb96878`, `48ef971`; API §5.2 `7ade3a0`; DB §4.2 `3fd0585`
+- Step 2 (2026-11-12) — reviewed `71ae712` (same patch as reviewed `e4a4a5e`, message only) and `ad6cf21` (CSS.escape in filter.js/main.js, assets v=15.1; no unescaped selectors or v=15.0 left). Merged `agent/frontend` at `ad6cf21` with --no-ff: **`cc488f0`**. Backend 205 passed, frontend 9 passed
+- Smoke-test REQs logged `eec38ae`: REQ-18 (HIGH, empty exchange rates, blocks REQ-15), REQ-19 THYAO→US, REQ-20 insight before refresh, REQ-21 watchlist summary cache (Agent 2); REQ-22 empty grid on start, REQ-23 chart.js:19 encoding (Agent 4)
 
 ## In progress
-- Nothing. **Waiting for the user's approval** before Step 2 (merge `agent/backend` into `integration`).
+- Nothing. **Waiting for the user's approval before Step 3.**
 
 ## Next (only after approval)
-- Step 2: merge `agent/backend` (needs REQ-13, REQ-15, REQ-16 from Agent 2 and REQ-14 from Agent 3, or an explicit decision to merge first)
+- Step 3: merge `agent/backend` into `integration`. Review its unseen commits first (head was `ed17e01` on 2026-11-12). Open before/with it: REQ-13, REQ-15 (blocked by REQ-18), REQ-16 from Agent 2; REQ-14, REQ-17 from Agent 3. Verify REQ-7 (seed CLI) at the merge.
 
 ## Notes for whoever resumes
-- D3 "total the rest" conflicts with current `quant.value_positions` (totals None when incomplete) and Agent 2's `analytics_service` (no FX supplied) → REQ for Agents 3 and 2.
-- `agent/backend` still has `DEFAULT_COST_BASIS_METHOD = FIFO` → REQ for Agent 2 after D2.
-- `fly.toml` release_command needs `services.instrument_service`, which exists only after `agent/backend` merges (Step 2).
+- `fly.toml` release_command needs `services.instrument_service`, which exists only after `agent/backend` merges.
+- Test commands: backend `python -m pytest backend/tests -q -p no:cacheprovider` from the worktree root (Python 3.11.9 venv in the scratchpad, scratch SQLite DATABASE_URL); frontend `node --test` in `frontend/`.
