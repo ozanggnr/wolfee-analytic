@@ -127,3 +127,40 @@ def test_db_pool_null_gives_an_unpooled_engine_and_unknown_values_are_refused():
     assert pool_class_for("queue").stdout.strip() == "AsyncAdaptedQueuePool"
     refused = pool_class_for("bogus")
     assert refused.returncode != 0 and "DB_POOL must be" in refused.stderr
+
+
+CACHE_TABLES = {"stock_data", "turkish_gold", "exchange_rates", "ai_insights"}
+
+
+def test_a_database_built_only_from_migrations_matches_the_models(migrated_database):
+    path, url = migrated_database
+
+    report = run_backend(["-m", "alembic", "check"], url)
+
+    assert CACHE_TABLES <= tables(path)
+    assert "No new upgrade operations detected" in report
+    with sqlite3.connect(path) as connection:
+        indexes = {name for (name,) in connection.execute("select name from sqlite_master where type='index'")}
+    assert "ix_auth_tokens_user_id" in indexes
+
+
+def test_two_instruments_cannot_share_a_provider_symbol(migrated_database):
+    path, _ = migrated_database
+    row = "insert into instruments (symbol, exchange, provider_symbol, currency, asset_class, is_active) " \
+          "values (?, ?, 'DUP.IS', 'TRY', 'equity', 1)"
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(row, ("AAA", "BIST"))
+        with pytest.raises(sqlite3.IntegrityError, match="provider_symbol"):
+            connection.execute(row, ("BBB", "BIST"))
+
+
+def test_init_db_creates_nothing_on_postgres():
+    # An unreachable server: init_db must return without connecting at all.
+    env = {**os.environ, "DATABASE_URL": "postgresql://user@127.0.0.1:1/none"}
+    result = subprocess.run(
+        [sys.executable, "-c", "import asyncio, database; asyncio.run(database.init_db()); print('ok')"],
+        cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=60)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"

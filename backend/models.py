@@ -194,6 +194,9 @@ class Instrument(Base):
 
     __table_args__ = (
         UniqueConstraint("symbol", "exchange", name="uq_instruments_symbol_exchange"),
+        # One row per provider spelling (DATABASE_CONTRACT §4.2), so a cached quote
+        # keyed by provider symbol resolves to exactly one instrument.
+        UniqueConstraint("provider_symbol", name="uq_instruments_provider_symbol"),
     )
 
 

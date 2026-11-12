@@ -59,11 +59,19 @@ class Base(DeclarativeBase):
 
 
 async def init_db():
-    """Create all tables on startup"""
+    """Create missing tables, on SQLite only (local development and tests).
+
+    On Postgres, migrations are the only source of the schema (DATABASE_CONTRACT
+    §4.2): the deploy release step runs `alembic upgrade head`, and start-up
+    creates nothing, so a missing table fails loudly instead of appearing silently.
+    """
+    if not is_sqlite:
+        logger.info("Postgres: schema is managed by Alembic; init_db creates nothing")
+        return
     import models  # Ensure all models are registered on Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created/verified")
+    logger.info("SQLite tables created/verified")
 
 
 async def get_db():

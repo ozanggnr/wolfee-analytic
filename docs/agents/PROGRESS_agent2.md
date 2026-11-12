@@ -15,18 +15,15 @@ Test commands (from the worktree root, Python 3.11.9 venv in the session scratch
 - [x] REQ-15: valuation FX comes from `exchange_rates`.
   - It uses the **selling** rate, with `source="exchange_rates"`.
   - TRY is the only accepted base currency.
-- [ ] REQ-16. **Next.**
-  - The migration from DATABASE_CONTRACT §4.2, chained from `b2e4d8a31c55`:
-    - `stock_data`, `turkish_gold`, `exchange_rates`, `ai_insights`
-    - `ix_auth_tokens_user_id`
-    - `uq_instruments_provider_symbol`; also add this to `Instrument.__table_args__` in `models.py`
-  - `init_db` `create_all` limited to SQLite.
-  - Evidence needed: upgrade → downgrade → upgrade, then a clean `alembic check`, on both PG16 and SQLite.
-- [ ] Verify, then report:
-  - full suite on SQLite with pinned `backend/requirements.lock`
-  - API tests on empty PG16
-  - migrations base→head→base→head
-  - seed run twice
+- [x] REQ-16: migration `c3f5a7e91d20` (DATABASE_CONTRACT §4.2), plus `init_db` `create_all` limited to SQLite.
+  - `models.py` gains `uq_instruments_provider_symbol`.
+  - SQLite needs `batch_alter_table` for the constraint, and `server_default` uses `sa.func.now()`.
+  - Evidence:
+    - PG16 and SQLite: base→head→base→head with a clean `alembic check` each time.
+    - The seed gives 361, then 0.
+    - The SQLite downgrade keeps the instrument rows.
+    - 134/134 API tests on empty PG16; 362/362 on SQLite.
+- [ ] Verify with the pinned `backend/requirements.lock`. **Next.** Then report.
 
 ## Waiting on others
 - REQ-14 (Agent 3): partial totals and weights in `quant.value_positions`. Until then `analytics_service._totals` sums the valued positions, and `weight` stays null when the total is partial. Switch over when Agent 3 delivers.
