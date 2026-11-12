@@ -143,7 +143,7 @@ Also approved by the user on 2026-11-11 (Agent 2's choices on `agent/backend` `6
 
 - Quote freshness labels: every cached quote is `delayed` at best, and `stale` when older than one hour (`quote_service.QUOTE_DELAYED_MAX_AGE`). Nothing is labelled real-time.
 - A cap of 10,000 transactions per portfolio (`ledger_adapter.MAX_TRANSACTIONS_PER_PORTFOLIO`); the next write is refused with a clear message.
-- Summing realised P/L per currency and into the base currency stays in Agent 2's `analytics_service` for now. Moving it into `quant` is a later refactor, not a blocker.
+- Summing realised P/L per currency and into the base currency stays in Agent 2's `analytics_service` **temporarily**; it moves to Agent 3's `quant` functions (REQ-17).
 
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 

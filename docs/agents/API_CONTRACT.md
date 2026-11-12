@@ -356,7 +356,7 @@ Approved behaviour (user, 2026-11-11):
 
 - `freshness` is `delayed` for a cached quote up to one hour old and `stale` after that. The cache is never labelled `realtime`. `source` is `wolfee_quote_cache`.
 - A portfolio is limited to **10,000 transactions**. At the limit, new transactions are refused with a message naming the limit; reading still works.
-- Realised P/L is summed per currency, and into base currency, in `analytics_service` (Agent 2). Every other figure comes from `quant`.
+- Realised P/L is summed per currency, and into base currency, in `analytics_service` (Agent 2) **temporarily**; it moves to a `quant` function (REQ-17). Every other figure comes from `quant`.
 
 Changes required by D3 (TRY base, FX from `exchange_rates`), not yet on the branch:
 
