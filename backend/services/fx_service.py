@@ -1,10 +1,10 @@
 """FX rates into the portfolio base currency, from the exchange-rate cache (decision D3).
 
 The cache holds TCMB `today.xml` rates quoted against TRY (`USD/TRY`, `EUR/TRY`),
-refreshed by the worker. Positions are valued at the ForexBuying rate. Only
-conversions into TRY exist in the source; for any other base currency no rate is
-supplied, so foreign positions report `missing_fx_rate` rather than an inverted or
-cross rate computed here.
+refreshed by the worker. Positions are valued at the selling rate, the one the
+existing UI shows (REQ-15). Only conversions into TRY exist in the source; for any
+other base currency no rate is supplied, so foreign positions report
+`missing_fx_rate` rather than an inverted or cross rate computed here.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from models import ExchangeRate
 from quant.types import FxRate
 from repositories import fx_repository
 
-FX_SOURCE = "tcmb_forex_buying"
+FX_SOURCE = "exchange_rates"
 FX_QUOTE_CURRENCY = "TRY"
 
 
@@ -28,10 +28,10 @@ def _pair(currency: str) -> str:
 
 def _to_rate(currency: str, row: ExchangeRate) -> Optional[FxRate]:
     """The cached rate as an FxRate; None if unusable. A failed fetch stores 0, never used."""
-    if row.buying is None or row.updated_at is None:
+    if row.selling is None or row.updated_at is None:
         return None
     try:
-        rate = Decimal(repr(float(row.buying)))
+        rate = Decimal(repr(float(row.selling)))  # the float's shortest string form
     except (InvalidOperation, ValueError):
         return None
     if not rate.is_finite() or rate <= 0:

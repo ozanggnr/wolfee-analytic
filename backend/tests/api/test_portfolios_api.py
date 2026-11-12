@@ -66,7 +66,7 @@ def test_an_active_portfolio_name_is_unique_per_user(user):
     name = unique_name()
     user.create_portfolio(name=name)
 
-    response = user.post(BASE, json={"name": name, "base_currency": "USD"})
+    response = user.post(BASE, json={"name": name, "base_currency": "TRY"})
 
     assert response.status_code == 409
 
@@ -103,7 +103,7 @@ def test_list_rejects_out_of_range_pagination(user, params):
 
 
 def test_get_returns_one_portfolio(user):
-    created = user.create_portfolio(kind="paper", base_currency="USD")
+    created = user.create_portfolio(kind="paper", base_currency="TRY")
 
     response = user.get(f"{BASE}/{created['id']}")
 
@@ -210,3 +210,10 @@ def test_names_with_control_or_invisible_characters_are_rejected(user, name):
 
     assert user.post(BASE, json={"name": name, "base_currency": "TRY"}).status_code == 422
     assert user.patch(f"{BASE}/{created['id']}", json={"name": name}).status_code == 422
+
+
+@pytest.mark.parametrize("currency", ["USD", "EUR"])
+def test_only_try_is_accepted_as_base_currency(user, currency):
+    response = user.post(BASE, json={"name": unique_name(), "base_currency": currency})
+
+    assert response.status_code == 422

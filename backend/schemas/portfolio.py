@@ -7,8 +7,9 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validat
 
 from schemas.common import StrictModel, UtcDateTime, reject_unprintable
 
-# Pending decision D3 (COORDINATION §9). Agent 1's recommendation is TRY or USD.
-SUPPORTED_BASE_CURRENCIES = ("TRY", "USD")
+# Decision D3 (REQ-15): TRY is the only base currency for now. Valuation FX exists
+# only as XXX/TRY in exchange_rates.
+SUPPORTED_BASE_CURRENCIES = ("TRY",)
 
 PortfolioKind = Literal["real", "paper"]
 PortfolioName = Annotated[str, Field(min_length=1, max_length=100), AfterValidator(reject_unprintable)]

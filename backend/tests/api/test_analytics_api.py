@@ -344,7 +344,7 @@ def test_instruments_sharing_a_symbol_on_two_exchanges_stay_separate_and_unprice
     from database import AsyncSessionLocal
     from models import Instrument
 
-    portfolio = user.create_portfolio(base_currency="USD")
+    portfolio = user.create_portfolio(base_currency="TRY")
     a = make_instrument(exchange="US", currency="USD")
     b = make_instrument(exchange="CMDTY", currency="USD")
 
@@ -365,7 +365,7 @@ def test_instruments_sharing_a_symbol_on_two_exchanges_stay_separate_and_unprice
 
 
 # ------------------------------------------------------------------
-# FX (decision D3): foreign positions convert into TRY at the cached TCMB rate
+# FX (decision D3, REQ-15): foreign positions convert into TRY at the exchange_rates selling rate
 # ------------------------------------------------------------------
 
 def test_a_foreign_position_is_converted_into_try_at_the_cached_rate(user, make_instrument, add_quote, fx_rate):
@@ -383,7 +383,7 @@ def test_a_foreign_position_is_converted_into_try_at_the_cached_rate(user, make_
     assert (position["market_value_base"], position["cost_basis_base"], position["unrealized_pnl_base"]) == (
         "12800.000000", "11550.000000", "1250.000000")
     fx = position["fx_rate"]
-    assert (fx["base"], fx["quote"], fx["rate"], fx["source"]) == ("USD", "TRY", "40.00000000", "tcmb_forex_buying")
+    assert (fx["base"], fx["quote"], fx["rate"], fx["source"]) == ("USD", "TRY", "40.00000000", "exchange_rates")
     assert body["is_complete"] is True
     assert (body["total_market_value"], body["total_unrealized_pnl"]) == ("12800.000000", "1250.000000")
 
@@ -423,12 +423,15 @@ def test_a_failed_rate_fetch_stored_as_zero_is_never_used(user, make_instrument,
     assert body["total_market_value"] is None
 
 
-def test_a_usd_portfolio_gets_no_inverted_rate_for_try_positions(user, instrument, add_quote, fx_rate):
-    portfolio = user.create_portfolio(base_currency="USD")
-    record(user, portfolio, {**trade("BUY", instrument["symbol"], "1", "100"), "fx_rate_to_base": "0.025"})
-    add_quote(instrument["provider_symbol"], 110.0)
-    fx_rate("USD/TRY", 40.0)
+def test_the_selling_rate_is_used_and_labelled_with_its_source(user, make_instrument, add_quote, fx_rate):
+    # The fixture stores buying=0, so a valued position proves the selling rate was used.
+    portfolio = user.create_portfolio()
+    us_stock = make_instrument(exchange="US", currency="USD")
+    record(user, portfolio, {**trade("BUY", us_stock["symbol"], "1", "100"), "fx_rate_to_base": "38"})
+    add_quote(us_stock["provider_symbol"], 110.0, currency="USD")
+    fx_rate("USD/TRY", 41.25)
 
-    body = user.get(url(portfolio, "holdings")).json()
+    [position] = user.get(url(portfolio, "holdings")).json()["positions"]
 
-    assert body["positions"][0]["unavailable_reason"] == "missing_fx_rate"
+    assert position["market_value_base"] == "4537.500000"
+    assert (position["fx_rate"]["rate"], position["fx_rate"]["source"]) == ("41.25000000", "exchange_rates")
