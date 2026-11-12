@@ -2697,3 +2697,8 @@ body.no-scroll { overflow: hidden; }
         width: 100%;
     }
 }
+/* Section labels inside AI analysis text (see js/core/safe-html.js) */
+.ai-label {
+    color: var(--accent-color);
+    font-weight: 600;
+}

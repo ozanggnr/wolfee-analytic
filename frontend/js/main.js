@@ -159,7 +159,7 @@ function updateChangedCards(newStocks) {
                     sigChip.style.color = sig.color;
                     sigChip.style.background = sig.bg;
                     sigChip.style.borderColor = sig.border;
-                    sigChip.innerHTML = `${sig.icon} ${sig.label}`;
+                    sigChip.innerHTML = `${sig.icon} ${esc(sig.label)}`;
                 }
             }
         });
@@ -197,15 +197,7 @@ async function loadAIInsight() {
     try {
         const res = await fetch(`${API_URL}/api/insight`);
         const data = await res.json();
-        let raw = data.insight || 'Analyzing market data...';
-        // Strip any residual markdown formatting Gemini may emit
-        raw = raw
-            .replace(/\*\*(.*?)\*\*/g, '$1')   // remove **bold**
-            .replace(/\*(.*?)\*/g, '$1')         // remove *italic*
-            .replace(/#{1,6}\s/g, '')            // remove # headings
-            .replace(/\n{3,}/g, '\n\n')          // collapse triple blank lines
-            .trim();
-        const text = raw.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+        const text = window.WolfeeSafe.aiTextToHTML(data.insight || 'Analyzing market data...');
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) aiTextEl.innerHTML = text;
     } catch (e) {
@@ -283,7 +275,7 @@ function processData(data) {
         displayStocks.forEach((stock, i) => {
             renderStockCard(stock);
             const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
-            const card = stockGrid.querySelector(`[data-stock-symbol="${baseSym}"]`);
+            const card = stockGrid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`);
             if (card) {
                 card.classList.add('card-animate-in');
                 card.style.animationDelay = `${i * 0.03}s`;
@@ -329,8 +321,8 @@ function initSearch() {
                     const currency = stock.currency === 'USD' ? '$' : '₺';
                     div.innerHTML = `
                         <div>
-                            <div class="result-symbol">${(stock.symbol||'').replace('.IS', '')}</div>
-                            <div class="result-name">${stock.name || stock.symbol}</div>
+                            <div class="result-symbol">${esc((stock.symbol||'').replace('.IS', ''))}</div>
+                            <div class="result-name">${esc(stock.name || stock.symbol)}</div>
                         </div>
                         <div class="result-price" style="color:${(stock.change_pct||0) >= 0 ? '#4ade80' : '#f87171'}">
                             ${(stock.price||0).toFixed(2)} ${currency}
