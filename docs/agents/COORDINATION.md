@@ -287,4 +287,69 @@ Blocking:  no
 Status:    open
 ```
 
+From Agent 4's browser smoke test (agent/frontend ad6cf21, merged into integration cc488f0, 2026-11-12):
+
+```
+ID:        REQ-18
+From:      Agent 4 (smoke test), logged by Agent 1
+To:        Agent 2
+Priority:  HIGH
+Needs:     /api/exchange-rates returned an empty list for the whole run. Find out why
+           refresh_exchange_rates / data_sources.turkish_market.fetch_exchange_rates leave the
+           exchange_rates table empty, fix it, and add a test with a recorded source response.
+           If the source is unreachable, log it loudly; never fill in rates.
+Why:       REQ-15 (TRY conversion from exchange_rates, decision D3) has no data without it
+Blocking:  yes, blocks REQ-15
+Status:    open
+
+ID:        REQ-19
+From:      Agent 4 (smoke test), logged by Agent 1
+To:        Agent 2 (Agent 3's quant.symbols.normalize_symbol is the reference)
+Needs:     adding THYAO to the watchlist stores market "US" instead of BIST. Resolve the market
+           with quant.symbols.normalize_symbol (or the instruments table) instead of the current
+           guess, and add a test for THYAO, THYAO.IS, AAPL and GC=F
+Why:       wrong market means wrong currency and quote lookups for BIST tickers
+Blocking:  no
+Status:    open
+
+ID:        REQ-20
+From:      Agent 4 (smoke test), logged by Agent 1
+To:        Agent 2 (worker scheduling); Agent 3 if the insight logic changes
+Needs:     the daily AI insight is generated before the first data refresh finishes and says
+           "0 stocks, +0.00%". Do not generate (or cache) an insight from an empty or partial
+           stock_data set; generate after the first successful refresh, or return the
+           "data not loaded yet" placeholder without storing it
+Why:       the app presents an insight built on no data as if it were real
+Blocking:  no
+Status:    open
+
+ID:        REQ-21
+From:      Agent 4 (smoke test), logged by Agent 1
+To:        Agent 2
+Needs:     invalidate the watchlist summary cache for the user when a ticker is added or
+           removed; test that the summary changes immediately after POST/DELETE
+Why:       the summary card shows stale content after a watchlist change
+Blocking:  no
+Status:    open
+
+ID:        REQ-22
+From:      Agent 4 (smoke test), logged by Agent 1
+To:        Agent 4
+Needs:     the market grid is empty on a fresh server start, before the first refresh finishes.
+           Show a "loading market data" state and retry or poll until data arrives, rather than
+           an empty grid. Coordinate with REQ-20 (backend side of the same start-up gap)
+Why:       first visit after a deploy or a scale-to-zero wake looks broken
+Blocking:  no
+Status:    open
+
+ID:        REQ-23
+From:      Agent 4 (smoke test), logged by Agent 1
+To:        Agent 4
+Needs:     frontend/js/chart.js:19 builds `${API_URL}/api/chart/${symbol}/${period}` without
+           encoding. Wrap both in encodeURIComponent (API_CONTRACT §7)
+Why:       symbols such as GC=F or a malformed symbol break or redirect the request
+Blocking:  no
+Status:    open
+```
+
 REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the Step 2 merge before the request is closed.
