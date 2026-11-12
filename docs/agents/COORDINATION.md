@@ -119,8 +119,8 @@ Existing response shapes listed in API_CONTRACT §2 are frozen: fields may be ad
 | D1 | ~~Approve the proposed architecture, ownership and branch strategy~~ — **APPROVED by the user on 2026-11-11** (architecture and shared contracts). D2–D9 remain open | this document, TEAM_STRUCTURE |
 | D2 | ~~Cost-basis method for realised P/L~~ — **DECIDED 2026-11-11: default weighted average; FIFO stays available as a request parameter** | DATABASE_CONTRACT §3.6, API_CONTRACT §5.2 |
 | D3 | ~~Portfolio base currency and FX source~~ — **DECIDED 2026-11-11: base currency TRY; FX from the existing `exchange_rates` source; a foreign position without a rate is marked `missing_fx_rate` and the rest is still totalled** | DATABASE_CONTRACT §3.6, API_CONTRACT §5.2 |
-| D4 | Whether to stop returning estimated RSI / MA20 / day range as real values, which changes what existing cards show | IMPLEMENTATION_STATUS §5 (R1) |
-| D5 | Wording and guardrails of AI output (current prompts ask the model to speak as a financial adviser and recommend entries) | IMPLEMENTATION_STATUS §5 (R2) |
+| D4 | ~~Estimated RSI / MA20 / day range shown as real values~~ — **DECIDED 2026-11-12 (option 1): they return `null` ("not available") until computed from real price history with `quant.indicators`; buy/favourable labels that depend on them get the same treatment. Real history comes from the same source `/api/chart` already uses** — REQ-24, REQ-26, REQ-27 | IMPLEMENTATION_STATUS §5 (R1) |
+| D5 | ~~Wording and guardrails of AI output~~ — **DECIDED 2026-11-12 (option 1): `/api/insight` and `/api/ai/analyze` move onto the guarded AI layer: computed facts in, descriptive output only, guardrail check, disclaimer, template fallback. No buy recommendations** — REQ-25, REQ-27 | IMPLEMENTATION_STATUS §5 (R2), API_CONTRACT §5.4.1 |
 | D6 | Frontend direction: keep vanilla JS, or introduce a build step and TypeScript | IMPLEMENTATION_STATUS §6 |
 | D7 | Location of the "Trader Skill" referenced in CLAUDE.md — not found in the repository or in the local skills directory | IMPLEMENTATION_STATUS §6 |
 | D8 | ~~Inspect the production database~~ — **RESOLVED 2026-11-11: production moves to Fly.io and starts with an empty database; Railway data is disposable; no export or baseline stamp** | DEPLOYMENT.md |
@@ -132,8 +132,8 @@ Decision status after the first branch review (2026-11-11). Every one of D2–D9
 |----|--------------------------------|-------------------|
 | D2 | Decided — REQ-13 | — |
 | D3 | Decided — REQ-14, REQ-15 | — |
-| D4 | No — `quant.signals` keeps the legacy proxies value for value | Yes: Phase 1 integrity fix |
-| D5 | No — new AI layer already has guardrails and a disclaimer; legacy prompts unchanged | Yes: legacy `/api/ai/analyze` and `/api/insight` still use adviser wording |
+| D4 | Decided 2026-11-12 — REQ-24 (Agent 3), REQ-26 (Agent 2), REQ-27 (Agent 4) | Until done, cards still show the legacy proxies |
+| D5 | Decided 2026-11-12 — REQ-25 (Agent 3), REQ-27 (Agent 4) | Until done, legacy `/api/ai/analyze` and `/api/insight` still use adviser wording |
 | D6 | No — Agent 4 stayed with vanilla JS and added a `node --test` runner without dependencies | Yes: before building portfolio screens |
 | D7 | No | Only Phase 5 |
 | D8 | Resolved (empty Fly database) | — |
@@ -144,6 +144,10 @@ Also approved by the user on 2026-11-11 (Agent 2's choices on `agent/backend` `6
 - Quote freshness labels: every cached quote is `delayed` at best, and `stale` when older than one hour (`quote_service.QUOTE_DELAYED_MAX_AGE`). Nothing is labelled real-time.
 - A cap of 10,000 transactions per portfolio (`ledger_adapter.MAX_TRANSACTIONS_PER_PORTFOLIO`); the next write is refused with a clear message.
 - Summing realised P/L per currency and into the base currency stays in Agent 2's `analytics_service` **temporarily**; it moves to Agent 3's `quant` functions (REQ-17).
+
+Also decided by the user on 2026-11-12:
+
+- Portfolio base currency: the database keeps accepting other codes (`portfolios.base_currency` is `CHAR(3)` with no CHECK limiting it to TRY); the API enforces TRY only (`schemas.portfolio.SUPPORTED_BASE_CURRENCIES`). No migration is needed to add or remove a currency later.
 
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 

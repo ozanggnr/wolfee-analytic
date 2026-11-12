@@ -108,6 +108,14 @@ market_cap      number
 
 Warning, verified in `workers._enrich_stock_data` and `analysis.analyze_stock`: the data sources never supply `rsi` or `ma_20`, so both are always computed as `rsi = clamp(50 + 3 × change_pct, 5, 95)` and `ma_20 = price × (1 − change_pct / 200)`. They are not a 14-period RSI or a 20-day average. `volatility` is derived from one day's `change_pct`. No field states whether a price is real-time, delayed or end-of-day.
 
+**Approved change — decision D4 (user, 2026-11-12), not yet implemented (REQ-24, REQ-26, REQ-27).** The shape stays; the meaning changes:
+
+- `rsi`, `ma_20` and the day range (`day_high` / `day_low` where they are today filled with price ±1 %) become **nullable**. They are `null` ("not available") until computed with `quant.indicators` from real daily closes; they are never estimated again.
+- Real history comes from the same source `/api/chart` uses (Agent 2 fetches and caches it, REQ-26).
+- Labels that depend on those values (`is_buyable`, `is_favorable`, the signal prefix of `prediction`, and the `/api/opportunities` filter built on them) get the same treatment: no label (`null`) when an input is unavailable.
+- The same applies wherever these figures are reused (`WatchlistItem.rsi`, the exports' "RSI (14)" column).
+- `volatility` is not part of D4. It stays as described above until decided separately.
+
 ### 2.3 Analysis, prices and history
 
 | Method | Path | Auth | Used by frontend | Response |
@@ -134,6 +142,8 @@ Accepted `period` values: `1d, 5d, 1wk, 1mo, 3mo, 6mo, 1y, 5y, max`. The data-so
 | GET | `/api/ai/analyze/{symbol}` | no | yes (stock modal) | `{"symbol", "analysis": string}`. `404` if the stock is unknown. On other errors: 200 with a placeholder string |
 
 The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template. The response does not say which.
+
+**Approved change — decision D5 (user, 2026-11-12), not yet implemented (REQ-25, REQ-27).** `/api/insight` and `/api/ai/analyze/{symbol}` move onto the guarded AI layer (§5.4.1): facts computed by deterministic code go in, the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No buy recommendations, entry points, targets or predictions. The existing fields (`insight`, `symbol`, `analysis`) stay for compatibility; the provenance fields of §5.4.1 are added alongside: `generated_by`, `generated_at`, `inputs_as_of`, `is_fallback`, `disclaimer`. `violations` is never returned. The `/insight` alias follows `/api/insight`.
 
 ### 2.5 Refresh
 
