@@ -21,21 +21,8 @@ def portfolio_facts(
     valuation: PortfolioValuation, risk: RiskMetrics | None = None
 ) -> tuple[tuple[Fact, ...], datetime | None]:
     """Facts for ``valuation`` (and ``risk`` when given) plus the age of the oldest price used."""
-    currency = valuation.base_currency
     facts = [Fact("Number of holdings", str(len(valuation.positions)))]
-
-    if valuation.total_market_value is None:
-        missing = ", ".join(valuation.unvalued_symbols)
-        facts.append(Fact("Total market value", f"not available — missing price or exchange rate for: {missing}"))
-    else:
-        facts.append(Fact("Total market value", _money(valuation.total_market_value, currency)))
-    if valuation.total_cost_basis is not None:
-        facts.append(Fact("Total cost", _money(valuation.total_cost_basis, currency)))
-    if valuation.total_unrealized_pnl is not None:
-        facts.append(
-            Fact("Unrealised profit or loss", _money(valuation.total_unrealized_pnl, currency, signed=True))
-        )
-
+    facts.extend(_totals(valuation))
     facts.extend(_largest_holding(valuation))
     facts.extend(_risk_facts(risk))
     price_fact, inputs_as_of = _price_data(valuation)
@@ -43,12 +30,40 @@ def portfolio_facts(
     return tuple(facts), inputs_as_of
 
 
+_PARTIAL = " of the holdings that could be valued (partial, not the whole portfolio)"
+
+
+def _totals(valuation: PortfolioValuation) -> list[Fact]:
+    """Totals, worded as partial whenever some holdings could not be valued."""
+    currency = valuation.base_currency
+    missing = ", ".join(valuation.unvalued_symbols)
+    if valuation.total_market_value is None:
+        return [Fact("Total market value", f"not available — missing price or exchange rate for: {missing}")]
+
+    if valuation.is_complete:
+        value_label, cost_label, pnl_label = "Total market value", "Total cost", "Unrealised profit or loss"
+        facts = []
+    else:
+        value_label, cost_label, pnl_label = (
+            f"Market value{_PARTIAL}", f"Cost{_PARTIAL}", f"Unrealised profit or loss{_PARTIAL}"
+        )
+        facts = [Fact("Holdings left out of every total below (no price or exchange rate)", missing)]
+
+    facts.append(Fact(value_label, _money(valuation.total_market_value, currency)))
+    if valuation.total_cost_basis is not None:
+        facts.append(Fact(cost_label, _money(valuation.total_cost_basis, currency)))
+    if valuation.total_unrealized_pnl is not None:
+        facts.append(Fact(pnl_label, _money(valuation.total_unrealized_pnl, currency, signed=True)))
+    return facts
+
+
 def _largest_holding(valuation: PortfolioValuation) -> list[Fact]:
     weighted = [p for p in valuation.positions if p.weight is not None]
     if not weighted:
         return []
     largest = min(weighted, key=lambda p: (-p.weight, p.symbol))
-    return [Fact("Largest holding", f"{largest.symbol} at {_percent(largest.weight * _HUNDRED)} of the portfolio")]
+    whole = "the portfolio" if valuation.is_complete else "the holdings that could be valued"
+    return [Fact("Largest holding", f"{largest.symbol} at {_percent(largest.weight * _HUNDRED)} of {whole}")]
 
 
 def _risk_facts(risk: RiskMetrics | None) -> list[Fact]:

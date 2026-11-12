@@ -28,6 +28,11 @@ class CostBasisMethod(str, Enum):
     WEIGHTED_AVERAGE = "weighted_average"
 
 
+# Decisions D2 and D3 (2026-11-11).
+DEFAULT_COST_BASIS_METHOD = CostBasisMethod.WEIGHTED_AVERAGE
+DEFAULT_BASE_CURRENCY = "TRY"
+
+
 class Freshness(str, Enum):
     REALTIME = "realtime"
     DELAYED = "delayed"
@@ -171,7 +176,14 @@ class ValuedPosition:
 
 @dataclass(frozen=True)
 class PortfolioValuation:
-    """Totals are in ``base_currency`` and are None unless every input is known."""
+    """Totals in ``base_currency`` over the positions that could be valued.
+
+    When ``is_complete`` is false the totals and weights cover only part of the
+    portfolio: ``unvalued_symbols`` names what is left out, and the totals must
+    be shown as partial. Nothing is assumed for the positions left out. The
+    totals are None when no position could be valued; cost and P/L are also
+    None when a valued position has no base-currency cost.
+    """
 
     base_currency: str
     positions: tuple[ValuedPosition, ...]
@@ -180,6 +192,48 @@ class PortfolioValuation:
     total_unrealized_pnl: Decimal | None
     is_complete: bool
     unvalued_symbols: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ConvertedAmount:
+    """One amount and its value in the base currency (None with a reason when no rate exists)."""
+
+    currency: str
+    amount: Decimal
+    amount_base: Decimal | None
+    fx_rate: FxRate | None
+    unavailable_reason: str | None
+
+
+@dataclass(frozen=True)
+class ConvertedAmounts:
+    """Amounts converted into ``base_currency``, in input order.
+
+    ``total_base`` sums the amounts that could be converted. It is partial when
+    ``is_complete`` is false (``missing_currencies`` names what is left out)
+    and None when nothing could be converted.
+    """
+
+    base_currency: str
+    items: tuple[ConvertedAmount, ...]
+    total_base: Decimal | None
+    is_complete: bool
+    missing_currencies: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RealizedSummary:
+    """Realised P/L added up per trade currency and in ``base_currency``.
+
+    ``total_base`` uses the FX rates stored on the trades. It is None when any
+    lot outside the base currency has no base figure;
+    ``missing_base_currencies`` names the currencies of those lots.
+    """
+
+    base_currency: str
+    by_currency: tuple[CurrencyAmount, ...]
+    total_base: Decimal | None
+    missing_base_currencies: tuple[str, ...]
 
 
 @dataclass(frozen=True)

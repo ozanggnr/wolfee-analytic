@@ -1,11 +1,24 @@
 """Hand-checked ledger replay tests: holdings, cost basis, realised P/L, cash."""
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal as D, localcontext
 
 import pytest
 
-from quant.positions import build_positions, cash_summary, realized_pnl
-from quant.types import CostBasisMethod, LedgerError, Transaction, TransactionType as T
+from quant.positions import (
+    build_positions,
+    cash_summary,
+    realized_pnl,
+    realized_summary,
+    sum_realized,
+)
+from quant.types import (
+    DEFAULT_COST_BASIS_METHOD,
+    CostBasisMethod,
+    LedgerError,
+    Transaction,
+    TransactionType as T,
+)
 
 FIFO = CostBasisMethod.FIFO
 WAVG = CostBasisMethod.WEIGHTED_AVERAGE
@@ -225,6 +238,126 @@ def test_cash_summary_tracks_balance_dividends_and_fees_per_currency():
 
 def test_same_input_always_gives_the_same_output():
     assert realized_pnl(TWO_BUYS_ONE_SELL, FIFO) == realized_pnl(list(TWO_BUYS_ONE_SELL), FIFO)
+
+
+# ------------------------------------------------- realised summary (REQ-17)
+
+# Three instruments, one sale each. Worked by hand:
+#   THYAO (TRY): buys 10 x 100 and 10 x 120, sell 5 x 150 = 750
+#       weighted average: pool 2200 / 20 = 110 each -> cost 550 -> +200
+#       FIFO            : oldest lot at 100 each    -> cost 500 -> +250
+#   AAPL (USD): buy 4 x 100 at 30 TRY, sell 2 x 130 at 35 TRY
+#       +60 USD; in TRY 260 x 35 - 200 x 30 = 9100 - 6000 = +3100
+#   SAP (EUR): buy 1 x 100 at 36 TRY, sell 1 x 90 at 38 TRY
+#       -10 EUR; in TRY 90 x 38 - 100 x 36 = 3420 - 3600 = -180
+MIXED_CURRENCY_LEDGER = [
+    tx(1, T.BUY, 2, "10", "100"),
+    tx(2, T.BUY, 3, "10", "120"),
+    tx(3, T.SELL, 5, "5", "150"),
+    tx(4, T.BUY, 2, "4", "100", symbol="AAPL", currency="USD", fx="30"),
+    tx(5, T.SELL, 6, "2", "130", symbol="AAPL", currency="USD", fx="35"),
+    tx(6, T.BUY, 2, "1", "100", symbol="SAP", currency="EUR", fx="36"),
+    tx(7, T.SELL, 7, "1", "90", symbol="SAP", currency="EUR", fx="38"),
+]
+
+
+def by_currency(summary):
+    return [(c.currency, c.amount) for c in summary.by_currency]
+
+
+def test_realised_summary_defaults_to_weighted_average_and_try():
+    summary = realized_summary(MIXED_CURRENCY_LEDGER)
+
+    assert by_currency(summary) == [("EUR", D("-10")), ("TRY", D("200")), ("USD", D("60"))]
+    assert summary.base_currency == "TRY"
+    assert summary.total_base == D("3120")                    # 200 + 3100 - 180
+    assert summary.missing_base_currencies == ()
+
+
+def test_realised_summary_with_fifo_as_a_parameter():
+    summary = realized_summary(MIXED_CURRENCY_LEDGER, FIFO)
+
+    assert by_currency(summary) == [("EUR", D("-10")), ("TRY", D("250")), ("USD", D("60"))]
+    assert summary.total_base == D("3170")                    # 250 + 3100 - 180
+
+
+def test_sum_realized_adds_up_lots_already_computed():
+    lots = realized_pnl(MIXED_CURRENCY_LEDGER, WAVG)
+
+    assert sum_realized(lots) == realized_summary(MIXED_CURRENCY_LEDGER, WAVG)
+    assert sum_realized(reversed(lots)) == sum_realized(lots)
+
+
+def test_realised_total_in_try_is_withheld_when_a_foreign_lot_has_no_stored_rate():
+    ledger = MIXED_CURRENCY_LEDGER[:3] + [
+        tx(4, T.BUY, 2, "4", "100", symbol="AAPL", currency="USD"),            # no rate stored
+        tx(5, T.SELL, 6, "2", "130", symbol="AAPL", currency="USD", fx="35"),
+    ]
+
+    summary = realized_summary(ledger)
+
+    assert by_currency(summary) == [("TRY", D("200")), ("USD", D("60"))]
+    assert summary.total_base is None
+    assert summary.missing_base_currencies == ("USD",)
+
+
+def test_base_currency_lots_count_at_exactly_one_whatever_rate_was_stored():
+    stored = [
+        tx(1, T.BUY, 2, "10", "100", fx="1"),
+        tx(2, T.SELL, 3, "10", "130", fx="1"),
+    ]
+    unstored = [tx(1, T.BUY, 2, "10", "100"), tx(2, T.SELL, 3, "10", "130")]
+
+    assert realized_summary(stored).total_base == D("300")
+    assert realized_summary(unstored).total_base == D("300")
+
+
+def test_realised_summary_of_a_ledger_without_sales_is_zero():
+    summary = realized_summary(MIXED_CURRENCY_LEDGER[:2])
+
+    assert summary.by_currency == ()
+    assert summary.total_base == D("0")
+    assert summary.missing_base_currencies == ()
+
+
+def test_weighted_average_is_the_default_cost_basis_everywhere():
+    assert DEFAULT_COST_BASIS_METHOD is WAVG
+    assert realized_pnl(TWO_BUYS_ONE_SELL) == realized_pnl(TWO_BUYS_ONE_SELL, WAVG)
+    assert build_positions(TWO_BUYS_ONE_SELL) == build_positions(TWO_BUYS_ONE_SELL, WAVG)
+
+
+def test_realised_summary_rejects_bad_input():
+    with pytest.raises(ValueError, match="base currency"):
+        realized_summary(MIXED_CURRENCY_LEDGER, base_currency="try")
+    with pytest.raises(LedgerError, match="cost basis method"):
+        realized_summary(MIXED_CURRENCY_LEDGER, "fifo")
+    with pytest.raises(LedgerError, match="exceeds"):
+        realized_summary([tx(1, T.SELL, 2, "1", "10")])
+    (lot,) = realized_pnl(TWO_BUYS_ONE_SELL, WAVG)
+    with pytest.raises(ValueError, match="finite Decimal"):
+        sum_realized([replace(lot, pnl=577.5)])
+    with pytest.raises(ValueError, match="lot currency"):
+        sum_realized([replace(lot, currency="tl")])
+
+
+def test_realised_summary_keeps_every_decimal_place_of_a_converted_lot():
+    # 1 unit bought at 10 and sold at 11 USD; rates carry eight decimals.
+    ledger = [
+        tx(1, T.BUY, 2, "3", "10", symbol="AAPL", currency="USD", fx="30.12345678"),
+        tx(2, T.SELL, 3, "1", "11", symbol="AAPL", currency="USD", fx="35.87654321"),
+    ]
+
+    summary = realized_summary(ledger)
+
+    # proceeds 11 x 35.87654321 = 394.64197531; cost 30 x 30.12345678 / 3 = 301.2345678
+    assert summary.total_base == D("93.40740751")
+
+
+def test_realised_summary_does_not_depend_on_the_callers_decimal_context():
+    expected = realized_summary(MIXED_CURRENCY_LEDGER)
+    with localcontext() as ctx:
+        ctx.prec = 3
+        assert realized_summary(MIXED_CURRENCY_LEDGER) == expected
 
 
 # ------------------------------------------------------------ review fixes
