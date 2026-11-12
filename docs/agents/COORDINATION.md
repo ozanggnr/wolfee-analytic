@@ -230,7 +230,7 @@ Needs:     analytics_service.DEFAULT_COST_BASIS_METHOD = WEIGHTED_AVERAGE (curre
            responses keep reporting cost_basis_method; tests updated
 Why:       D2
 Blocking:  yes, for the holdings/performance defaults
-Status:    open
+Status:    implemented on agent/backend 5e464a7 (not yet merged or reviewed by Agent 1)
 
 ID:        REQ-14
 From:      Agent 1 (decision D3)
@@ -242,7 +242,8 @@ Needs:     quant.valuation.value_positions: when some positions cannot be valued
            Update API_CONTRACT §6.1 note and tests.
 Why:       D3 — "mark missing_fx_rate but still total the rest"
 Blocking:  yes, for foreign positions in holdings
-Status:    open
+Status:    DONE 2026-11-12 — agent/quant-ai 8d2b13c (plus convert_amounts), reviewed and merged
+           into integration at d489b68. API_CONTRACT §5.2.1 / §6.1 updated.
 
 ID:        REQ-15
 From:      Agent 1 (decision D3)
@@ -255,8 +256,9 @@ Needs:     supply FxRate values to value_positions from the exchange_rates table
            "no automatic rates until D3" note from analytics_service.
 Why:       D3
 Blocking:  yes, for foreign positions in holdings
-Status:    open — choice of selling vs buying rate: selling, as shown in the existing UI;
-           Agent 1 to confirm if the user wants buying or mid
+Status:    implemented on agent/backend a4ce4e7 (not yet merged or reviewed by Agent 1); selling
+           rate. Has no data until REQ-18 (empty exchange_rates) is fixed. The DB constraint that
+           allows USD stays; the API enforces TRY only (user, 2026-11-12).
 ```
 
 ```
@@ -269,7 +271,7 @@ Needs:     the migration in DATABASE_CONTRACT §4.2 (stock_data, turkish_gold, e
            a clean `alembic check` on PostgreSQL 16 and SQLite
 Why:       migrations become the only way tables are created in production; closes REQ-8
 Blocking:  yes, before the first Fly deploy
-Status:    open
+Status:    implemented on agent/backend 7c484e9 (not yet merged or reviewed by Agent 1)
 ```
 
 REQ-8 is superseded by REQ-16.
@@ -284,7 +286,9 @@ Needs:     a pure quant function that sums realised P/L per currency and into th
            shape (API_CONTRACT §5.2.1) does not change.
 Why:       all portfolio arithmetic belongs in quant; the service copy is temporary
 Blocking:  no
-Status:    open
+Status:    Agent 3 half DONE 2026-11-12 — quant.positions.sum_realized / realized_summary in
+           agent/quant-ai ba52666, merged into integration at d489b68. Agent 2 half open: replace
+           the analytics_service summing with them.
 ```
 
 From Agent 4's browser smoke test (agent/frontend ad6cf21, merged into integration cc488f0, 2026-11-12):

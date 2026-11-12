@@ -306,7 +306,7 @@ A reversal row copies the original's `type`, amounts and instrument, and sets `v
 
 `allocation` and `risk` do not exist yet. Both routes below need a session, return `404` for another user's portfolio, carry `Cache-Control: no-store`, and take the query parameter `cost_basis_method` = `weighted_average` | `fifo`.
 
-**Default: `weighted_average` (decision D2).** The branch still defaults to `fifo` until REQ-13 is done.
+**Default: `weighted_average` (decision D2); `fifo` on request.** Done in `agent/backend` `5e464a7` (REQ-13) and in `quant` (`DEFAULT_COST_BASIS_METHOD`, merged into `integration` at `d489b68`).
 
 All amounts are decimal strings at fixed scale: quantity 8, money 6, rate 8, weight 10. A figure that cannot be computed is `null`; it is never estimated.
 
@@ -358,11 +358,13 @@ Approved behaviour (user, 2026-11-11):
 - A portfolio is limited to **10,000 transactions**. At the limit, new transactions are refused with a message naming the limit; reading still works.
 - Realised P/L is summed per currency, and into base currency, in `analytics_service` (Agent 2) **temporarily**; it moves to a `quant` function (REQ-17). Every other figure comes from `quant`.
 
-Changes required by D3 (TRY base, FX from `exchange_rates`), not yet on the branch:
+Decision D3 (TRY base, FX from `exchange_rates`):
 
-- **REQ-15:** a position in a foreign currency gets `fx_rate` from the latest `exchange_rates` row (`USD/TRY`, …, `source` `exchange_rates`). With no usable rate it reports `missing_fx_rate`. Today every foreign position reports `missing_fx_rate`.
-- **REQ-14:** when some positions are unvalued, the totals still sum the valued positions, `is_complete` is false, `unvalued_symbols` lists the rest, and `weight` is relative to that partial total. Today the totals are `null` whenever anything is unvalued.
-- The frontend shows `is_complete=false` as "partial total — N positions not valued" and lists `unvalued_symbols` next to the totals. A partial total must never be presented as the whole.
+- **Base currency is TRY only.** The API accepts no other base currency; the database constraint that also allows USD stays as it is (user decision 2026-11-12).
+- **REQ-15 — implemented in `agent/backend` `a4ce4e7`, not yet merged into `integration`.** A position in a foreign currency gets `fx_rate` from the latest `exchange_rates` row, selling rate (`base`=foreign currency, `quote`=`TRY`, `as_of`=the row's `updated_at`, `source` `exchange_rates`). With no usable rate it reports `missing_fx_rate`. **Data caveat:** the smoke test found `exchange_rates` empty (REQ-18, high priority); until that is fixed every foreign position reports `missing_fx_rate`.
+- **REQ-14 — done in `quant`, merged into `integration` at `d489b68`.** When some positions are unvalued, `total_market_value` sums the valued positions, `is_complete` is false, `unvalued_symbols` lists the rest, and `weight` is each valued position's share of that partial total (unvalued positions have `weight` null). Totals are `null` only when no position could be valued. `total_cost_basis` and `total_unrealized_pnl` are also `null` when a valued position has no base-currency cost (a trade without a stored FX rate). Nothing is assumed for the positions left out.
+- `allocation_by` (for the future `/allocation` route) still returns `null` for an incomplete valuation: a group with unvalued holdings would show too small a share.
+- The frontend shows `is_complete=false` as "partial total — N positions not valued" and lists `unvalued_symbols` next to the totals. A partial total must never be presented as the whole. The AI facts (`ai.facts.portfolio_facts`) already word every total as partial in this case.
 
 ### 5.3 Market data additions — Agent 3 and Agent 2
 
@@ -465,9 +467,9 @@ def risk_metrics(daily_values: Sequence[DatedValue]) -> RiskMetrics: ...
 
 Rules: inputs and outputs are immutable dataclasses using `Decimal`; no I/O; same input always gives the same output; insufficient data returns `None`, never an estimate.
 
-### 6.1 As implemented — IMPLEMENTED ON BRANCH `agent/quant-ai` `034313e` (not merged)
+### 6.1 As implemented — MERGED INTO `integration` (`agent/quant-ai` `a7bb094`, merge `d489b68`)
 
-The draft signatures above are honoured, with the additions below. All types are frozen dataclasses in `backend/quant/types.py`. Every public function runs in a fixed `Decimal` context (precision 60, ROUND_HALF_EVEN). Tests pass on Python 3.11.9, the production version.
+The draft signatures above are honoured, with the additions below. Defaults follow decisions D2 and D3: `method` defaults to `CostBasisMethod.WEIGHTED_AVERAGE` and `base_currency` to `"TRY"` wherever a function takes them (`quant.types.DEFAULT_COST_BASIS_METHOD`, `quant.types.DEFAULT_BASE_CURRENCY`). `value_positions` keeps `base_currency` required. All types are frozen dataclasses in `backend/quant/types.py`. Every public function runs in a fixed `Decimal` context (precision 60, ROUND_HALF_EVEN). Tests pass on Python 3.11.9, the production version.
 
 ```python
 # quant/symbols.py
@@ -476,14 +478,24 @@ def instrument_seed() -> tuple[InstrumentSeed, ...]   # 361 rows: 119 BIST/TRY, 
 #   market_hint accepts both vocabularies: BIST, BIST100, US, GLOBAL, COMMODITY, CMDTY, FX
 
 # quant/positions.py — raise LedgerError (a ValueError) on an invalid ledger
-def build_positions(transactions: Sequence[Transaction], method: CostBasisMethod) -> list[Position]
-def realized_pnl(transactions: Sequence[Transaction], method: CostBasisMethod) -> list[RealizedLot]
+def build_positions(transactions: Sequence[Transaction],
+                    method: CostBasisMethod = WEIGHTED_AVERAGE) -> list[Position]
+def realized_pnl(transactions: Sequence[Transaction],
+                 method: CostBasisMethod = WEIGHTED_AVERAGE) -> list[RealizedLot]
+def realized_summary(transactions: Sequence[Transaction],
+                     method: CostBasisMethod = WEIGHTED_AVERAGE,
+                     base_currency: str = "TRY") -> RealizedSummary              # added (REQ-17)
+def sum_realized(lots: Iterable[RealizedLot], base_currency: str = "TRY") -> RealizedSummary  # added (REQ-17)
+#   realized_summary(t, m, b) == sum_realized(realized_pnl(t, m), b)
 def cash_summary(transactions: Sequence[Transaction]) -> CashSummary            # added
 
 # quant/valuation.py
 def value_positions(positions, quotes: Mapping[str, PriceQuote], fx: Mapping[str, FxRate],
-                    base_currency: str) -> PortfolioValuation
-#   fx maps a currency to FxRate(base=<currency>, quote=<base_currency>)
+                    base_currency: str) -> PortfolioValuation                    # partial totals (REQ-14)
+def convert_amounts(amounts: Sequence[CurrencyAmount], fx: Mapping[str, FxRate],
+                    base_currency: str = "TRY") -> ConvertedAmounts              # added (REQ-14)
+#   fx maps a currency to FxRate(base=<currency>, quote=<base_currency>); a rate <= 0, a
+#   mismatched pair or a malformed currency code raises ValueError
 
 # quant/allocation.py                                                            # added
 def allocation_by(valuation: PortfolioValuation, group_of: Mapping[str, str]) -> tuple[AllocationSlice, ...] | None
@@ -514,7 +526,10 @@ Key types:
 | `PortfolioValuation` | `base_currency, positions: tuple[ValuedPosition], total_market_value, total_cost_basis, total_unrealized_pnl, is_complete, unvalued_symbols` |
 | `ValuedPosition` | position fields, value and P/L in both currencies, weight, quote provenance, `unavailable_reason` (`missing_quote`, `quote_currency_mismatch`, `missing_fx_rate`, `quote_symbol_mismatch`, `invalid_quote_price`) |
 | `RiskMetrics` | `observations, start, end, period_return_pct, daily_volatility_pct, annualized_volatility_pct, max_drawdown_pct, max_drawdown_peak, max_drawdown_trough` |
-| `CostBasisMethod` | `fifo`, `weighted_average` (D2 decides the stored default) |
+| `ConvertedAmount` | `currency, amount, amount_base (None without a rate), fx_rate, unavailable_reason` (`missing_fx_rate`) |
+| `ConvertedAmounts` | `base_currency, items: tuple[ConvertedAmount]` (input order), `total_base` (sum of what could be converted; None only when nothing could), `is_complete, missing_currencies` |
+| `RealizedSummary` | `base_currency, by_currency: tuple[CurrencyAmount], total_base, missing_base_currencies`. `total_base` uses each lot's `pnl_base` (the FX rate stored on the trades, never today's rate); a lot already in the base currency counts at 1; None when any other lot has no `pnl_base` |
+| `CostBasisMethod` | `fifo`, `weighted_average` — default `WEIGHTED_AVERAGE` (D2) |
 
 Semantics the adapter must respect:
 
@@ -524,7 +539,9 @@ Semantics the adapter must respect:
 - A reversal and its target are both excluded. Selling more than is held raises `LedgerError`; shorts are not supported.
 - The functions are CPU-bound. For large ledgers, call them through `asyncio.to_thread`.
 - `value_positions` uses quotes whatever their freshness, and carries the label through. The route must show it.
-- If any position cannot be valued, the totals and weights are currently `None` and `is_complete` is false. **Changing under D3 (REQ-14):** the totals will sum the valued positions, with `is_complete=false` and `unvalued_symbols` naming what is missing. Callers always pass `is_complete` through to the client.
+- If some positions cannot be valued (D3, REQ-14), the totals sum the valued positions, weights are shares of that partial total, `is_complete` is false and `unvalued_symbols` names what is missing. Totals are `None` only when nothing could be valued. Callers always pass `is_complete` through to the client.
+- `convert_amounts` follows the same rule for currency amounts (cash balances, dividends, fees): a currency without a rate is marked `missing_fx_rate` and left out of a partial `total_base`.
+- Realised P/L totals come from `sum_realized` / `realized_summary`. Agent 2 replaces its temporary `analytics_service` summing with them (REQ-17, Agent 2 half).
 
 ---
 
