@@ -16,7 +16,7 @@ async function loadChart(symbol, period) {
     });
     
     try {
-        const res = await fetch(`${API_URL}/api/chart/${symbol}/${period}`);
+        const res = await fetch(`${API_URL}/api/chart/${encodeURIComponent(symbol)}/${encodeURIComponent(period)}`);
         if (!res.ok) throw new Error('Chart data unavailable');
         const data = await res.json();
         

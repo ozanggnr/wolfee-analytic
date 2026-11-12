@@ -4,6 +4,15 @@ let currentSymbol = null;
 let _pollInterval = null;
 const POLL_INTERVAL_MS = 60000; // 60 seconds
 
+// While the grid shows the "loading" placeholder (e.g. the server's first
+// refresh has not finished yet), poll faster and rebuild the whole grid once
+// data arrives. After the retries run out, the regular poll keeps checking.
+const EMPTY_GRID_RETRY_MS = 5000;
+const EMPTY_GRID_MAX_RETRIES = 12;
+let _gridAwaitingData = false;
+let _emptyGridRetryTimer = null;
+let _emptyGridRetries = 0;
+
 // Pause auto-polling when browser tab is inactive to reduce bandwidth and server load
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
@@ -39,10 +48,23 @@ async function init() {
     } catch (error) {
         console.error('Init error:', error);
         document.getElementById('stock-grid').innerHTML =
-            '<p style="color: var(--danger-color); grid-column: 1/-1; text-align: center;">Failed to load market data. Please refresh.</p>';
+            '<p style="color: var(--danger-color); grid-column: 1/-1; text-align: center;">Failed to load market data. Retrying...</p>';
+        _gridAwaitingData = true;
+        startAutoPoll();
+        scheduleEmptyGridRetry();
     } finally {
         loader.classList.add('hidden');
     }
+}
+
+function scheduleEmptyGridRetry() {
+    if (!_gridAwaitingData || _emptyGridRetryTimer || document.hidden) return;
+    if (_emptyGridRetries >= EMPTY_GRID_MAX_RETRIES) return;
+    _emptyGridRetries++;
+    _emptyGridRetryTimer = setTimeout(async () => {
+        _emptyGridRetryTimer = null;
+        await pollForUpdates();
+    }, EMPTY_GRID_RETRY_MS);
 }
 
 function startAutoPoll() {
@@ -74,12 +96,19 @@ async function pollForUpdates() {
         });
 
         if (changedCount > 0) {
-            // Update allStocks and re-render changed cards in-place
-            updateChangedCards(newStocks);
-            allStocks = newStocks;
-            window.allStocks = allStocks;
+            if (_gridAwaitingData) {
+                // No cards to update in place yet: build the grid from scratch
+                processData(data);
+            } else {
+                // Update allStocks and re-render changed cards in-place
+                updateChangedCards(newStocks);
+                allStocks = newStocks;
+                window.allStocks = allStocks;
+            }
             loadOpportunities();
             loadExchangeRates();
+        } else {
+            scheduleEmptyGridRetry();
         }
 
         // Update live label with data age
@@ -99,6 +128,7 @@ async function pollForUpdates() {
         console.warn('Poll error:', e);
         if (dot) dot.style.background = '#f87171'; // red = error
         if (label) label.textContent = 'Reconnecting...';
+        scheduleEmptyGridRetry();
     }
 }
 
@@ -268,9 +298,13 @@ function processData(data) {
         if (displayStocks.length === 0) {
             stockGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">No stocks found. Data is loading...</p>';
             stockGrid.classList.remove('switching');
+            _gridAwaitingData = true;
+            scheduleEmptyGridRetry();
             return;
         }
-        
+
+        _gridAwaitingData = false;
+        _emptyGridRetries = 0;
         stockGrid.classList.remove('switching');
         displayStocks.forEach((stock, i) => {
             renderStockCard(stock);
