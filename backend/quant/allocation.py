@@ -17,9 +17,9 @@ def allocation_by(
 ) -> tuple[AllocationSlice, ...] | None:
     """Weights grouped by ``group_of[symbol]`` (market, currency, asset class...).
 
-    Largest group first. Returns None when the valuation is incomplete, because
-    weights of a partly valued portfolio would be wrong, and an empty tuple when
-    there is nothing of value to allocate.
+    Largest group first. Returns None when the valuation is incomplete: a group
+    whose holdings could not be valued would silently show too small a share.
+    Returns an empty tuple when there is nothing of value to allocate.
     """
     if not valuation.is_complete:
         return None

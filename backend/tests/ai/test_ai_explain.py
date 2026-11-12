@@ -304,10 +304,25 @@ def test_facts_state_what_is_missing_instead_of_estimating():
     facts, inputs_as_of = portfolio_facts(_valuation({"THYAO": QUOTES["THYAO"]}), None)
     by_label = {fact.label: fact.value for fact in facts}
 
-    assert by_label["Total market value"] == "not available — missing price or exchange rate for: AAPL"
-    assert "Unrealised profit or loss" not in by_label
-    assert "Largest holding" not in by_label
+    # Only THYAO could be valued: 1,200 against a cost of 1,000. Every figure says it is partial.
+    partial = " of the holdings that could be valued (partial, not the whole portfolio)"
+    assert "Total market value" not in by_label and "Total cost" not in by_label
+    assert by_label["Holdings left out of every total below (no price or exchange rate)"] == "AAPL"
+    assert by_label["Market value" + partial] == "1,200.00 TRY"
+    assert by_label["Cost" + partial] == "1,000.00 TRY"
+    assert by_label["Unrealised profit or loss" + partial] == "+200.00 TRY"
+    assert by_label["Largest holding"] == "THYAO at 100.00% of the holdings that could be valued"
     assert inputs_as_of == AS_OF
+
+
+def test_facts_say_the_total_is_unavailable_when_nothing_could_be_valued():
+    facts, inputs_as_of = portfolio_facts(_valuation({}), None)
+    by_label = {fact.label: fact.value for fact in facts}
+
+    assert by_label["Total market value"] == "not available — missing price or exchange rate for: AAPL, THYAO"
+    assert not any(label.startswith(("Market value", "Cost", "Unrealised")) for label in by_label)
+    assert "Largest holding" not in by_label
+    assert inputs_as_of is None
 
 
 def test_facts_feed_the_explanation_end_to_end():
