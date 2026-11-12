@@ -275,7 +275,7 @@ function processData(data) {
         displayStocks.forEach((stock, i) => {
             renderStockCard(stock);
             const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
-            const card = stockGrid.querySelector(`[data-stock-symbol="${baseSym}"]`);
+            const card = stockGrid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`);
             if (card) {
                 card.classList.add('card-animate-in');
                 card.style.animationDelay = `${i * 0.03}s`;
