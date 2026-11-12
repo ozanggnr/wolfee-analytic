@@ -274,4 +274,17 @@ Status:    open
 
 REQ-8 is superseded by REQ-16.
 
+```
+ID:        REQ-17
+From:      Agent 1 (user decision 2026-11-11)
+To:        Agent 3, then Agent 2
+Needs:     a pure quant function that sums realised P/L per currency and into the base currency
+           from RealizedLot values (None when any lot lacks a base figure); Agent 2 then replaces
+           analytics_service._realized_by_currency / _realized_in_base with it. The response
+           shape (API_CONTRACT §5.2.1) does not change.
+Why:       all portfolio arithmetic belongs in quant; the service copy is temporary
+Blocking:  no
+Status:    open
+```
+
 REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the Step 2 merge before the request is closed.
