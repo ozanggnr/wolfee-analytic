@@ -19,10 +19,12 @@ from __future__ import annotations
 import re
 from collections import defaultdict, deque
 from decimal import Decimal
-from typing import Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from quant._math import ZERO, divide, fixed_context, proportion, scaled, to_decimal
 from quant.types import (
+    DEFAULT_BASE_CURRENCY,
+    DEFAULT_COST_BASIS_METHOD,
     CashSummary,
     CostBasisMethod,
     CurrencyAmount,
@@ -30,6 +32,7 @@ from quant.types import (
     Lot,
     Position,
     RealizedLot,
+    RealizedSummary,
     Transaction,
     TransactionType,
 )
@@ -42,7 +45,9 @@ _CURRENCY_CODE = re.compile(r"[A-Z]{3}")
 
 
 @fixed_context(LedgerError)
-def build_positions(transactions: Sequence[Transaction], method: CostBasisMethod) -> list[Position]:
+def build_positions(
+    transactions: Sequence[Transaction], method: CostBasisMethod = DEFAULT_COST_BASIS_METHOD
+) -> list[Position]:
     """Open positions implied by the ledger, sorted by symbol."""
     books, currencies, _ = _replay(transactions, method)
     return [
@@ -53,10 +58,80 @@ def build_positions(transactions: Sequence[Transaction], method: CostBasisMethod
 
 
 @fixed_context(LedgerError)
-def realized_pnl(transactions: Sequence[Transaction], method: CostBasisMethod) -> list[RealizedLot]:
+def realized_pnl(
+    transactions: Sequence[Transaction], method: CostBasisMethod = DEFAULT_COST_BASIS_METHOD
+) -> list[RealizedLot]:
     """Realised profit and loss, one entry per lot consumed by each SELL, in replay order."""
     _, _, realized = _replay(transactions, method)
     return list(realized)
+
+
+@fixed_context(LedgerError)
+def realized_summary(
+    transactions: Sequence[Transaction],
+    method: CostBasisMethod = DEFAULT_COST_BASIS_METHOD,
+    base_currency: str = DEFAULT_BASE_CURRENCY,
+) -> RealizedSummary:
+    """Realised P/L of the ledger per trade currency and in ``base_currency``.
+
+    Weighted average cost unless ``method`` says FIFO (decision D2). Same as
+    ``sum_realized(realized_pnl(transactions, method), base_currency)``.
+    """
+    _require_currency(base_currency, "base currency")
+    _, _, realized = _replay(transactions, method)
+    return _sum_realized(realized, base_currency)
+
+
+@fixed_context()
+def sum_realized(
+    lots: Iterable[RealizedLot], base_currency: str = DEFAULT_BASE_CURRENCY
+) -> RealizedSummary:
+    """Add up realised lots per trade currency and in ``base_currency``.
+
+    The base-currency total uses each lot's ``pnl_base``, which comes from the
+    FX rates stored on the trades (never today's rate). A lot already in the
+    base currency counts at exactly 1. If any other lot has no ``pnl_base`` the
+    total is None and ``missing_base_currencies`` names its currency; the
+    per-currency sums are always returned.
+    """
+    _require_currency(base_currency, "base currency")
+    return _sum_realized(lots, base_currency)
+
+
+def _sum_realized(lots: Iterable[RealizedLot], base_currency: str) -> RealizedSummary:
+    per_currency: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    total_base = ZERO
+    missing: set[str] = set()
+
+    for lot in lots:
+        _require_currency(lot.currency, "lot currency")
+        pnl = _computed(lot.pnl, "pnl")
+        per_currency[lot.currency] += pnl
+        if lot.currency == base_currency:
+            total_base += pnl
+        elif lot.pnl_base is None:
+            missing.add(lot.currency)
+        else:
+            total_base += _computed(lot.pnl_base, "pnl_base")
+
+    return RealizedSummary(
+        base_currency=base_currency,
+        by_currency=_amounts(per_currency),
+        total_base=None if missing else total_base,
+        missing_base_currencies=tuple(sorted(missing)),
+    )
+
+
+def _computed(value: object, name: str) -> Decimal:
+    """A figure produced by the replay: a finite Decimal (it may carry more places than an input)."""
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise ValueError(f"{name} must be a finite Decimal")
+    return value
+
+
+def _require_currency(value: object, name: str) -> None:
+    if not isinstance(value, str) or not _CURRENCY_CODE.fullmatch(value):
+        raise ValueError(f"{name} must be a 3-letter upper-case code")
 
 
 @fixed_context(LedgerError)

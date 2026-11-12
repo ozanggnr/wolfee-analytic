@@ -12,9 +12,9 @@ Test command (repo root, Python 3.11.9): `.venv311/Scripts/python -m pytest back
 - [x] 1. `git merge --ff-only integration` → `48ef971`
 - [x] 2. Read REQ-14 and REQ-17
 - [x] 3. REQ-14 — partial totals in `value_positions`, new `convert_amounts` (214 tests pass on 3.11.9)
+- [x] 4. REQ-17 — `realized_summary` and `sum_realized`; weighted average is the default `method` of `build_positions`, `realized_pnl` and `realized_summary`
 
 ## Next
-- [ ] 4. REQ-17 — realised P/L per currency and in TRY
 - [ ] 5. D4 and D5 options for the user (no implementation)
 - [ ] 6. Full suite on Python 3.11.9, final report with signatures for Agent 2
 
