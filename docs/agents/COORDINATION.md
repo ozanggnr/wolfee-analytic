@@ -360,4 +360,66 @@ Blocking:  no
 Status:    open
 ```
 
-REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the Step 2 merge before the request is closed.
+REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the `agent/backend` merge (Step 3b) before the request is closed.
+
+REQ-22 and REQ-23: done by Agent 4 in `agent/frontend` `b5f8c6d` (empty-grid polling, chart URL encoding, assets v=15.2), reviewed and merged into `integration` at `d3f30bf` on 2026-11-12.
+
+From decisions D4 and D5 (user, 2026-11-12; API_CONTRACT §2.2 and §2.4):
+
+```
+ID:        REQ-24
+From:      Agent 1 (decision D4)
+To:        Agent 3
+Needs:     quant side of D4. quant.signals.enrich_quote (and anything else producing rsi, ma_20,
+           day range or the labels built on them) stops estimating: without real daily closes
+           it returns None for rsi / ma_20 / day range and for every label that depends on them
+           (is_buyable, is_favorable, signal prefix of prediction). When closes are supplied,
+           compute rsi and ma_20 with quant.indicators (RSI 14 Wilder, SMA 20) and say so.
+           Agree with Agent 2 the input shape (e.g. a sequence of dated Decimal closes) before
+           Agent 2 wires it in. Tests: no history -> all None; known closes -> known values.
+Why:       D4 — never present an estimate as an indicator
+Blocking:  no (blocks REQ-26 wiring and REQ-27 display)
+Status:    open
+
+ID:        REQ-25
+From:      Agent 1 (decision D5)
+To:        Agent 3 (ai/), with Agent 2 for the two route handlers
+Needs:     move /api/insight (and /insight) and /api/ai/analyze/{symbol} onto the guarded layer:
+           market/stock facts built by deterministic code (new fact builders in ai/facts.py),
+           explain_* with find_violations, DISCLAIMER and template fallback; descriptive text
+           only — no buy/sell recommendations, entry points, targets or predictions. Response
+           keeps `insight` / `symbol`, `analysis` and adds generated_by, generated_at,
+           inputs_as_of, is_fallback, disclaimer (API_CONTRACT §2.4); violations logged, never
+           returned. Retire the adviser-wording prompts in ai_service. Coordinate with REQ-20
+           (no insight from an empty data set).
+Why:       D5 — the legacy prompts ask the model to act as a financial adviser
+Blocking:  no
+Status:    open
+
+ID:        REQ-26
+From:      Agent 1 (decision D4)
+To:        Agent 2
+Needs:     fetch and cache daily price history for the market-card symbols from the same source
+           /api/chart already uses, and feed it to the REQ-24 quant function so rsi / ma_20 /
+           day range are real. Store or cache with as_of and source; respect the existing
+           market-aware scheduling and rate limits; a symbol whose history fails stays null
+           (never estimated). Decide with Agent 1 whether this needs the price_history table
+           (DATABASE_CONTRACT M3, a migration needing approval) or an in-memory/TTL cache first.
+Why:       D4 — real indicators need real history
+Blocking:  no
+Status:    open — storage choice to be agreed with Agent 1 before implementation
+
+ID:        REQ-27
+From:      Agent 1 (decisions D4 and D5)
+To:        Agent 4
+Needs:     (a) show "not available" (not 0, not a dash that reads as a value) wherever rsi,
+           ma_20, day range or a dependent label is null: market cards, stock modal, watchlist,
+           opportunities; no buy/favourable badge without its inputs.
+           (b) render the new descriptive AI output for /api/insight and /api/ai/analyze through
+           aiTextToHTML(), with the disclaimer always visible and a "template" note when
+           is_fallback is true or generated_by is "template". Never show violations.
+           Bump the asset version.
+Why:       D4 and D5
+Blocking:  no — the frontend can handle null now; the backend changes follow
+Status:    open
+```
