@@ -23,7 +23,13 @@ Test commands (from the worktree root, Python 3.11.9 venv in the session scratch
     - The seed gives 361, then 0.
     - The SQLite downgrade keeps the instrument rows.
     - 134/134 API tests on empty PG16; 362/362 on SQLite.
-- [ ] Verify with the pinned `backend/requirements.lock`. **Next.** Then report.
+- [x] Verified on 2026-11-12 with pinned deps: `backend/requirements.lock` on Python 3.11.9.
+  - `uvloop` was left out on Windows only, because it has no Windows build. pytest 9.2.0 was added.
+  - Full suite on SQLite: 362/362.
+  - API tests on empty PG16: 134/134.
+  - PG16: upgrade→check→downgrade base→upgrade→check all clean.
+  - Seed: 361, then 0.
+  - Reported to the user. Nothing is open on this task.
 
 ## Waiting on others
 - REQ-14 (Agent 3): partial totals and weights in `quant.value_positions`. Until then `analytics_service._totals` sums the valued positions, and `weight` stays null when the total is partial. Switch over when Agent 3 delivers.
