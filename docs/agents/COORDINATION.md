@@ -119,7 +119,7 @@ Existing response shapes listed in API_CONTRACT §2 are frozen: fields may be ad
 | D1 | ~~Approve the proposed architecture, ownership and branch strategy~~ — **APPROVED by the user on 2026-11-11** (architecture and shared contracts). D2–D9 remain open | this document, TEAM_STRUCTURE |
 | D2 | ~~Cost-basis method for realised P/L~~ — **DECIDED 2026-11-11: default weighted average; FIFO stays available as a request parameter** | DATABASE_CONTRACT §3.6, API_CONTRACT §5.2 |
 | D3 | ~~Portfolio base currency and FX source~~ — **DECIDED 2026-11-11: base currency TRY; FX from the existing `exchange_rates` source; a foreign position without a rate is marked `missing_fx_rate` and the rest is still totalled** | DATABASE_CONTRACT §3.6, API_CONTRACT §5.2 |
-| D4 | ~~Estimated RSI / MA20 / day range shown as real values~~ — **DECIDED 2026-11-12 (option 1): they return `null` ("not available") until computed from real price history with `quant.indicators`; buy/favourable labels that depend on them get the same treatment. Real history comes from the same source `/api/chart` already uses** — REQ-24, REQ-26, REQ-27 | IMPLEMENTATION_STATUS §5 (R1) |
+| D4 | ~~Estimated RSI / MA20 / day range shown as real values~~ — **DECIDED 2026-11-12 (option 1): they return `null` ("not available") until computed from real price history with `quant.indicators` (volatility too, added the same day); buy/favourable labels that depend on them get the same treatment. Real history comes from the same source `/api/chart` already uses** — REQ-24, REQ-26, REQ-27 | IMPLEMENTATION_STATUS §5 (R1) |
 | D5 | ~~Wording and guardrails of AI output~~ — **DECIDED 2026-11-12 (option 1): `/api/insight` and `/api/ai/analyze` move onto the guarded AI layer: computed facts in, descriptive output only, guardrail check, disclaimer, template fallback. No buy recommendations** — REQ-25, REQ-27 | IMPLEMENTATION_STATUS §5 (R2), API_CONTRACT §5.4.1 |
 | D6 | Frontend direction: keep vanilla JS, or introduce a build step and TypeScript | IMPLEMENTATION_STATUS §6 |
 | D7 | Location of the "Trader Skill" referenced in CLAUDE.md — not found in the repository or in the local skills directory | IMPLEMENTATION_STATUS §6 |
@@ -375,6 +375,9 @@ Needs:     quant side of D4. quant.signals.enrich_quote (and anything else produ
            it returns None for rsi / ma_20 / day range and for every label that depends on them
            (is_buyable, is_favorable, signal prefix of prediction). When closes are supplied,
            compute rsi and ma_20 with quant.indicators (RSI 14 Wilder, SMA 20) and say so.
+           Volatility gets the same treatment (user, 2026-11-12): null without real history,
+           otherwise quant.indicators.annualized_volatility_pct from daily closes (state the
+           window); the one-day change_pct proxy is removed.
            Agree with Agent 2 the input shape (e.g. a sequence of dated Decimal closes) before
            Agent 2 wires it in. Tests: no history -> all None; known closes -> known values.
 Why:       D4 — never present an estimate as an indicator
@@ -403,11 +406,12 @@ Needs:     fetch and cache daily price history for the market-card symbols from 
            /api/chart already uses, and feed it to the REQ-24 quant function so rsi / ma_20 /
            day range are real. Store or cache with as_of and source; respect the existing
            market-aware scheduling and rate limits; a symbol whose history fails stays null
-           (never estimated). Decide with Agent 1 whether this needs the price_history table
-           (DATABASE_CONTRACT M3, a migration needing approval) or an in-memory/TTL cache first.
-Why:       D4 — real indicators need real history
+           (never estimated). Storage: the price_history table, APPROVED by the user 2026-11-12
+           (DATABASE_CONTRACT §4.3), one migration after c3f5a7e91d20, plus the model.
+Why:       D4 — real indicators need real history; Fly stops idle machines, so an in-memory
+           cache would refetch every instrument's history on each cold start
 Blocking:  no
-Status:    open — storage choice to be agreed with Agent 1 before implementation
+Status:    open — storage decided (price_history table)
 
 ID:        REQ-27
 From:      Agent 1 (decisions D4 and D5)

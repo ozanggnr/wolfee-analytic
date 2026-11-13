@@ -17,7 +17,10 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
   - [x] 6. REQ-24 (Agent 3, D4), REQ-25 (Agent 3, D5), REQ-26 (Agent 2, history), REQ-27 (Agent 4, display): `083b466`
 
 ## In progress
-- Nothing. **Waiting for the user.** `agent/backend` NOT merged.
+- Nothing. **Waiting for Agent 2 to report, then the user approves Step 3b.** `agent/backend` NOT merged.
+
+## Done 2026-11-12 (after Step 3a)
+- price_history approved (DATABASE_CONTRACT §4.3, REQ-26); volatility added to D4 / REQ-24; corrections accepted by the user
 
 ## Next (only after approval)
 - Step 3b: review and merge `agent/backend` (head `e30f1db` on 2026-11-12: REQ-13 `5e464a7`, REQ-15 `a4ce4e7`, REQ-16 `7c484e9`, REQ-9 `6a168a5`). Verify REQ-7 seed CLI. Expect overlap with quant changes (analytics_service vs REQ-17).

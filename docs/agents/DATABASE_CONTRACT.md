@@ -206,7 +206,7 @@ Rules:
 
 Needed for valuation on past dates, real indicators and risk metrics.
 
-`price_history`: `instrument_id` FK, `date`, `open`, `high`, `low`, `close` NUMERIC(20,6), `volume` NUMERIC(24,2), `currency`, `source`, `fetched_at`. Primary key `(instrument_id, date)`. End-of-day only.
+`price_history`: **APPROVED 2026-11-12 — final definition in §4.3.**
 
 `fx_rate_history`: `base` CHAR(3), `quote` CHAR(3), `date`, `rate` NUMERIC(20,8), `source`, `fetched_at`. Primary key `(base, quote, date)`.
 
@@ -244,7 +244,7 @@ A unique constraint on `stock_data.symbol` is desirable but **not additive**: du
 | M0 | Establish the Alembic baseline (stamp or baseline revision, after read-only inspection) | D8 |
 | M1 | `instruments` + seed from the existing symbol lists | M0 |
 | M2 | `portfolios`, `transactions` | M1, D2, D3 |
-| M3 | `price_history`, `fx_rate_history` | M1 |
+| M3 | `price_history` — **approved, §4.3**. `fx_rate_history` stays deferred (D3) | M1 |
 | M4 | Nullable provenance columns on `stock_data` and `ai_insights` | M0 |
 | later | De-duplicate `stock_data` and add the unique constraint | user approval |
 
@@ -298,6 +298,38 @@ Rules for this migration:
 - Tested by Agent 2 on PostgreSQL 16 and SQLite: `upgrade head` → `downgrade base` → `upgrade head`, then `alembic check` with no differences. Report the commands and output.
 
 **Migrations become the only way tables are created in production.** In the same change, Agent 2 limits `init_db()`'s `Base.metadata.create_all` to SQLite (local development and tests). With a Postgres `DATABASE_URL`, start-up creates nothing. On Fly the release command (`alembic upgrade head`, then `python -m services.instrument_service`) builds and seeds the schema before the app starts. If a table is missing, the app fails loudly instead of creating it quietly. This closes REQ-8 and §5 P1–P3.
+
+## 4.3 Approved: `price_history` (APPROVED by the user 2026-11-12 — Agent 2 to write, REQ-26)
+
+**Why a table and not a cache:** Fly stops idle machines (`min_machines_running = 0`). An in-memory cache would be empty after every cold start and refetch the history of every instrument each time. Daily closes are stored once and extended incrementally.
+
+One new Alembic revision by Agent 2, `down_revision` = the §4.2 revision (`c3f5a7e91d20` on `agent/backend` `7c484e9`). Model and migration land in the same change, and `alembic check` stays clean.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | BigInteger PK (Integer on SQLite, as for `transactions`) | |
+| `instrument_id` | Integer NOT NULL, FK `instruments.id` **ON DELETE RESTRICT** | |
+| `date` | Date NOT NULL | trading day, exchange-local |
+| `open`, `high`, `low` | NUMERIC(20,6) NULL | as supplied; never filled in |
+| `close` | NUMERIC(20,6) NOT NULL | the value indicators use |
+| `volume` | NUMERIC(24,2) NULL | |
+| `currency` | CHAR(3) NOT NULL | currency of the prices, checked against the instrument |
+| `source` | String(30) NOT NULL | the provider `/api/chart` uses, e.g. `yfinance` |
+| `fetched_at` | timestamptz NOT NULL, `server_default now()` | |
+
+Constraints and indexes:
+
+- **Unique `uq_price_history_instrument_date (instrument_id, date)`**. It also serves the "closes for one instrument, ordered by date" query, so no extra index is needed.
+- CHECK `ck_price_history_prices`: `close > 0`; `open`, `high` and `low` are NULL or > 0; `volume` is NULL or ≥ 0; `high >= low` when both are present.
+
+Rules:
+
+- **End-of-day only.** No intraday rows. Today's unfinished bar is not stored. Writes are upserts on `(instrument_id, date)`: a re-fetched day replaces the row, so a provider correction overwrites it. This is a price cache, not a ledger, so it is not append-only.
+- Only real fetched data. A day the provider does not return stays missing; nothing is interpolated or estimated. Indicators with too few closes are `null` (D4).
+- The fetch respects the existing market-aware scheduling and rate limits, and fetches only days that are missing.
+- No retention or pruning in this migration. About 1 year × 361 instruments is roughly 90,000 rows, which is small.
+- `downgrade` drops the table and its constraints only.
+- Tested by Agent 2 on PostgreSQL 16 and SQLite: `upgrade head` → `downgrade base` → `upgrade head`, then `alembic check` with no differences, as for §4.2.
 
 ---
 

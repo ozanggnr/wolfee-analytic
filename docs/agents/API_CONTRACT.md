@@ -114,7 +114,7 @@ Warning, verified in `workers._enrich_stock_data` and `analysis.analyze_stock`: 
 - Real history comes from the same source `/api/chart` uses (Agent 2 fetches and caches it, REQ-26).
 - Labels that depend on those values (`is_buyable`, `is_favorable`, the signal prefix of `prediction`, and the `/api/opportunities` filter built on them) get the same treatment: no label (`null`) when an input is unavailable.
 - The same applies wherever these figures are reused (`WatchlistItem.rsi`, the exports' "RSI (14)" column).
-- `volatility` is not part of D4. It stays as described above until decided separately.
+- `volatility` gets the same treatment (user, 2026-11-12): `null` until computed with `quant.indicators.annualized_volatility_pct` from real daily closes; the one-day `change_pct` proxy goes.
 
 ### 2.3 Analysis, prices and history
 
