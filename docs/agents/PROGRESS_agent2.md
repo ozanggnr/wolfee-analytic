@@ -7,33 +7,23 @@ Test commands (from the worktree root, Python 3.11.9 venv in the session scratch
 - Full suite: `python -m pytest backend/tests -q -p no:cacheprovider -W ignore`
 - Postgres API tests (empty, disposable DB): `WOLFEE_TEST_POSTGRES_URL=postgresql://postgres@127.0.0.1:55432/wolfee_tests python -m pytest backend/tests/api -q -p no:cacheprovider -W ignore`
 
-## Current task (2026-11-12): rebase, then REQ-13/15/16/9, then verify
+## Current task (2026-11-13): rebase, then REQ-17, 14, 18, 19, 20, 21, 26, 25 in order
 
-- [x] Rebase onto `integration` 48ef971. No conflicts.
-- [x] REQ-13: weighted average is the default; FIFO is a parameter. (`5e464a7`, rebased)
-- [x] REQ-9: the Postgres harness, enabled by `WOLFEE_TEST_POSTGRES_URL` together with `DB_POOL=null`. (`6a168a5`, rebased)
-- [x] REQ-15: valuation FX comes from `exchange_rates`.
-  - It uses the **selling** rate, with `source="exchange_rates"`.
-  - TRY is the only accepted base currency.
-- [x] REQ-16: migration `c3f5a7e91d20` (DATABASE_CONTRACT §4.2), plus `init_db` `create_all` limited to SQLite.
-  - `models.py` gains `uq_instruments_provider_symbol`.
-  - SQLite needs `batch_alter_table` for the constraint, and `server_default` uses `sa.func.now()`.
-  - Evidence:
-    - PG16 and SQLite: base→head→base→head with a clean `alembic check` each time.
-    - The seed gives 361, then 0.
-    - The SQLite downgrade keeps the instrument rows.
-    - 134/134 API tests on empty PG16; 362/362 on SQLite.
-- [x] Verified on 2026-11-12 with pinned deps: `backend/requirements.lock` on Python 3.11.9.
-  - `uvloop` was left out on Windows only, because it has no Windows build. pytest 9.2.0 was added.
-  - Full suite on SQLite: 362/362.
-  - API tests on empty PG16: 134/134.
-  - PG16: upgrade→check→downgrade base→upgrade→check all clean.
-  - Seed: 361, then 0.
-  - Reported to the user. Nothing is open on this task.
+Verify after each item with the scratch script `verify.sh`:
+- full suite on SQLite, pinned deps
+- API tests on empty PG16
+- a clean `alembic check` on a migrated PG16
 
-## Waiting on others
-- REQ-14 (Agent 3): partial totals and weights in `quant.value_positions`. Until then `analytics_service._totals` sums the valued positions, and `weight` stays null when the total is partial. Switch over when Agent 3 delivers.
-- REQ-17 (Agent 3): a quant function for realised-P/L sums. Then replace `_realized_by_currency` and `_realized_in_base`. Not yet.
+- [x] Rebase onto `integration` acfd92e. No conflicts.
+- [x] REQ-17: `quant.sum_realized` replaces `_realized_by_currency` and `_realized_in_base`. Results: 381 on SQLite, 134 on PG16, check clean.
+- [ ] REQ-14: use `value_positions`' partial totals and remove `analytics_service._totals`. **Next.**
+- [ ] REQ-18 (HIGH): empty `/api/exchange-rates`.
+- [ ] REQ-19 (`normalize_symbol` for the watchlist market), REQ-20 (no insight from empty data), REQ-21 (watchlist summary cache invalidation).
+- [ ] REQ-26: `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
+- [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
+
+## Earlier (done, see git log)
+REQ-9, REQ-13, REQ-15, REQ-16. These were the analytics endpoints, the migration `c3f5a7e91d20`, and `create_all` limited to SQLite.
 
 ## Notes
 - Scratch Postgres: `pgserver` 16.2 binaries in the scratch venv. Run `initdb --no-locale` (the default locale crashes on Windows), then `pg_ctl -o "-p 55432 -h 127.0.0.1"`.

@@ -1,9 +1,9 @@
 """Holdings and performance of one portfolio, computed by the quant package.
 
 This module loads the caller's ledger, cached quotes and FX rates, hands them to
-quant, and shapes the results. The only arithmetic here is adding up figures quant
-already produced (realised P/L per currency, and portfolio totals over the
-positions that could be valued); nothing is estimated.
+quant, and shapes the results. Realised P/L is summed by quant.sum_realized
+(REQ-17). The only arithmetic left here is the portfolio totals over the positions
+that could be valued; nothing is estimated.
 
 FX (decision D3): foreign positions convert into TRY at the cached TCMB rate. A
 position without a usable quote or rate is reported unvalued, and the totals
@@ -12,7 +12,6 @@ cover the remaining positions only, with `is_complete` false.
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -21,7 +20,7 @@ from typing import Callable, Mapping, Optional, Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Instrument, Portfolio
-from quant.positions import build_positions, cash_summary, realized_pnl
+from quant.positions import build_positions, cash_summary, realized_pnl, sum_realized
 from quant.types import (
     CostBasisMethod, CurrencyAmount, FxRate, LedgerError, PortfolioValuation, PriceQuote,
     RealizedLot, ValuedPosition,
@@ -159,20 +158,6 @@ def _amounts(amounts: Sequence[CurrencyAmount]) -> list[CurrencyAmountOut]:
     return [CurrencyAmountOut(currency=a.currency, amount=a.amount) for a in amounts]
 
 
-def _realized_by_currency(lots: Sequence[RealizedLot]) -> list[CurrencyAmountOut]:
-    totals: dict[str, Decimal] = defaultdict(Decimal)
-    for lot in lots:
-        totals[lot.currency] += lot.pnl
-    return [CurrencyAmountOut(currency=c, amount=a) for c, a in sorted(totals.items())]
-
-
-def _realized_in_base(lots: Sequence[RealizedLot]) -> Optional[Decimal]:
-    """Sum of realised P/L in base currency; null if any lot lacks a stored FX rate."""
-    if any(lot.pnl_base is None for lot in lots):
-        return None
-    return sum((lot.pnl_base for lot in lots), Decimal(0))
-
-
 def _lot_out(lot: RealizedLot, instrument: Instrument) -> RealizedLotOut:
     return RealizedLotOut(
         symbol=instrument.symbol, exchange=instrument.exchange, currency=lot.currency,
@@ -208,10 +193,11 @@ async def performance(
 ) -> PerformanceOut:
     computed = await _compute(db, user_id, portfolio_id, method, clock)
     cash = computed.cash
+    realized = sum_realized(computed.realized, computed.portfolio.base_currency.strip())
     return PerformanceOut(
         **_header(computed),
-        realized_pnl=_realized_by_currency(computed.realized),
-        realized_pnl_base=_realized_in_base(computed.realized),
+        realized_pnl=_amounts(realized.by_currency),
+        realized_pnl_base=realized.total_base,
         unrealized_pnl_base=_totals(computed.valuation).unrealized_pnl,
         dividends=_amounts(cash.dividends),
         fees=_amounts(cash.fees),
