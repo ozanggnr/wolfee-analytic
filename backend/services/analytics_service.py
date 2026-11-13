@@ -1,9 +1,8 @@
 """Holdings and performance of one portfolio, computed by the quant package.
 
 This module loads the caller's ledger, cached quotes and FX rates, hands them to
-quant, and shapes the results. Realised P/L is summed by quant.sum_realized
-(REQ-17). The only arithmetic left here is the portfolio totals over the positions
-that could be valued; nothing is estimated.
+quant, and shapes the results. It does no arithmetic: positions, totals, weights
+(REQ-14) and realised P/L sums (REQ-17) all come from quant. Nothing is estimated.
 
 FX (decision D3): foreign positions convert into TRY at the cached TCMB rate. A
 position without a usable quote or rate is reported unvalued, and the totals
@@ -81,33 +80,6 @@ async def _compute(
     return _Computed(portfolio, method, now, ledger.instruments, average_costs, valuation, realized, cash)
 
 
-@dataclass(frozen=True)
-class _Totals:
-    market_value: Optional[Decimal]
-    cost_basis: Optional[Decimal]
-    unrealized_pnl: Optional[Decimal]
-
-
-def _sum_or_none(values: Sequence[Optional[Decimal]]) -> Optional[Decimal]:
-    if any(v is None for v in values):
-        return None
-    return sum(values, Decimal(0))
-
-
-def _totals(valuation: PortfolioValuation) -> _Totals:
-    """Quant's totals when every position is valued; otherwise the sum over valued positions."""
-    if valuation.is_complete:
-        return _Totals(valuation.total_market_value, valuation.total_cost_basis, valuation.total_unrealized_pnl)
-    valued = [v for v in valuation.positions if v.market_value_base is not None]
-    if not valued:  # nothing could be valued: no total, rather than a misleading zero
-        return _Totals(None, None, None)
-    return _Totals(
-        market_value=_sum_or_none([v.market_value_base for v in valued]),
-        cost_basis=_sum_or_none([v.cost_basis_base for v in valued]),
-        unrealized_pnl=_sum_or_none([v.unrealized_pnl_base for v in valued]),
-    )
-
-
 def _quote_out(quote: Optional[PriceQuote]) -> Optional[QuoteOut]:
     if quote is None:
         return None
@@ -174,16 +146,15 @@ async def holdings(
 ) -> HoldingsOut:
     computed = await _compute(db, user_id, portfolio_id, method, clock)
     valuation = computed.valuation
-    totals = _totals(valuation)
     return HoldingsOut(
         **_header(computed),
         positions=[
             _holding_out(v, computed.instruments[v.symbol], computed.average_costs[v.symbol])
             for v in valuation.positions
         ],
-        total_market_value=totals.market_value,
-        total_cost_basis=totals.cost_basis,
-        total_unrealized_pnl=totals.unrealized_pnl,
+        total_market_value=valuation.total_market_value,
+        total_cost_basis=valuation.total_cost_basis,
+        total_unrealized_pnl=valuation.total_unrealized_pnl,
     )
 
 
@@ -198,7 +169,7 @@ async def performance(
         **_header(computed),
         realized_pnl=_amounts(realized.by_currency),
         realized_pnl_base=realized.total_base,
-        unrealized_pnl_base=_totals(computed.valuation).unrealized_pnl,
+        unrealized_pnl_base=computed.valuation.total_unrealized_pnl,
         dividends=_amounts(cash.dividends),
         fees=_amounts(cash.fees),
         net_deposits=_amounts(cash.net_deposits),

@@ -402,6 +402,8 @@ def test_a_missing_rate_leaves_only_that_position_out_of_the_totals(
 
     reasons = {p["symbol"]: p["unavailable_reason"] for p in body["positions"]}
     assert reasons == {instrument["symbol"]: None, us_stock["symbol"]: "missing_fx_rate"}
+    weights = {p["symbol"]: p["weight"] for p in body["positions"]}
+    assert weights == {instrument["symbol"]: "1.0000000000", us_stock["symbol"]: None}  # share of the partial total
     assert body["is_complete"] is False
     assert body["unvalued_symbols"] == [us_stock["symbol"]]
     assert (body["total_market_value"], body["total_cost_basis"], body["total_unrealized_pnl"]) == (

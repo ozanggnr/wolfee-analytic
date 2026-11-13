@@ -16,8 +16,8 @@ Verify after each item with the scratch script `verify.sh`:
 
 - [x] Rebase onto `integration` acfd92e. No conflicts.
 - [x] REQ-17: `quant.sum_realized` replaces `_realized_by_currency` and `_realized_in_base`. Results: 381 on SQLite, 134 on PG16, check clean.
-- [ ] REQ-14: use `value_positions`' partial totals and remove `analytics_service._totals`. **Next.**
-- [ ] REQ-18 (HIGH): empty `/api/exchange-rates`.
+- [x] REQ-14: totals and weights come from `value_positions`; `_totals` is removed. Results: 381 on SQLite, 134 on PG16, check clean.
+- [ ] REQ-18 (HIGH): empty `/api/exchange-rates`. **Next.**
 - [ ] REQ-19 (`normalize_symbol` for the watchlist market), REQ-20 (no insight from empty data), REQ-21 (watchlist summary cache invalidation).
 - [ ] REQ-26: `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
 - [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
