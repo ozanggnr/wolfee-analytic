@@ -278,6 +278,29 @@ class RiskMetrics:
 
 
 @dataclass(frozen=True)
+class DailyClose:
+    """One real end-of-day closing price from a market data provider."""
+
+    date: date
+    close: Decimal
+
+
+@dataclass(frozen=True)
+class DailyIndicators:
+    """Indicators of the latest close in a daily history; None where history is too short.
+
+    ``as_of`` is the date of the latest close used and ``observations`` the
+    number of closes supplied.
+    """
+
+    as_of: date | None
+    observations: int
+    rsi_14: Decimal | None
+    sma_20: Decimal | None
+    volatility_pct: Decimal | None
+
+
+@dataclass(frozen=True)
 class CanonicalSymbol:
     """One identity per tradable thing (DATABASE_CONTRACT §3.1)."""
 

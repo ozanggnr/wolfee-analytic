@@ -1,8 +1,21 @@
 """Symbol normaliser, instrument universe and the canonical quote enrichment."""
+import math
+import statistics
+from datetime import date, datetime, timedelta
+from decimal import Decimal as D
+
 import pytest
 
-from quant.signals import enrich_quote
+from quant.indicators import (
+    INDICATOR_METHOD,
+    annualized_volatility_pct,
+    daily_indicators,
+    rsi,
+    sma,
+)
+from quant.signals import classify_volatility, enrich_quote, is_buyable, is_favorable, signal_text
 from quant.symbols import instrument_seed, normalize_symbol
+from quant.types import DailyClose
 from quant.universe import BIST_SYMBOLS, COMMODITIES_SYMBOLS, GLOBAL_SYMBOLS
 
 
@@ -76,87 +89,6 @@ def test_analysis_module_still_exports_the_same_universe_objects():
     assert analysis.COMMODITIES_SYMBOLS is COMMODITIES_SYMBOLS
 
 
-def _legacy_enrich(data: dict, market_type: str, currency: str) -> dict:
-    """Verbatim copy of workers._enrich_stock_data at commit de0575a (the oracle)."""
-    price = data.get('price', 0)
-    change_pct = data.get('change_pct', 0)
-
-    rsi = data.get('rsi', 0)
-    if not rsi or rsi == 0:
-        rsi = 50 + (change_pct * 3)
-        rsi = max(5, min(95, rsi))
-
-    ma_20 = data.get('ma_20', 0)
-    if not ma_20 or ma_20 == 0:
-        ma_20 = price * (1 - change_pct / 200) if price else 0
-
-    volatility = 'HIGH' if abs(change_pct) > 5 else 'MEDIUM' if abs(change_pct) > 2 else 'LOW'
-
-    if change_pct > 5 and rsi < 70:
-        prediction = f"PURCHASABLE — strong momentum +{change_pct:.1f}%"
-    elif change_pct > 2 and rsi < 65:
-        prediction = f"PURCHASABLE — positive trend +{change_pct:.1f}%"
-    elif change_pct > 0.5 and rsi < 60:
-        prediction = f"PURCHASABLE — rising +{change_pct:.1f}%"
-    elif rsi < 35:
-        prediction = "ACCUMULATE — oversold, potential bounce"
-    elif change_pct >= 0 and rsi < 55:
-        prediction = "ACCUMULATE — steady upward movement"
-    elif change_pct >= 0 and rsi < 65:
-        prediction = "WATCH TO BUY — conditions improving"
-    elif rsi > 72 and change_pct > 3:
-        prediction = f"TAKE PROFITS — up {change_pct:.1f}%, overbought"
-    elif rsi > 65:
-        prediction = "WATCH TO BUY — slightly overbought, wait for pullback"
-    elif change_pct < -2:
-        prediction = f"AVOID FOR NOW — declining {change_pct:.1f}%"
-    elif change_pct < 0 and rsi > 40:
-        prediction = "WATCH TO BUY — minor dip, monitor closely"
-    elif change_pct < 0 and rsi < 40:
-        prediction = "ACCUMULATE — dip into value zone"
-    else:
-        prediction = "WATCH TO BUY — neutral, awaiting direction"
-
-    data.update({
-        'currency': currency,
-        'market_type': market_type,
-        'rsi': round(rsi, 2),
-        'ma_20': round(ma_20, 2) if ma_20 else 0,
-        'volatility': volatility,
-        'prediction': prediction,
-        'reason': prediction,
-        'is_favorable': change_pct > 0,
-        'is_buyable': change_pct > 0.5 and rsi < 65,
-    })
-    return data
-
-
-def _grid():
-    changes = [x / 4 for x in range(-48, 49)]                 # -12% .. +12% in 0.25 steps
-    supplied_rsi = [0, 20, 34.9, 35, 39.9, 40, 54.9, 55, 59.9, 60, 64.9, 65, 69.9, 70, 72, 72.1, 90]
-    for change in changes:
-        for supplied in supplied_rsi:
-            yield {"symbol": "X", "price": 123.45, "change_pct": change, "rsi": supplied}
-    yield {"symbol": "X", "price": 0, "change_pct": 0}
-    yield {"symbol": "X", "price": 50.0, "change_pct": 1.0, "ma_20": 48.0}
-    yield {"symbol": "X"}
-
-
-def test_enrich_quote_reproduces_the_existing_worker_logic_exactly():
-    for raw in _grid():
-        expected = _legacy_enrich(dict(raw), "BIST", "TRY")
-
-        assert enrich_quote(raw, "BIST", "TRY") == expected, raw
-
-
-def test_enrich_quote_does_not_mutate_its_input():
-    raw = {"symbol": "X", "price": 10.0, "change_pct": 1.0}
-
-    enrich_quote(raw, "GLOBAL", "USD")
-
-    assert raw == {"symbol": "X", "price": 10.0, "change_pct": 1.0}
-
-
 @pytest.mark.parametrize("raw", ["ſAP", "ß", "ﬁ", "ııı=X", "FOO=BAR", "A=B=C", "AAPL=FX", "THYAO\n.IS"])
 def test_lookalike_letters_and_open_ended_equals_symbols_are_rejected(raw):
     with pytest.raises(ValueError):
@@ -165,8 +97,6 @@ def test_lookalike_letters_and_open_ended_equals_symbols_are_rejected(raw):
 
 def test_long_ledgers_replay_in_linear_time():
     import time
-    from datetime import date
-    from decimal import Decimal as D
 
     from quant.positions import realized_pnl
     from quant.types import CostBasisMethod, Transaction, TransactionType as T
@@ -180,3 +110,172 @@ def test_long_ledgers_replay_in_linear_time():
 
     assert len(realized) == 20000
     assert time.perf_counter() - started < 10     # 20k buys alone took ~4 s when lots were copied per row
+
+
+# ------------------------------------------------ indicators from history (D4)
+
+START = date(2026, 1, 1)
+
+
+def history(closes):
+    return [DailyClose(START + timedelta(days=i), D(str(close))) for i, close in enumerate(closes)]
+
+
+RISING = history(range(100, 121))                              # 21 closes: 100, 101, ... 120
+ALTERNATING_15 = history([100, 110] * 7 + [100])               # 14 moves: 7 x +10, 7 x -10
+NULL_FIELDS = ("rsi", "ma_20", "volatility", "volatility_pct", "prediction", "reason",
+               "is_favorable", "is_buyable", "indicators_as_of", "indicator_method")
+
+
+@pytest.mark.parametrize("no_history", [None, [], ()])
+def test_no_history_gives_no_indicators(no_history):
+    result = daily_indicators(no_history)
+
+    assert (result.as_of, result.observations) == (None, 0)
+    assert (result.rsi_14, result.sma_20, result.volatility_pct) == (None, None, None)
+
+
+def test_known_closes_give_known_indicators():
+    result = daily_indicators(RISING)
+    closes = [point.close for point in RISING]
+    returns = [(101 + i) / (100 + i) - 1 for i in range(20)]
+
+    assert result.as_of == date(2026, 1, 21)
+    assert result.observations == 21
+    assert result.rsi_14 == D("100")                           # no losing day at all
+    assert result.sma_20 == D("110.5")                         # mean of 101..120
+    assert float(result.volatility_pct) == pytest.approx(statistics.stdev(returns) * math.sqrt(252) * 100)
+    # The same primitives, the same windows.
+    assert result.rsi_14 == rsi(closes, 14)
+    assert result.sma_20 == sma(closes, 20)
+    assert result.volatility_pct == annualized_volatility_pct(closes, 20)
+
+
+def test_each_indicator_is_none_until_its_window_is_filled():
+    fifteen = daily_indicators(ALTERNATING_15)
+    fourteen = daily_indicators(ALTERNATING_15[:14])
+    twenty = daily_indicators(RISING[:20])
+
+    # 7 gains of 10 and 7 losses of 10: average gain equals average loss, so RSI is exactly 50.
+    assert fifteen.rsi_14 == D("50")
+    assert (fifteen.sma_20, fifteen.volatility_pct) == (None, None)
+    assert fourteen.rsi_14 is None
+    assert twenty.sma_20 == D("109.5")                         # mean of 100..119
+    assert twenty.volatility_pct is None
+
+
+def test_history_order_does_not_matter_but_dates_must_be_unique_calendar_dates():
+    assert daily_indicators(list(reversed(RISING))) == daily_indicators(RISING)
+    with pytest.raises(ValueError, match="same date"):
+        daily_indicators(RISING + [DailyClose(START, D("99"))])
+    with pytest.raises(ValueError, match="calendar dates"):
+        daily_indicators([DailyClose(datetime(2026, 1, 1, 12, 0), D("99"))])
+    with pytest.raises(ValueError, match="Decimal"):
+        daily_indicators([DailyClose(START, 99.5)])
+    with pytest.raises(ValueError, match="positive"):
+        daily_indicators([DailyClose(START, D("0"))])
+
+
+# --------------------------------------------------------- enrich_quote (D4)
+
+def test_without_history_nothing_is_estimated():
+    raw = {"symbol": "X", "price": 123.45, "change_pct": 6.0, "day_high": 0, "day_low": 0}
+
+    result = enrich_quote(raw, "BIST", "TRY")
+
+    assert {field: result[field] for field in NULL_FIELDS} == dict.fromkeys(NULL_FIELDS)
+    assert (result["day_high"], result["day_low"]) == (None, None)
+    assert (result["price"], result["change_pct"]) == (123.45, 6.0)
+    assert (result["currency"], result["market_type"]) == ("TRY", "BIST")
+
+
+def test_old_estimates_already_in_the_data_are_not_passed_through():
+    raw = {"symbol": "X", "price": 100.0, "change_pct": 1.0, "rsi": 53.0, "ma_20": 99.5,
+           "volatility": "LOW", "prediction": "PURCHASABLE — rising +1.0%", "is_buyable": True}
+
+    result = enrich_quote(raw, "GLOBAL", "USD")
+
+    assert {field: result[field] for field in NULL_FIELDS} == dict.fromkeys(NULL_FIELDS)
+
+
+def test_with_history_indicators_and_labels_are_real():
+    raw = {"symbol": "X", "price": 120.0, "change_pct": 4.0, "day_high": 121.0, "day_low": 118.5}
+
+    result = enrich_quote(raw, "GLOBAL", "USD", RISING)
+
+    assert result["rsi"] == 100.0
+    assert result["ma_20"] == 110.5
+    assert result["volatility_pct"] == 0.79                    # 0.788, checked against statistics.stdev above
+    assert result["volatility"] == "LOW"
+    assert result["prediction"] == result["reason"] == "TAKE PROFITS — up 4.0%, overbought"
+    assert (result["is_favorable"], result["is_buyable"]) == (True, False)
+    assert (result["day_high"], result["day_low"]) == (121.0, 118.5)
+    assert result["indicators_as_of"] == "2026-01-21"
+    assert result["indicator_method"] == INDICATOR_METHOD
+
+
+def test_short_history_gives_only_what_it_supports():
+    raw = {"symbol": "X", "price": 100.0, "change_pct": 0.2}
+
+    result = enrich_quote(raw, "BIST", "TRY", ALTERNATING_15)
+
+    assert result["rsi"] == 50.0
+    assert (result["ma_20"], result["volatility"], result["volatility_pct"]) == (None, None, None)
+    assert result["prediction"] == "ACCUMULATE — steady upward movement"
+    assert (result["is_favorable"], result["is_buyable"]) == (True, False)
+    assert result["indicators_as_of"] == "2026-01-15"
+
+
+def test_history_too_short_for_rsi_gives_no_labels():
+    result = enrich_quote({"symbol": "X", "change_pct": 3.0}, "BIST", "TRY", ALTERNATING_15[:10])
+
+    assert {field: result[field] for field in NULL_FIELDS} == dict.fromkeys(NULL_FIELDS)
+
+
+def test_labels_need_the_days_change_too():
+    result = enrich_quote({"symbol": "X", "price": 100.0}, "BIST", "TRY", RISING)
+
+    assert result["rsi"] == 100.0
+    assert (result["prediction"], result["is_favorable"], result["is_buyable"]) == (None, None, None)
+
+
+def test_enrich_quote_does_not_mutate_its_input():
+    raw = {"symbol": "X", "price": 10.0, "change_pct": 1.0}
+
+    enrich_quote(raw, "GLOBAL", "USD", RISING)
+
+    assert raw == {"symbol": "X", "price": 10.0, "change_pct": 1.0}
+
+
+@pytest.mark.parametrize(
+    "change_pct, rsi_value, expected",
+    [
+        (6, 50, "PURCHASABLE — strong momentum +6.0%"),
+        (3, 60, "PURCHASABLE — positive trend +3.0%"),
+        (1, 55, "PURCHASABLE — rising +1.0%"),
+        (-1, 30, "ACCUMULATE — oversold, potential bounce"),
+        (0.2, 50, "ACCUMULATE — steady upward movement"),
+        (0.2, 62, "WATCH TO BUY — conditions improving"),
+        (4, 80, "TAKE PROFITS — up 4.0%, overbought"),
+        (1, 70, "WATCH TO BUY — slightly overbought, wait for pullback"),
+        (-3, 50, "AVOID FOR NOW — declining -3.0%"),
+        (-1, 50, "WATCH TO BUY — minor dip, monitor closely"),
+        (-1, 38, "ACCUMULATE — dip into value zone"),
+        (-1, 40, "WATCH TO BUY — neutral, awaiting direction"),
+    ],
+)
+def test_label_rules_are_unchanged_when_the_rsi_is_real(change_pct, rsi_value, expected):
+    assert signal_text(change_pct, rsi_value) == expected
+
+
+def test_labels_are_none_without_their_inputs():
+    assert signal_text(3.0, None) is None and signal_text(None, 50.0) is None
+    assert is_buyable(3.0, None) is None and is_favorable(3.0, None) is None
+    assert (is_buyable(3.0, 50.0), is_buyable(3.0, 70.0), is_buyable(0.4, 50.0)) == (True, False, False)
+    assert (is_favorable(0.1, 50.0), is_favorable(-0.1, 50.0)) == (True, False)
+
+
+def test_volatility_label_comes_from_annualised_volatility():
+    assert [classify_volatility(v) for v in (None, 0.79, 24.99, 25, 49.99, 50, 120)] == [
+        None, "LOW", "LOW", "MEDIUM", "MEDIUM", "HIGH", "HIGH",
+    ]

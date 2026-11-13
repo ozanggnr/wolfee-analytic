@@ -6,6 +6,7 @@ move (see ``quant.signals`` for the legacy display proxies).
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Sequence
@@ -13,8 +14,18 @@ from typing import Sequence
 from quant._math import (
     CONTEXT, HUNDRED, ONE, ZERO, divide, fixed_context, require_positive_int, sample_stdev, to_decimal,
 )
+from quant.types import DailyClose, DailyIndicators
 
 TRADING_DAYS_PER_YEAR = 252
+
+# The windows behind the figures shown on market cards (decision D4).
+RSI_PERIOD = 14
+SMA_WINDOW = 20
+VOLATILITY_WINDOW = 20
+INDICATOR_METHOD = (
+    "RSI 14 (Wilder), 20-day simple average and 20-day volatility annualised over 252 days, "
+    "from daily closing prices"
+)
 
 
 class RsiMethod(str, Enum):
@@ -87,6 +98,35 @@ def annualized_volatility_pct(
     returns = [divide(later, earlier) - ONE for earlier, later in zip(recent, recent[1:])]
     deviation = sample_stdev(returns)
     return CONTEXT.multiply(deviation * HUNDRED, CONTEXT.sqrt(Decimal(periods_per_year)))
+
+
+@fixed_context()
+def daily_indicators(history: Sequence[DailyClose] | None) -> DailyIndicators:
+    """RSI 14 (Wilder), SMA 20 and 20-day annualised volatility of the latest daily close.
+
+    ``history`` is real end-of-day closes in any order, one per date. With no
+    history every indicator is None; an indicator is also None when the history
+    is too short for it (15 closes for RSI, 20 for the average, 21 for
+    volatility). Nothing is derived from a single day's move.
+    """
+    if not history:
+        return DailyIndicators(as_of=None, observations=0, rsi_14=None, sma_20=None, volatility_pct=None)
+
+    for point in history:
+        if not isinstance(point.date, date) or isinstance(point.date, datetime):
+            raise ValueError("history dates must be calendar dates")
+    ordered = sorted(history, key=lambda point: point.date)
+    if any(earlier.date == later.date for earlier, later in zip(ordered, ordered[1:])):
+        raise ValueError("history has more than one close for the same date")
+
+    closes = [point.close for point in ordered]
+    return DailyIndicators(
+        as_of=ordered[-1].date,
+        observations=len(ordered),
+        rsi_14=rsi(closes, RSI_PERIOD, RsiMethod.WILDER),
+        sma_20=sma(closes, SMA_WINDOW),
+        volatility_pct=annualized_volatility_pct(closes, VOLATILITY_WINDOW),
+    )
 
 
 def _prices(closes: Sequence[Decimal]) -> list[Decimal]:
