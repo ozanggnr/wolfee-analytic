@@ -1,107 +1,136 @@
-"""The single copy of the legacy quote enrichment (TEAM_STRUCTURE H1).
+"""The single copy of the quote enrichment behind market cards (TEAM_STRUCTURE H1).
 
-This reproduces, value for value, the logic previously duplicated in
-``analysis.analyze_stock`` and ``workers._enrich_stock_data``. It exists so
-that there is one place to change.
+Decision D4: nothing here is estimated. RSI, the 20-day average and volatility
+come from real daily closes through :mod:`quant.indicators`, or they are
+``None``. A missing day high or low stays ``None``. Every label built on those
+figures (``prediction`` / ``reason``, ``is_buyable``, ``is_favorable``) is
+``None`` whenever the RSI it needs is unavailable.
 
-WARNING — the ``rsi`` and ``ma_20`` produced here when the data source supplies
-none are single-day proxies, not a 14-period RSI or a 20-day average
-(IMPLEMENTATION_STATUS R1). They are kept only because changing what the
-existing cards show needs the user's decision (D4). Real indicators are in
-:mod:`quant.indicators`. Floats are used because this feeds the display cache,
-never portfolio arithmetic.
+``prediction`` / ``reason`` describe the indicators ("RSI above 70
+(overbought)", "Near 20-day average"); they never tell the reader to buy, hold
+or sell. ``is_buyable`` and ``is_favorable`` remain as data fields.
+
+Output values are floats because this feeds the display cache, never portfolio
+arithmetic.
 """
 from __future__ import annotations
 
-from typing import Mapping
+from decimal import Decimal
+from numbers import Real
+from typing import Mapping, Sequence
 
-RSI_PROXY_FLOOR = 5
-RSI_PROXY_CEILING = 95
-HIGH_VOLATILITY_MOVE_PCT = 5
-MEDIUM_VOLATILITY_MOVE_PCT = 2
+from quant.indicators import INDICATOR_METHOD, daily_indicators
+from quant.types import DailyClose
+
+# Annualised volatility, in percent, at which the label changes.
+MEDIUM_VOLATILITY_PCT = 25
+HIGH_VOLATILITY_PCT = 50
 BUYABLE_MIN_CHANGE_PCT = 0.5
+RSI_OVERSOLD = 30
+RSI_OVERBOUGHT = 70
+# Price within this many percent of the 20-day average is described as "near" it.
+NEAR_AVERAGE_PCT = 2
 BUYABLE_MAX_RSI = 65
 
 
-def resolve_rsi(supplied_rsi: float, change_pct: float) -> float:
-    """The supplied RSI, or the legacy proxy ``clamp(50 + 3 x change, 5, 95)`` when there is none."""
-    if supplied_rsi:
-        return supplied_rsi
-    return max(RSI_PROXY_FLOOR, min(RSI_PROXY_CEILING, 50 + (change_pct * 3)))
-
-
-def resolve_ma_20(supplied_ma_20: float, price: float, change_pct: float) -> float:
-    """The supplied 20-day average, or the legacy proxy ``price x (1 - change / 200)``."""
-    if supplied_ma_20:
-        return supplied_ma_20
-    return price * (1 - change_pct / 200) if price else 0
-
-
-def classify_volatility(change_pct: float) -> str:
-    """LOW / MEDIUM / HIGH from the size of one day's move (a label, not a volatility measure)."""
-    if abs(change_pct) > HIGH_VOLATILITY_MOVE_PCT:
+def classify_volatility(volatility_pct: float | Decimal | None) -> str | None:
+    """LOW / MEDIUM / HIGH from annualised volatility in percent; None when it is unknown."""
+    if volatility_pct is None:
+        return None
+    if volatility_pct >= HIGH_VOLATILITY_PCT:
         return "HIGH"
-    if abs(change_pct) > MEDIUM_VOLATILITY_MOVE_PCT:
+    if volatility_pct >= MEDIUM_VOLATILITY_PCT:
         return "MEDIUM"
     return "LOW"
 
 
-def signal_text(change_pct: float, rsi: float) -> str:
-    """Rule-based label shown as ``prediction`` / ``reason``. Rule order matters."""
-    if change_pct > 5 and rsi < 70:
-        return f"PURCHASABLE — strong momentum +{change_pct:.1f}%"
-    if change_pct > 2 and rsi < 65:
-        return f"PURCHASABLE — positive trend +{change_pct:.1f}%"
-    if change_pct > 0.5 and rsi < 60:
-        return f"PURCHASABLE — rising +{change_pct:.1f}%"
-    if rsi < 35:
-        return "ACCUMULATE — oversold, potential bounce"
-    if change_pct >= 0 and rsi < 55:
-        return "ACCUMULATE — steady upward movement"
-    if change_pct >= 0 and rsi < 65:
-        return "WATCH TO BUY — conditions improving"
-    if rsi > 72 and change_pct > 3:
-        return f"TAKE PROFITS — up {change_pct:.1f}%, overbought"
-    if rsi > 65:
-        return "WATCH TO BUY — slightly overbought, wait for pullback"
-    if change_pct < -2:
-        return f"AVOID FOR NOW — declining {change_pct:.1f}%"
-    if change_pct < 0 and rsi > 40:
-        return "WATCH TO BUY — minor dip, monitor closely"
-    if change_pct < 0 and rsi < 40:
-        return "ACCUMULATE — dip into value zone"
-    return "WATCH TO BUY — neutral, awaiting direction"
+def indicator_label(
+    rsi: float | None, price: float | None = None, ma_20: float | None = None
+) -> str | None:
+    """Descriptive label shown as ``prediction`` / ``reason``; None without a real RSI.
+
+    It states what the indicators are and recommends nothing. The RSI bands
+    come first; inside them the label places the price against the 20-day
+    average when both are known.
+    """
+    if rsi is None:
+        return None
+    if rsi < RSI_OVERSOLD:
+        return f"RSI below {RSI_OVERSOLD} (oversold)"
+    if rsi > RSI_OVERBOUGHT:
+        return f"RSI above {RSI_OVERBOUGHT} (overbought)"
+    if not price or not ma_20:
+        return f"RSI between {RSI_OVERSOLD} and {RSI_OVERBOUGHT}"
+    if abs(price - ma_20) <= ma_20 * NEAR_AVERAGE_PCT / 100:
+        return "Near 20-day average"
+    return "Above 20-day average" if price > ma_20 else "Below 20-day average"
 
 
-def is_favorable(change_pct: float) -> bool:
+def is_favorable(change_pct: float | None, rsi: float | None) -> bool | None:
+    """Whether the day's move is positive; None without a real RSI (D4: labels follow their inputs)."""
+    if change_pct is None or rsi is None:
+        return None
     return change_pct > 0
 
 
-def is_buyable(change_pct: float, rsi: float) -> bool:
+def is_buyable(change_pct: float | None, rsi: float | None) -> bool | None:
+    if change_pct is None or rsi is None:
+        return None
     return change_pct > BUYABLE_MIN_CHANGE_PCT and rsi < BUYABLE_MAX_RSI
 
 
-def enrich_quote(data: Mapping[str, object], market_type: str, currency: str) -> dict:
+def enrich_quote(
+    data: Mapping[str, object],
+    market_type: str,
+    currency: str,
+    history: Sequence[DailyClose] | None = None,
+) -> dict:
     """Return a copy of a raw provider quote with the analysis fields added.
 
-    Drop-in replacement for ``workers._enrich_stock_data`` except that the
-    input is not modified.
+    ``history`` is the instrument's real daily closes (any order, one per
+    date). Without it ``rsi``, ``ma_20``, ``volatility``, ``volatility_pct``,
+    ``prediction``, ``reason``, ``is_favorable`` and ``is_buyable`` are all
+    None. ``prediction`` / ``reason`` need the RSI; the two flags need the
+    day's change as well. Any ``rsi`` or ``ma_20`` already present in ``data`` is ignored: it
+    may be an old estimate. ``day_high`` and ``day_low`` are None unless the
+    provider supplied them. The input is not modified.
     """
-    price = data.get("price", 0)
-    change_pct = data.get("change_pct", 0)
-    rsi = resolve_rsi(data.get("rsi", 0), change_pct)
-    ma_20 = resolve_ma_20(data.get("ma_20", 0), price, change_pct)
-    prediction = signal_text(change_pct, rsi)
+    indicators = daily_indicators(history)
+    rsi = _rounded(indicators.rsi_14)
+    volatility_pct = _rounded(indicators.volatility_pct)
+    change_pct = _number(data.get("change_pct"))
+    ma_20 = _rounded(indicators.sma_20)
+    prediction = indicator_label(rsi, _number(data.get("price")), ma_20)
+    has_indicator = any(
+        value is not None for value in (indicators.rsi_14, indicators.sma_20, indicators.volatility_pct)
+    )
 
     return {
         **data,
         "currency": currency,
         "market_type": market_type,
-        "rsi": round(rsi, 2),
-        "ma_20": round(ma_20, 2) if ma_20 else 0,
-        "volatility": classify_volatility(change_pct),
+        "day_high": _number(data.get("day_high")) or None,
+        "day_low": _number(data.get("day_low")) or None,
+        "rsi": rsi,
+        "ma_20": ma_20,
+        "volatility": classify_volatility(volatility_pct),
+        "volatility_pct": volatility_pct,
         "prediction": prediction,
         "reason": prediction,
-        "is_favorable": is_favorable(change_pct),
+        "is_favorable": is_favorable(change_pct, rsi),
         "is_buyable": is_buyable(change_pct, rsi),
+        "indicators_as_of": indicators.as_of.isoformat() if has_indicator else None,
+        "indicator_method": INDICATOR_METHOD if has_indicator else None,
     }
+
+
+def _rounded(value: Decimal | None) -> float | None:
+    return None if value is None else round(float(value), 2)
+
+
+def _number(value: object) -> float | None:
+    """``value`` if it is a real, finite number; otherwise None."""
+    if isinstance(value, bool) or not isinstance(value, (Real, Decimal)):
+        return None
+    number = float(value)
+    return number if number == number and abs(number) != float("inf") else None

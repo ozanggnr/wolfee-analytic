@@ -3,9 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from quant.signals import (
-    classify_volatility, is_buyable, is_favorable, resolve_ma_20, resolve_rsi, signal_text,
-)
+from quant.signals import enrich_quote, is_buyable
 # The symbol lists now live in quant.universe; re-exported for existing importers.
 from quant.universe import BIST_SYMBOLS, COMMODITIES_SYMBOLS, GLOBAL_SYMBOLS  # noqa: F401
 
@@ -46,10 +44,61 @@ def calculate_indicators(df: pd.DataFrame):
     return df
 
 
-def analyze_stock(symbol: str, is_commodity=False, detailed=False):
+def _day_change_label(change_pct):
+    """The day's move in words: the only label that needs no indicator."""
+    if change_pct > 0:
+        return f"Up {change_pct:.1f}% today"
+    if change_pct < 0:
+        return f"Down {abs(change_pct):.1f}% today"
+    return "Unchanged today"
+
+
+def _legacy_estimates(price, change_pct, day_high, day_low):
+    """TEMPORARY — the single-day estimates decision D4 removes.
+
+    Kept only so the callers that still do arithmetic on these fields
+    (``watchlist_routes._enrich_watchlist_tickers``, the exports in ``main``)
+    keep working until Agent 2 makes them accept None (REQ-26). These are not a
+    14-period RSI, a 20-day average or a volatility measure. Delete this
+    function and the ``legacy_estimates`` flag once those callers are changed.
+
+    ``prediction`` / ``reason`` are not estimates: with no real RSI to describe
+    they state the day's change, which the provider supplied.
+    """
+    rsi = max(5, min(95, 50 + (change_pct * 3)))
+    ma_20 = price * (1 - change_pct / 200) if price else 0
+    prediction = _day_change_label(change_pct)
+    estimated = ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable"]
+    estimated += [field for field, value in (("day_high", day_high), ("day_low", day_low)) if not value]
+    return {
+        "estimated_fields": estimated,
+        "day_high": day_high or (round(price * 1.01, 2) if price else 0),
+        "day_low": day_low or (round(price * 0.99, 2) if price else 0),
+        "rsi": round(rsi, 2),
+        "ma_20": round(ma_20, 2) if ma_20 else 0,
+        "volatility": 'HIGH' if abs(change_pct) > 5 else 'MEDIUM' if abs(change_pct) > 2 else 'LOW',
+        "prediction": prediction,
+        "reason": prediction,
+        "is_favorable": change_pct > 0,
+        "is_buyable": is_buyable(change_pct, rsi),
+    }
+
+
+def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None, legacy_estimates=True):
     """
     Fetch and analyze stock data using data_sources.
-    Returns dict with all required fields populated.
+
+    ``history`` is the instrument's real daily closes
+    (``Sequence[quant.types.DailyClose]``, an empty one included). When it is
+    given, rsi, ma_20, volatility and the labels built on them come from it, or
+    are None where it is too short, and a day high or low the provider did not
+    supply is None (decision D4). ``indicators_as_of`` is set only when the
+    indicators are real.
+
+    With no ``history`` argument the result depends on ``legacy_estimates``:
+    False gives the D4 result (all of the above None); True, the temporary
+    default, still returns the old single-day estimates — see
+    ``_legacy_estimates``.
     """
     try:
         data = None
@@ -84,28 +133,27 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False):
         else:
             currency = data.get('currency', 'USD') or 'USD'
 
-        # Single-day proxies and the rule-based label — one shared copy in quant.signals
-        rsi = resolve_rsi(data.get('rsi', 0), change_pct)
-        ma_20 = resolve_ma_20(data.get('ma_20', 0), price, change_pct)
-        volatility = classify_volatility(change_pct)
-        prediction = signal_text(change_pct, rsi)
+        market_type = "COMMODITY" if is_commodity or "=" in symbol else ("BIST" if symbol.endswith('.IS') else "GLOBAL")
 
-        # Ensure no empty fields — estimate from price if missing
-        day_high = data.get('day_high', 0) or data.get('high', 0)
-        day_low = data.get('day_low', 0) or data.get('low', 0)
+        # Indicators and the labels built on them — one shared copy in quant.signals.
+        # They come from real daily closes or are None; the day range is never estimated.
+        enriched = enrich_quote(
+            {
+                "price": price,
+                "change_pct": change_pct,
+                "day_high": data.get('day_high', 0) or data.get('high', 0),
+                "day_low": data.get('day_low', 0) or data.get('low', 0),
+            },
+            market_type,
+            currency,
+            history,
+        )
+        if legacy_estimates and history is None:
+            enriched.update(_legacy_estimates(price, change_pct, enriched["day_high"], enriched["day_low"]))
+        day_high = enriched["day_high"]
+        day_low = enriched["day_low"]
         open_price = data.get('open', 0) or data.get('open_price', 0)
         volume = data.get('volume', 0)
-
-        if not day_high and price:
-            day_high = round(price * 1.01, 2)
-        if not day_low and price:
-            day_low = round(price * 0.99, 2)
-        if not open_price and prev_close:
-            open_price = prev_close
-        elif not open_price and price:
-            open_price = round(price * (1 - change_pct / 100), 2)
-        if not prev_close and price:
-            prev_close = round(price / (1 + change_pct / 100), 2)
 
         result = {
             "symbol": symbol,
@@ -115,21 +163,29 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False):
             "currency": currency,
             "market_cap": data.get('market_cap', 0),
             "volume": int(volume) if volume else 0,
-            "day_high": round(day_high, 2) if day_high else 0,
-            "day_low": round(day_low, 2) if day_low else 0,
-            "open": round(open_price, 2) if open_price else 0,
-            "previous_close": round(prev_close, 2) if prev_close else 0,
+            "day_high": round(day_high, 2) if day_high else (0 if legacy_estimates and history is None else None),
+            "day_low": round(day_low, 2) if day_low else (0 if legacy_estimates and history is None else None),
+            # None when the provider gave none: they are never derived from each other
+            # or from the day's change.
+            "open": round(open_price, 2) if open_price else None,
+            "previous_close": round(prev_close, 2) if prev_close else None,
             "bid": data.get('bid', 0),
             "ask": data.get('ask', 0),
-            "rsi": round(rsi, 2),
-            "ma_20": round(ma_20, 2) if ma_20 else 0,
-            "prediction": prediction,
-            "reason": prediction,
+            "rsi": enriched["rsi"],
+            "ma_20": enriched["ma_20"],
+            "prediction": enriched["prediction"],
+            "reason": enriched["reason"],
             "buy_signals": [],
-            "is_favorable": is_favorable(change_pct),
-            "is_buyable": is_buyable(change_pct, rsi),
-            "volatility": volatility,
-            "market_type": "COMMODITY" if is_commodity or "=" in symbol else ("BIST" if symbol.endswith('.IS') else "GLOBAL"),
+            "is_favorable": enriched["is_favorable"],
+            "is_buyable": enriched["is_buyable"],
+            "volatility": enriched["volatility"],
+            "volatility_pct": enriched["volatility_pct"],
+            "indicators_as_of": enriched["indicators_as_of"],
+            "indicator_method": enriched["indicator_method"],
+            # Names of the fields above that are single-day estimates, not measurements
+            # (only in the temporary legacy mode). The AI layer never states them.
+            "estimated_fields": enriched.get("estimated_fields", []),
+            "market_type": market_type,
         }
 
         return result
@@ -137,6 +193,17 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False):
     except Exception as e:
         logger.error(f"Error analyzing {symbol}: {e}")
         return None
+
+
+def _number_or_none(value):
+    """``value`` as a float, or None when it is missing, NaN or infinite."""
+    if value is None or pd.isna(value) or np.isinf(value):
+        return None
+    return float(value)
+
+
+def _round_or_none(value):
+    return None if value is None else round(value, 2)
 
 
 def get_market_opportunities(cached_data=None):
@@ -246,22 +313,19 @@ def get_bulk_analysis(period: str):
             elif change_pct < 0:
                 trend_icon = "📉 DOWN"
 
-            rsi_val = current_row.get('RSI', 50)
-            if pd.isna(rsi_val):
-                rsi_val = 50
-            rsi_status = "Neutral"
-            if rsi_val > 70:
-                rsi_status = "Overbought (High Risk)"
-            if rsi_val < 30:
-                rsi_status = "Oversold (Value)"
+            # A figure that cannot be computed is left empty in the export, never filled in (D4).
+            rsi_val = _number_or_none(current_row.get('RSI'))
+            if rsi_val is None:
+                rsi_status = "Not available"
+            elif rsi_val > 70:
+                rsi_status = "Overbought"
+            elif rsi_val < 30:
+                rsi_status = "Oversold"
+            else:
+                rsi_status = "Neutral"
 
-            vol_val = current_row.get('Volatility', 0)
-            if pd.isna(vol_val):
-                vol_val = 0
-
-            ma20_val = current_row.get('MA_20', 0)
-            if pd.isna(ma20_val):
-                ma20_val = 0
+            vol_val = _number_or_none(current_row.get('Volatility'))
+            ma20_val = _number_or_none(current_row.get('MA_20'))
 
             name = COMMODITIES_SYMBOLS.get(symbol, symbol)
 
@@ -280,10 +344,10 @@ def get_bulk_analysis(period: str):
                 "High Date": period_high_date,
                 "Period Low": round(period_low, 2),
                 "Low Date": period_low_date,
-                "RSI (14)": round(rsi_val, 2),
+                "RSI (14)": _round_or_none(rsi_val),
                 "RSI Status": rsi_status,
-                "Volatility %": round(vol_val, 2),
-                "MA(20)": round(ma20_val, 2),
+                "Volatility %": _round_or_none(vol_val),
+                "MA(20)": _round_or_none(ma20_val),
                 "Volume (Period)": int(period_slice['Volume'].sum())
             })
 
