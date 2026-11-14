@@ -437,6 +437,8 @@ async def refresh_ai_insight(force: bool = False) -> bool:
 # here means "not available" and must reach the cache, replacing any earlier estimate.
 _INDICATOR_FIELDS = ('day_high', 'day_low', 'rsi', 'ma_20', 'volatility', 'is_favorable', 'is_buyable',
                      'prediction', 'reason')
+# Provider values that are None when not supplied (REQ-30); None replaces a stale value.
+_PROVIDER_OPTIONAL_FIELDS = ('open', 'open_price', 'previous_close')
 # Where the indicators came from. stock_data has no columns for these (DATABASE_CONTRACT
 # §4 M4 is still open), so they live in the JSON extra_data column, replaced on every write.
 _PROVENANCE_FIELDS = ('indicators_as_of', 'indicator_method', 'volatility_pct')
@@ -471,7 +473,7 @@ async def _upsert_stock(session, data: dict):
         for src_key, db_key in field_map.items():
             if src_key not in data or not hasattr(existing, db_key):
                 continue
-            if data[src_key] is not None or src_key in _INDICATOR_FIELDS:
+            if data[src_key] is not None or src_key in _INDICATOR_FIELDS + _PROVIDER_OPTIONAL_FIELDS:
                 setattr(existing, db_key, data[src_key])
         if 'indicators_as_of' in data:
             existing.extra_data = _indicator_provenance(data)
@@ -486,8 +488,8 @@ async def _upsert_stock(session, data: dict):
             volume=data.get('volume', 0),
             day_high=data.get('day_high'),
             day_low=data.get('day_low'),
-            open_price=data.get('open', data.get('open_price', 0)),
-            previous_close=data.get('previous_close', 0),
+            open_price=data.get('open', data.get('open_price')),
+            previous_close=data.get('previous_close'),
             bid=data.get('bid', 0),
             ask=data.get('ask', 0),
             rsi=data.get('rsi'),

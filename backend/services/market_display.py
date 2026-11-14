@@ -127,8 +127,8 @@ def stock_card(stock: Any) -> dict:
         "volume": stock.volume or 0,
         "day_high": stock.day_high,
         "day_low": stock.day_low,
-        "open": stock.open_price or 0,
-        "previous_close": stock.previous_close or 0,
+        "open": price_level(stock.open_price, 6),  # null when not supplied (REQ-30), never 0
+        "previous_close": price_level(stock.previous_close, 6),
         "bid": stock.bid or 0,
         "ask": stock.ask or 0,
         "rsi": stock.rsi,

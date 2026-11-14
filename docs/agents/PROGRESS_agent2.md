@@ -26,7 +26,13 @@ Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private 
   - Tests: `tests/api/test_insight_api.py` rewritten (9: old row ignored, new row carries provenance, guardrail violation → template, error → template, `violations` never in a response, analyze provenance); worker tests in `test_insight_readiness.py` (+2) and the caching test updated.
   - Results: SQLite 542 passed; PG16 API 187 passed; PG16 base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`; SQLite upgrade → downgrade base → upgrade, check clean.
   - Note for Agent 3: with partial data the placeholder template says "no instrument has a price", which is not literally true then; a "still loading" fact in `ai.facts` would read better.
-- [ ] 3. REQ-30: null, not 0.0, for a missing open / previous_close.
+- [x] 3. REQ-30: null, not 0.0, for a missing open / previous_close.
+  - `data_sources/provided.provided_price`: a positive finite provider value, else None. Used for open / previous_close in `fetch_global_stock`, `fetch_global_stock_finnhub`, `fetch_commodity_data`, `fetch_bist_stock` and the Google Finance BIST fallback (its `prev_close > 0` check made None-safe).
+  - The 5-day history fallback no longer uses today's price as the previous close when only one day comes back (that is a fabricated value); a NaN open from history is None.
+  - `StockData.open_price` / `previous_close`: Python-side `default=0` removed (no DDL; same shape as bb00a11). `_upsert_stock` inserts None and lets None replace a stale value. `stock_card` returns null for null or a legacy 0.
+  - Tests: `tests/services/test_provider_open_close.py` (22; 10 fail on the old code).
+  - Results: SQLite 564 passed; PG16 API 187 passed; PG16 base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`; SQLite round trip clean.
+  - `data_sources/**` is Agent 3's: only the open / previous_close lines were changed (REQ-30 is addressed to Agent 2). Left as is: `change_pct` is still 0.0 when there is no previous close, and the chart helpers fill a missing open with the close.
 - [ ] 4. Final WSL verification and report.
 
 ## Current task (2026-11-13/14): rebase, then REQ-17, 14, 18, 24-support, 19, 20, 21, 26, 25 in order

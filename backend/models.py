@@ -108,8 +108,9 @@ class StockData(Base):
     # an invented value on insert.
     day_high = Column(Float)
     day_low = Column(Float)
-    open_price = Column(Float, default=0)
-    previous_close = Column(Float, default=0)
+    # Provider values or NULL (REQ-30): no default, which would store 0 for "not supplied".
+    open_price = Column(Float)
+    previous_close = Column(Float)
     bid = Column(Float, default=0)
     ask = Column(Float, default=0)
     rsi = Column(Float)
