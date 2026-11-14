@@ -266,17 +266,21 @@ def test_ai_insight_caching_skips_recent():
 
     async def setup_recent_insight():
         async with AsyncSessionLocal() as session:
+            generated_at = datetime.now(timezone.utc) - timedelta(minutes=30)
             recent = AIInsight(
                 insight_type='daily',
                 insight_text='Recent cached market insight',
-                created_at=datetime.now(timezone.utc) - timedelta(minutes=30)
+                created_at=generated_at,
+                generated_by='test-model',
+                generated_at=generated_at,
+                is_fallback=False,
             )
             session.add(recent)
             await session.commit()
 
     asyncio.run(setup_recent_insight())
 
-    with patch("ai_service.get_market_insight") as mock_gemini:
+    with patch("services.ai_insight_service.market_insight_response") as mock_gemini:
         res = asyncio.run(refresh_ai_insight(force=False))
         assert res is True
         mock_gemini.assert_not_called()

@@ -106,3 +106,42 @@ def unavailable_export_row(symbol: str, period: str, today: str) -> dict:
     numeric = ("Current Price", "Start Price", "Change %", "Change Amt", "Volume (Period)")
     return {**row, **{column: NOT_AVAILABLE for column in numeric},
             "Currency": NOT_AVAILABLE, "Trend": NOT_AVAILABLE}
+
+
+_PROVENANCE_FIELDS = ("indicators_as_of", "indicator_method", "volatility_pct")
+
+
+def stock_card(stock: Any) -> dict:
+    """The ``Stock`` object of API_CONTRACT §2.2 from a ``stock_data`` row.
+
+    rsi, ma_20, the day range, volatility and the labels built on them stay null
+    until computed from real history (D4); they are never filled in here. The
+    indicator provenance is read from ``extra_data``, where the workers keep it.
+    """
+    stored = stock.extra_data if isinstance(stock.extra_data, dict) else {}
+    return {
+        "symbol": stock.symbol,
+        "name": stock.name or stock.symbol,
+        "price": stock.price or 0,
+        "change_pct": stock.change_pct or 0,
+        "volume": stock.volume or 0,
+        "day_high": stock.day_high,
+        "day_low": stock.day_low,
+        "open": stock.open_price or 0,
+        "previous_close": stock.previous_close or 0,
+        "bid": stock.bid or 0,
+        "ask": stock.ask or 0,
+        "rsi": stock.rsi,
+        "ma_20": stock.ma_20,
+        "volatility": stock.volatility,
+        **{field: stored.get(field) for field in _PROVENANCE_FIELDS},
+        # Cache rows are enriched from real history only (REQ-10), so nothing is estimated.
+        "estimated_fields": [],
+        "currency": stock.currency or "USD",
+        "market_type": stock.market_type or "GLOBAL",
+        "prediction": stock.prediction,
+        "reason": stock.reason,
+        "is_favorable": stock.is_favorable,
+        "is_buyable": stock.is_buyable,
+        "market_cap": stock.market_cap or 0,
+    }

@@ -17,7 +17,15 @@ Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private 
   - Tests: `tests/services/test_card_enrichment.py` (7), `tests/api/test_live_price_cache.py` (1); 7 of the 8 fail on the old code (it stored rsi 68 and "PURCHASABLE — strong momentum +6.0%").
   - Results: SQLite 533 passed; PG16 API 180 passed; migrations base→head→base→head ok, `alembic check` clean at `d7b2e6f4a913`.
   - Still estimating: `analysis.analyze_stock` (`/api/analyze`, `/api/live-price` response) keeps Agent 3's `legacy_estimates=True` default; its result is re-enriched before it reaches the cache.
-- [ ] 2. REQ-28: `ai_insights` provenance migration (§4.4) and the routes on `ai.insights`.
+- [x] 2. REQ-28: `ai_insights` provenance and the AI routes on the guarded layer.
+  - Migration `e4a8c2f6b1d3` (after `d7b2e6f4a913`) plus the `AIInsight` model: `generated_by` String(100), `generated_at` / `inputs_as_of` timestamptz, `is_fallback` Boolean, all nullable, no default, no backfill. downgrade drops the four columns only.
+  - `services/ai_insight_service`: serve, generate (via `asyncio.to_thread(market_insight_response / stock_analysis_response, ...)`), store with all four values (newest 10 kept), and the template placeholders. No DB session is open during the model call.
+  - `/api/insight` and `/insight`: the newest row with provenance; otherwise a new insight is generated once (lock), stored and returned. A row without provenance is never served. Not ready (REQ-20) or any error: the template ("Market data: not available yet"), with provenance, not stored.
+  - `/api/ai/analyze/{symbol}`: guarded description with provenance; `inputs_as_of` = the cached row's `updated_at` (or now for a fresh fetch); errors give the template. `analyze_stock` now runs off the event loop.
+  - Worker `refresh_ai_insight`: only a recent model-generated row with provenance counts as fresh (an old row or a fallback is replaced next cycle); it uses the same card rows as the routes (`market_display.stock_card`, moved from `main._stock_to_dict`).
+  - Tests: `tests/api/test_insight_api.py` rewritten (9: old row ignored, new row carries provenance, guardrail violation → template, error → template, `violations` never in a response, analyze provenance); worker tests in `test_insight_readiness.py` (+2) and the caching test updated.
+  - Results: SQLite 542 passed; PG16 API 187 passed; PG16 base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`; SQLite upgrade → downgrade base → upgrade, check clean.
+  - Note for Agent 3: with partial data the placeholder template says "no instrument has a price", which is not literally true then; a "still loading" fact in `ai.facts` would read better.
 - [ ] 3. REQ-30: null, not 0.0, for a missing open / previous_close.
 - [ ] 4. Final WSL verification and report.
 

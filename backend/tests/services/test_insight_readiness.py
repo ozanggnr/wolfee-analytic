@@ -16,12 +16,12 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-import ai_service  # noqa: E402
 import workers  # noqa: E402
 from database import Base  # noqa: E402
 from models import AIInsight, StockData  # noqa: E402
 from quant.universe import BIST_SYMBOLS, GLOBAL_SYMBOLS  # noqa: E402
-from services import insight_readiness  # noqa: E402
+from ai.guardrails import Generation  # noqa: E402
+from services import ai_insight_service, insight_readiness  # noqa: E402
 
 
 def _rows(market_type, symbols):
@@ -87,11 +87,15 @@ def _stored_insights(factory):
 def fake_insight(monkeypatch):
     calls = []
 
-    def generate(market_data, opportunities=None):
-        calls.append(len(market_data))
-        return f"insight over {len(market_data)} rows"
+    real = ai_insight_service.market_insight_response
 
-    monkeypatch.setattr(ai_service, "get_market_insight", generate)
+    def respond(market_data, **kwargs):
+        calls.append(len(market_data))
+        return real(market_data, **kwargs)
+
+    monkeypatch.setattr(ai_insight_service, "market_insight_response", respond)
+    monkeypatch.setattr(ai_insight_service, "generate_text",
+                        lambda prompt: Generation(text="Markets are calm.", model="test-model"))
     return calls
 
 
@@ -115,4 +119,28 @@ def test_the_worker_stores_an_insight_once_both_markets_are_loaded(factory, fake
     assert generated is True
     total = len(BIST_SYMBOLS) + len(GLOBAL_SYMBOLS)
     assert fake_insight == [total]
-    assert [i.insight_text for i in _stored_insights(factory)] == [f"insight over {total} rows"]
+    assert [(i.insight_text, i.generated_by, i.is_fallback) for i in _stored_insights(factory)] == [
+        ("Markets are calm.", "test-model", False)]
+
+
+@pytest.mark.parametrize("old_row", [
+    {"insight_text": "PURCHASABLE — strong buy signal"},                                 # before provenance
+    {"insight_text": "template text", "generated_by": "template", "is_fallback": True},  # a fallback
+])
+def test_a_recent_row_without_model_provenance_does_not_stop_a_new_insight(factory, fake_insight, old_row):
+    from datetime import datetime, timezone
+
+    async def add():
+        async with factory() as session:
+            now = datetime.now(timezone.utc)
+            session.add(AIInsight(insight_type="daily", created_at=now,
+                                  generated_at=now if "generated_by" in old_row else None, **old_row))
+            await session.commit()
+
+    asyncio.run(add())
+    _cache(factory, _rows("BIST", BIST_SYMBOLS) + _rows("GLOBAL", GLOBAL_SYMBOLS))
+
+    assert asyncio.run(workers.refresh_ai_insight(force=False)) is True
+
+    assert len(fake_insight) == 1
+    assert [i.generated_by for i in _stored_insights(factory)][-1] == "test-model"

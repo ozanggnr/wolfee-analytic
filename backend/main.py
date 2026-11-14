@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body, Request
@@ -18,15 +18,14 @@ from analysis import (
     analyze_stock, get_market_opportunities, get_bulk_analysis,
     BIST_SYMBOLS, GLOBAL_SYMBOLS, COMMODITIES_SYMBOLS
 )
-from ai_service import get_market_insight, get_stock_analysis
-from workers import refresh_all_data, start_periodic_refresh
+from workers import _DB_WRITE_LOCK, refresh_all_data, start_periodic_refresh
 
 from security_middleware import SecurityMiddleware, get_optional_user
 import auth_routes
 import watchlist_routes
 from watchlist_routes import _enrich_watchlist_tickers
-from services import insight_readiness
-from services.market_display import portfolio_export_row, unavailable_export_row
+from services import ai_insight_service, insight_readiness
+from services.market_display import portfolio_export_row, stock_card, unavailable_export_row
 
 # Configure logging
 logging.basicConfig(
@@ -500,68 +499,74 @@ async def get_opportunities():
         return {"opportunities": []}
 
 
+# One on-demand insight generation at a time, so concurrent first requests make one model call.
+_insight_generation_lock = asyncio.Lock()
+
+
+async def _stored_insight() -> Optional[dict]:
+    async with AsyncSessionLocal() as session:
+        row = await ai_insight_service.latest_with_provenance(session)
+    return None if row is None else ai_insight_service.stored_response(row)
+
+
 @app.get("/api/insight")
 async def get_insight():
-    """Returns latest AI insight from DB."""
+    """The newest stored insight with provenance; otherwise one generated now and stored (D5, REQ-28).
+
+    A stored row without provenance is never served. Until both markets are cached
+    (REQ-20), and on any error, the response is the guarded layer's template.
+    """
     try:
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AIInsight)
-                .where(AIInsight.insight_type == 'daily')
-                .order_by(desc(AIInsight.created_at))
-                .limit(1)
-            )
-            insight = result.scalar_one_or_none()
+        stored = await _stored_insight()
+        if stored is not None:
+            return stored
 
-            if insight and insight.insight_text:
-                return {"insight": insight.insight_text}
-
-            # No stored insight yet. REQ-20: until both markets are cached, show the
-            # placeholder; otherwise build one from every cached row. Neither is stored:
-            # the worker stores insights after a refresh.
-            stocks = (await session.execute(select(StockData))).scalars().all()
+        async with _insight_generation_lock:
+            stored = await _stored_insight()  # another request may have just generated one
+            if stored is not None:
+                return stored
+            async with AsyncSessionLocal() as session:
+                stocks = (await session.execute(select(StockData))).scalars().all()
             counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
             if not insight_readiness.is_ready(counts):
-                return {"insight": insight_readiness.INSIGHT_LOADING_TEXT}
-            stock_list = [_stock_to_dict(s) for s in stocks]
-            insight_text = await asyncio.to_thread(get_market_insight, stock_list)
-            return {"insight": insight_text}
+                return ai_insight_service.market_placeholder()
 
-    except Exception as e:
-        logger.error(f"Insight error: {e}")
-        return {"insight": "🐺 Wolfee AI is warming up. Check back shortly."}
+            response = await ai_insight_service.market_response(
+                [_stock_to_dict(s) for s in stocks], ai_insight_service.oldest_quote_time(stocks))
+            async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
+                await ai_insight_service.store(session, response)
+                await session.commit()
+            return response
+
+    except Exception:
+        logger.exception("Insight error; serving the template")
+        return ai_insight_service.market_placeholder()
 
 
 @app.get("/api/ai/analyze/{symbol}")
 async def get_ai_stock_analysis(symbol: str):
-    """Get Gemini AI deep analysis for a specific stock."""
+    """Guarded description of one instrument with provenance (D5, REQ-28); the template on any error."""
     symbol = validate_symbol_input(symbol)
-    # Try to get stock data from DB first
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(StockData).where(StockData.symbol == symbol)
-            )
-            stock = result.scalar_one_or_none()
+            stock = (await session.execute(
+                select(StockData).where(StockData.symbol == symbol))).scalar_one_or_none()
 
-            if stock:
-                stock_data = _stock_to_dict(stock)
-            else:
-                # Fetch fresh
-                stock_data = analyze_stock(symbol)
+        if stock is not None:
+            stock_data, inputs_as_of = _stock_to_dict(stock), ai_insight_service.utc(stock.updated_at)
+        else:
+            stock_data = await asyncio.to_thread(analyze_stock, symbol)
+            inputs_as_of = datetime.now(timezone.utc)  # fetched just now
+        if not stock_data:
+            raise HTTPException(status_code=404, detail="Stock not found")
 
-            if not stock_data:
-                raise HTTPException(status_code=404, detail="Stock not found")
-
-            import asyncio
-            analysis = await asyncio.to_thread(get_stock_analysis, symbol, stock_data)
-            return {"symbol": symbol, "analysis": analysis}
+        return await ai_insight_service.stock_response(symbol, stock_data, inputs_as_of)
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"AI analysis error for {symbol}: {e}")
-        return {"symbol": symbol, "analysis": "AI analysis temporarily unavailable."}
+    except Exception:
+        logger.exception("AI analysis error for %s; serving the template", symbol)
+        return ai_insight_service.stock_placeholder(symbol)
 
 
 # ============================================================
@@ -862,42 +867,9 @@ if os.path.exists(frontend_path):
 # HELPERS
 # ============================================================
 
-def _indicator_provenance(stock: StockData) -> dict:
-    """``indicators_as_of``, ``indicator_method`` and ``volatility_pct`` kept in extra_data by the workers."""
-    stored = stock.extra_data if isinstance(stock.extra_data, dict) else {}
-    return {field: stored.get(field) for field in ("indicators_as_of", "indicator_method", "volatility_pct")}
-
-
-def _stock_to_dict(stock: StockData) -> dict:
-    """Convert StockData model to dict for API response."""
-    return {
-        "symbol": stock.symbol,
-        "name": stock.name or stock.symbol,
-        "price": stock.price or 0,
-        "change_pct": stock.change_pct or 0,
-        "volume": stock.volume or 0,
-        # rsi, ma_20, day range, volatility and the labels built on them stay null
-        # until computed from real history (D4); they are never filled in here.
-        "day_high": stock.day_high,
-        "day_low": stock.day_low,
-        "open": stock.open_price or 0,
-        "previous_close": stock.previous_close or 0,
-        "bid": stock.bid or 0,
-        "ask": stock.ask or 0,
-        "rsi": stock.rsi,
-        "ma_20": stock.ma_20,
-        "volatility": stock.volatility,
-        **_indicator_provenance(stock),
-        # Cache rows are enriched from real history only (REQ-10), so nothing is estimated.
-        "estimated_fields": [],
-        "currency": stock.currency or "USD",
-        "market_type": stock.market_type or "GLOBAL",
-        "prediction": stock.prediction,
-        "reason": stock.reason,
-        "is_favorable": stock.is_favorable,
-        "is_buyable": stock.is_buyable,
-        "market_cap": stock.market_cap or 0,
-    }
+# The card dict lives in services.market_display so the workers' AI insight uses the
+# same rows as the routes.
+_stock_to_dict = stock_card
 
 
 def _deduplicate_stocks(stocks: list[StockData]) -> list[dict]:

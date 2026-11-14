@@ -163,6 +163,12 @@ class AIInsight(Base):
     symbol = Column(String(20), nullable=True)  # null for daily insights
     insight_text = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+    # Provenance (DATABASE_CONTRACT §4.4). Nullable with no default: NULL means "written
+    # before provenance existed", and such a row is never served. New rows set all four.
+    generated_by = Column(String(100))
+    generated_at = Column(DateTime(timezone=True))
+    inputs_as_of = Column(DateTime(timezone=True))
+    is_fallback = Column(Boolean)
 
 
 # ============================================================

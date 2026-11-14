@@ -390,73 +390,44 @@ async def refresh_exchange_rates() -> int:
         return 0
 
 async def refresh_ai_insight(force: bool = False) -> bool:
-    """Generate fresh AI insight with caching (max once per AI_INSIGHT_CACHE_HOURS, default 4h)"""
+    """Store a new guarded market insight with provenance, at most once per AI_INSIGHT_CACHE_HOURS.
+
+    Only a stored row with provenance that came from the model counts as fresh: an old
+    row without provenance (never served, DATABASE_CONTRACT §4.4) or a template fallback
+    is replaced on the next cycle.
+    """
+    from services import ai_insight_service, insight_readiness
+    from services.market_display import stock_card
+
     try:
         async with AsyncSessionLocal() as session:
-            # Check latest insight age
             if not force:
-                latest_res = await session.execute(
-                    select(AIInsight)
-                    .where(AIInsight.insight_type == 'daily')
-                    .order_by(desc(AIInsight.created_at))
-                    .limit(1)
-                )
-                latest_insight = latest_res.scalar_one_or_none()
-                if latest_insight and latest_insight.created_at:
-                    created_at = latest_insight.created_at
-                    now_utc = datetime.now(timezone.utc)
-                    if created_at.tzinfo is None:
-                        created_at = created_at.replace(tzinfo=timezone.utc)
-                    age_hours = (now_utc - created_at).total_seconds() / 3600.0
+                latest = await ai_insight_service.latest_with_provenance(session)
+                if latest is not None and not latest.is_fallback:
+                    age_hours = (datetime.now(timezone.utc)
+                                 - ai_insight_service.utc(latest.generated_at)).total_seconds() / 3600.0
                     if age_hours < AI_INSIGHT_CACHE_HOURS:
                         logger.info(f"ℹ️ AI insight is fresh ({age_hours:.1f}h old < {AI_INSIGHT_CACHE_HOURS}h) — skipping regeneration.")
                         return True
 
-            # Get current stock data from DB
-            result = await session.execute(select(StockData))
-            stocks = result.scalars().all()
+            stocks = (await session.execute(select(StockData))).scalars().all()
 
-            # REQ-20: never build (or store) an insight from an empty or partial cache.
-            from services import insight_readiness
-            counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
-            if not insight_readiness.is_ready(counts):
-                logger.warning("AI insight not generated: stock data incomplete (%s)",
-                               insight_readiness.describe(counts))
-                return False
+        # REQ-20: never build (or store) an insight from an empty or partial cache.
+        counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
+        if not insight_readiness.is_ready(counts):
+            logger.warning("AI insight not generated: stock data incomplete (%s)",
+                           insight_readiness.describe(counts))
+            return False
 
-            market_data = [{
-                'symbol': s.symbol,
-                'name': s.name,
-                'price': s.price,
-                'change_pct': s.change_pct,
-                'rsi': s.rsi,
-                'volume': s.volume,
-                'currency': s.currency,
-                'volatility': s.volatility,
-                'day_high': s.day_high,
-                'day_low': s.day_low,
-                'previous_close': s.previous_close
-            } for s in stocks]
+        # No session is open during the model call (REQ-18).
+        response = await ai_insight_service.market_response(
+            [stock_card(s) for s in stocks], ai_insight_service.oldest_quote_time(stocks))
 
-            from ai_service import get_market_insight
-            insight_text = await asyncio.to_thread(get_market_insight, market_data)
-
-            # Save to DB
-            insight = AIInsight(
-                insight_type='daily',
-                insight_text=insight_text
-            )
-            session.add(insight)
-
-            # Prune old insights beyond latest 10 to keep database compact
-            subq = select(AIInsight.id).where(AIInsight.insight_type == 'daily').order_by(desc(AIInsight.created_at)).offset(10)
-            old_ids = (await session.execute(subq)).scalars().all()
-            if old_ids:
-                await session.execute(delete(AIInsight).where(AIInsight.id.in_(old_ids)))
-
+        async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
+            await ai_insight_service.store(session, response)
             await session.commit()
-            logger.info("✅ Generated fresh AI market insight.")
-
+        logger.info("✅ Stored AI market insight (generated_by=%s, is_fallback=%s).",
+                    response["generated_by"], response["is_fallback"])
         return True
     except Exception as e:
         logger.error(f"AI insight refresh error: {e}")
