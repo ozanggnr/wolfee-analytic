@@ -456,6 +456,11 @@ def _enrich_stock_data(data: dict, market_type: str, currency: str) -> dict:
     
     return data
 
+# Values computed from price history, and the labels built on them (decision D4). A None
+# here means "not available" and must reach the cache, replacing any earlier estimate.
+_INDICATOR_FIELDS = ('day_high', 'day_low', 'rsi', 'ma_20', 'volatility', 'is_favorable', 'is_buyable')
+
+
 async def _upsert_stock(session, data: dict):
     """Insert or update a stock record"""
     result = await session.execute(
@@ -479,9 +484,10 @@ async def _upsert_stock(session, data: dict):
             'market_cap': 'market_cap'
         }
         for src_key, db_key in field_map.items():
-            if src_key in data and data[src_key] is not None:
-                if hasattr(existing, db_key):
-                    setattr(existing, db_key, data[src_key])
+            if src_key not in data or not hasattr(existing, db_key):
+                continue
+            if data[src_key] is not None or src_key in _INDICATOR_FIELDS:
+                setattr(existing, db_key, data[src_key])
         existing.updated_at = datetime.utcnow()
     else:
         # Map field names
@@ -491,21 +497,21 @@ async def _upsert_stock(session, data: dict):
             price=data.get('price', 0),
             change_pct=data.get('change_pct', 0),
             volume=data.get('volume', 0),
-            day_high=data.get('day_high', 0),
-            day_low=data.get('day_low', 0),
+            day_high=data.get('day_high'),
+            day_low=data.get('day_low'),
             open_price=data.get('open', data.get('open_price', 0)),
             previous_close=data.get('previous_close', 0),
             bid=data.get('bid', 0),
             ask=data.get('ask', 0),
-            rsi=data.get('rsi', 50),
-            ma_20=data.get('ma_20', 0),
-            volatility=data.get('volatility', 'LOW'),
+            rsi=data.get('rsi'),
+            ma_20=data.get('ma_20'),
+            volatility=data.get('volatility'),
             currency=data.get('currency', 'USD'),
             market_type=data.get('market_type', 'GLOBAL'),
             prediction=data.get('prediction', ''),
             reason=data.get('reason', ''),
-            is_favorable=data.get('is_favorable', False),
-            is_buyable=data.get('is_buyable', False),
+            is_favorable=data.get('is_favorable'),
+            is_buyable=data.get('is_buyable'),
             market_cap=data.get('market_cap', 0)
         )
         session.add(stock)

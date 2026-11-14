@@ -25,6 +25,7 @@ from security_middleware import SecurityMiddleware, get_optional_user
 import auth_routes
 import watchlist_routes
 from watchlist_routes import _enrich_watchlist_tickers
+from services.market_display import portfolio_export_row, unavailable_export_row
 
 # Configure logging
 logging.basicConfig(
@@ -635,51 +636,12 @@ async def export_portfolio_post(
         if not stocks:
             raise HTTPException(status_code=400, detail="No stock data provided and your watchlist is empty.")
 
+        if not all(isinstance(stock, dict) for stock in stocks):
+            raise HTTPException(status_code=400, detail="Each stock must be an object.")
+
         today = datetime.now().strftime("%Y-%m-%d")
-        results = []
-
-        for stock in stocks:
-            sym = stock.get('symbol') or stock.get('ticker') or ''
-            name = stock.get('name') or sym
-            price = stock.get('price', 0) or 0
-            change_p = stock.get('change_pct', 0) or 0
-            change_amt = price * (change_p / 100) if price else 0
-            prev_close = stock.get('previous_close', 0) or 0
-            start_price = prev_close if prev_close else (price - change_amt)
-
-            rsi = stock.get('rsi', 0) or 50
-            rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
-
-            trend = stock.get('prediction', '')
-            if not trend:
-                if change_p > 0:
-                    trend = f"📈 UP +{change_p:.1f}%"
-                elif change_p < 0:
-                    trend = f"📉 DOWN {change_p:.1f}%"
-                else:
-                    trend = "➖ Stable"
-
-            results.append({
-                "Symbol": sym,
-                "Currency": stock.get('currency', 'USD') or 'USD',
-                "Name": name,
-                "Report Period": period.capitalize(),
-                "Analysis Date": today,
-                "Trend": trend,
-                "Current Price": round(price, 2),
-                "Start Price": round(start_price, 2),
-                "Change %": round(change_p, 2),
-                "Change Amt": round(change_amt, 2),
-                "Period High": stock.get('day_high', 0) or stock.get('high', 0) or round(price * 1.01, 2),
-                "High Date": today,
-                "Period Low": stock.get('day_low', 0) or stock.get('low', 0) or round(price * 0.99, 2),
-                "Low Date": today,
-                "RSI (14)": round(rsi, 2),
-                "RSI Status": rsi_status,
-                "Volatility %": stock.get('volatility', 'MEDIUM'),
-                "MA(20)": stock.get('ma_20', 0) or 0,
-                "Volume (Period)": stock.get('volume', 0) or 0,
-            })
+        # Indicators may be null (D4): the export shows "Not available", never an estimate.
+        results = [portfolio_export_row(stock, period, today) for stock in stocks]
 
         if not results:
             raise HTTPException(status_code=404, detail="No data found for provided symbols")
@@ -714,57 +676,10 @@ async def export_portfolio_get(symbols: str, period: str):
         for symbol in symbol_list:
             data = analyze_stock(symbol, is_commodity="=" in symbol)
             if data:
-                price = data.get('price', 0) or 0
-                change_p = data.get('change_pct', 0) or 0
-                change_amt = price * (change_p / 100) if price else 0
-                start_price = data.get('previous_close') or (price - change_amt)
-                rsi = data.get('rsi', 0) or 50
-                rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
-                results.append({
-                    "Symbol": data.get('symbol', symbol),
-                    "Currency": data.get('currency', 'USD') or 'USD',
-                    "Name": data.get('name', symbol),
-                    "Report Period": period.capitalize(),
-                    "Analysis Date": today,
-                    "Trend": data.get('prediction', ''),
-                    "Current Price": round(price, 2),
-                    "Start Price": round(start_price, 2),
-                    "Change %": round(change_p, 2),
-                    "Change Amt": round(change_amt, 2),
-                    "Period High": data.get('day_high', 0) or round(price * 1.01, 2),
-                    "High Date": today,
-                    "Period Low": data.get('day_low', 0) or round(price * 0.99, 2),
-                    "Low Date": today,
-                    "RSI (14)": round(rsi, 2),
-                    "RSI Status": rsi_status,
-                    "Volatility %": data.get('volatility', 'MEDIUM'),
-                    "MA(20)": data.get('ma_20', 0) or 0,
-                    "Volume (Period)": data.get('volume', 0) or 0,
-                })
+                results.append(portfolio_export_row(data, period, today, symbol=symbol))
             else:
-                # Symbol fetch failed — include a stub row so the export still works
-                logger.warning(f"Could not fetch live data for {symbol}, using stub row")
-                results.append({
-                    "Symbol": symbol,
-                    "Currency": "N/A",
-                    "Name": symbol,
-                    "Report Period": period.capitalize(),
-                    "Analysis Date": today,
-                    "Trend": "N/A",
-                    "Current Price": 0,
-                    "Start Price": 0,
-                    "Change %": 0,
-                    "Change Amt": 0,
-                    "Period High": 0,
-                    "High Date": today,
-                    "Period Low": 0,
-                    "Low Date": today,
-                    "RSI (14)": 0,
-                    "RSI Status": "N/A",
-                    "Volatility %": "N/A",
-                    "MA(20)": 0,
-                    "Volume (Period)": 0,
-                })
+                logger.warning(f"Could not fetch live data for {symbol}; exported as not available")
+                results.append(unavailable_export_row(symbol, period, today))
 
         if not results:
             raise HTTPException(status_code=404, detail="No symbols provided")
@@ -950,21 +865,23 @@ def _stock_to_dict(stock: StockData) -> dict:
         "price": stock.price or 0,
         "change_pct": stock.change_pct or 0,
         "volume": stock.volume or 0,
-        "day_high": stock.day_high or 0,
-        "day_low": stock.day_low or 0,
+        # rsi, ma_20, day range, volatility and the labels built on them stay null
+        # until computed from real history (D4); they are never filled in here.
+        "day_high": stock.day_high,
+        "day_low": stock.day_low,
         "open": stock.open_price or 0,
         "previous_close": stock.previous_close or 0,
         "bid": stock.bid or 0,
         "ask": stock.ask or 0,
-        "rsi": stock.rsi or 50,
-        "ma_20": stock.ma_20 or 0,
-        "volatility": stock.volatility or "LOW",
+        "rsi": stock.rsi,
+        "ma_20": stock.ma_20,
+        "volatility": stock.volatility,
         "currency": stock.currency or "USD",
         "market_type": stock.market_type or "GLOBAL",
         "prediction": stock.prediction or "",
         "reason": stock.reason or "",
-        "is_favorable": stock.is_favorable or False,
-        "is_buyable": stock.is_buyable or False,
+        "is_favorable": stock.is_favorable,
+        "is_buyable": stock.is_buyable,
         "market_cap": stock.market_cap or 0,
     }
 

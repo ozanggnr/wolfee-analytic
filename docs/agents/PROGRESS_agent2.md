@@ -25,11 +25,31 @@ Verify after each item with the scratch script `verify.sh`:
     - When no rates arrive or the write fails, an error is logged and the table is left unchanged. Rates are never filled in.
   - Tests: a recorded TCMB response (`tests/fixtures/tcmb_today_2026-11-13.xml`), a lock-collision test that fails without the fix, and a source-unreachable test.
   - Results: 385 on SQLite, 134 on PG16, check clean.
-- [ ] REQ-24 support (added by the user 2026-11-14). **Next.**
-  - `watchlist_routes.py` 161–163 call `round()` on `rsi`, `day_high` and `day_low`.
-  - Make them, and every other caller of `analyze_stock` values, accept null: show "not available" in the export, and never a 500.
-  - Add a test with null indicators. Agent 3 removes `legacy_estimates` only after this lands.
-- [ ] REQ-19 (`normalize_symbol` for the watchlist market), REQ-20 (no insight from empty data), REQ-21 (watchlist summary cache invalidation).
+- [x] REQ-24 support (added by the user 2026-11-14). Agent 3 can now remove `legacy_estimates`.
+  - `services/market_display.py` holds the null-safe helpers and the export row. The export shows "Not available"; JSON keeps null.
+  - Watchlist enrichment (cache, live fallback, placeholder):
+    - The `round()` on null that caused a 500 is gone.
+    - Nothing is filled in: no RSI 50, no day range taken from the price.
+  - Both `/api/export/portfolio` routes:
+    - They use one row builder.
+    - No more `price*1.01`, `rsi or 50` or `'MEDIUM'` fill-ins.
+    - A failed symbol shows "Not available", not 0.
+    - The POST route returns 400 for stock entries that are not objects.
+  - `_stock_to_dict` passes null indicators and labels through.
+  - Found and fixed in the cache:
+    - The `stock_data` ORM defaults (rsi 50, ma_20 0, volatility LOW, is_buyable False) turned an explicit None into estimates.
+    - `_upsert_stock` skipped None, so old estimates would have stayed.
+    - The Python defaults are removed; there is no DDL change, so no migration.
+  - Tests:
+    - `tests/api/test_null_indicators.py` (22) and `tests/services/test_stock_cache_nulls.py` (5).
+    - The route tests reproduced the 500 before the fix. 3 of the cache tests fail without it.
+  - Results: 412 on SQLite, 156 on PG16, check clean.
+  - Left for others:
+    - **Agent 3:** `ai_service.get_market_insight` compares `rsi < 30`, and `get_stock_analysis` formats `rsi`/`ma_20` with `:.0f`. Both raise on null. The callers catch it, so there's no 500, but the insight or analysis is lost. Also `analysis.py`: the 100–102 day-range estimate and the 253–283 bulk export.
+    - **Agent 2 (H1):** `workers._enrich_stock_data` still estimates, until Agent 3's canonical enrichment lands.
+    - **Agent 1:** DATABASE_CONTRACT §2.6 still says `rsi` "default 50".
+    - **Agent 4:** legacy endpoints may now send null for these fields (REQ-27).
+- [ ] REQ-19 **Next.** (`normalize_symbol` for the watchlist market), REQ-20 (no insight from empty data), REQ-21 (watchlist summary cache invalidation).
 - [ ] REQ-26: `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
 - [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
 

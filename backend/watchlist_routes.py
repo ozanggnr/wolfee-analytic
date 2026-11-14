@@ -21,6 +21,7 @@ from database import get_db
 from models import User, WatchlistItem, StockData
 from security_middleware import get_current_user
 from analysis import BIST_SYMBOLS, GLOBAL_SYMBOLS, analyze_stock
+from services.market_display import price_level, rounded
 
 logger = logging.getLogger("watchlist_routes")
 
@@ -79,9 +80,9 @@ class WatchlistItemResponse(BaseModel):
     price: float = 0.0
     change_pct: float = 0.0
     volume: float = 0.0
-    day_high: float = 0.0
-    day_low: float = 0.0
-    rsi: float = 50.0
+    day_high: Optional[float] = None  # null until computed from real history (D4)
+    day_low: Optional[float] = None
+    rsi: Optional[float] = None
     currency: str = "USD"
     prediction: Optional[str] = None
 
@@ -133,9 +134,9 @@ async def _enrich_watchlist_tickers(
                 "price": round(stock_record.price or 0.0, 2),
                 "change_pct": round(stock_record.change_pct or 0.0, 2),
                 "volume": stock_record.volume or 0.0,
-                "day_high": round(stock_record.day_high or stock_record.price or 0.0, 2),
-                "day_low": round(stock_record.day_low or stock_record.price or 0.0, 2),
-                "rsi": round(stock_record.rsi or 50.0, 1),
+                "day_high": price_level(stock_record.day_high),
+                "day_low": price_level(stock_record.day_low),
+                "rsi": rounded(stock_record.rsi, 1),
                 "currency": stock_record.currency or ("TRY" if is_bist else "USD"),
                 "prediction": stock_record.prediction or ("Bullish" if (stock_record.change_pct or 0) >= 0 else "Bearish"),
                 "market_type": stock_record.market_type or item.market
@@ -158,9 +159,9 @@ async def _enrich_watchlist_tickers(
                     "price": round(live_data.get("price", 0.0), 2),
                     "change_pct": round(live_data.get("change_pct", 0.0), 2),
                     "volume": live_data.get("volume", 0.0),
-                    "day_high": round(live_data.get("day_high", live_data.get("price", 0.0)), 2),
-                    "day_low": round(live_data.get("day_low", live_data.get("price", 0.0)), 2),
-                    "rsi": round(live_data.get("rsi", 50.0), 1),
+                    "day_high": price_level(live_data.get("day_high")),
+                    "day_low": price_level(live_data.get("day_low")),
+                    "rsi": rounded(live_data.get("rsi"), 1),
                     "currency": live_data.get("currency", "TRY" if is_bist else "USD"),
                     "prediction": live_data.get("prediction", ""),
                     "market_type": item.market
@@ -176,9 +177,9 @@ async def _enrich_watchlist_tickers(
                     "price": 0.0,
                     "change_pct": 0.0,
                     "volume": 0.0,
-                    "day_high": 0.0,
-                    "day_low": 0.0,
-                    "rsi": 50.0,
+                    "day_high": None,
+                    "day_low": None,
+                    "rsi": None,
                     "currency": "TRY" if is_bist else "USD",
                     "prediction": "Data updating",
                     "market_type": item.market
