@@ -78,6 +78,40 @@ export function indicatorsAsOf(record) {
 }
 
 /**
+ * An indicator (rsi, ma_20, volatility, volatility_pct) counts only when the
+ * record says when it was computed: values without a real `indicators_as_of`
+ * are the workers' single-day estimates and are not available (REQ-29).
+ *
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @returns {unknown}
+ */
+export function indicatorField(record, field) {
+    return indicatorsAsOf(record) === null ? null : fieldValue(record, field);
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @returns {number | null}
+ */
+export function indicatorNumber(record, field) {
+    return indicatorsAsOf(record) === null ? null : numberField(record, field);
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @param {number} digits
+ * @param {string} [suffix]
+ * @returns {string}
+ */
+export function formatIndicatorField(record, field, digits, suffix = '') {
+    const value = indicatorNumber(record, field);
+    return value === null ? NOT_AVAILABLE : `${value.toFixed(digits)}${suffix}`;
+}
+
+/**
  * Formats a timestamp in the viewer's time zone, or in `timeZone` when given.
  * A timestamp without a zone is read as UTC (Python's naive utcnow()).
  *

@@ -73,10 +73,15 @@ function getSignalStyle(prediction) {
     };
 }
 
+// Opportunity badges (REQ-29): the oversold threshold follows the card label
+// table (RSI < 30); the daily-move badge describes today only.
+const OVERSOLD_RSI = 30;
+const UP_TODAY_BADGE_PCT = 2;
+
 /** RSI value for a card stat cell, with its as-of date when there is one. */
 function rsiStatHTML(stock) {
     const F = window.WolfeeFields;
-    const rsi = F.numberField(stock, 'rsi');
+    const rsi = F.indicatorNumber(stock, 'rsi');
     if (rsi === null) {
         return `<span class="not-available">${esc(F.NOT_AVAILABLE)}</span>`;
     }
@@ -298,10 +303,10 @@ window.renderOpportunitiesPage = function() {
         const sig = getSignalStyle(window.WolfeeFields.fieldValue(stock, 'prediction'));
         
         // Badges only from available inputs (REQ-27): no RSI, no RSI badge
-        const rsi = window.WolfeeFields.numberField(stock, 'rsi');
+        const rsi = window.WolfeeFields.indicatorNumber(stock, 'rsi');
         let badges = '';
-        if (rsi !== null && rsi < 35) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
-        if (stock.change_pct > 2) badges += '<span class="opp-badge badge-trend">Uptrend</span> ';
+        if (rsi !== null && rsi < OVERSOLD_RSI) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
+        if (stock.change_pct > UP_TODAY_BADGE_PCT) badges += '<span class="opp-badge badge-trend">Up more than 2% today</span> ';
         const reason = window.WolfeeFields.fieldValue(stock, 'reason');
         
         const card = document.createElement('div');
@@ -403,8 +408,8 @@ function _setModalText(id, text) {
 
 function _volatilityText(stock) {
     const F = window.WolfeeFields;
-    const level = F.fieldValue(stock, 'volatility');
-    const pct = F.numberField(stock, 'volatility_pct');
+    const level = F.indicatorField(stock, 'volatility');
+    const pct = F.indicatorNumber(stock, 'volatility_pct');
     const parts = [];
     if (typeof level === 'string') parts.push(level);
     if (pct !== null) parts.push(`${pct.toFixed(1)}%`);
@@ -413,12 +418,12 @@ function _volatilityText(stock) {
 
 function _applyIndicatorsToModal(stock, currency) {
     const F = window.WolfeeFields;
-    _setModalText('stat-rsi', F.formatNumberField(stock, 'rsi', 1));
-    _setModalText('stat-ma20', F.formatNumberField(stock, 'ma_20', 2, ` ${currency}`));
+    _setModalText('stat-rsi', F.formatIndicatorField(stock, 'rsi', 1));
+    _setModalText('stat-ma20', F.formatIndicatorField(stock, 'ma_20', 2, ` ${currency}`));
     _setModalText('stat-volatility', _volatilityText(stock));
     _setModalText('stat-ind-asof', F.indicatorsAsOf(stock) || F.NOT_AVAILABLE);
 
-    const method = F.fieldValue(stock, 'indicator_method');
+    const method = F.indicatorField(stock, 'indicator_method');
     const methodEl = document.getElementById('stat-ind-method');
     if (methodEl) {
         methodEl.textContent = typeof method === 'string' ? `Method: ${method}` : '';

@@ -73,7 +73,7 @@ window.getFilteredStocks = function(baseStocks, query = '') {
             const priceStr = (stock.price || 0).toFixed(2);
             const changeStr = (stock.change_pct || 0).toFixed(2);
             const volStr = (stock.volume || 0).toString();
-            const rsi = F.numberField(stock, 'rsi');
+            const rsi = F.indicatorNumber(stock, 'rsi');
             const rsiStr = rsi === null ? '' : rsi.toFixed(2);
             
             const numMatch = priceStr.includes(lowerQuery) || 
