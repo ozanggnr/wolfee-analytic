@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="style.css?v=15.2">
+    <link rel="stylesheet" href="style.css?v=15.4">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -223,7 +223,7 @@
                 </div>
                 <div id="ai-body">
                     <div class="ai-divider"></div>
-                    <p id="ai-text">Analyzing market data...</p>
+                    <div id="ai-text">Analyzing market data...</div>
                 </div>
             </div>
 
@@ -344,9 +344,14 @@
                 <div class="ds-item"><span class="ds-label">Open</span><span class="ds-val" id="stat-vwap">-</span></div>
                 <div class="ds-item"><span class="ds-label">Prev Close</span><span class="ds-val" id="stat-vol-tl">-</span></div>
                 <div class="ds-item"><span class="ds-label">Volume</span><span class="ds-val" id="stat-vol-lot">-</span></div>
+                <div class="ds-item"><span class="ds-label">RSI (14)</span><span class="ds-val" id="stat-rsi">-</span></div>
+                <div class="ds-item"><span class="ds-label">MA 20</span><span class="ds-val" id="stat-ma20">-</span></div>
+                <div class="ds-item"><span class="ds-label">Volatility</span><span class="ds-val" id="stat-volatility">-</span></div>
+                <div class="ds-item"><span class="ds-label">Indicators as of</span><span class="ds-val" id="stat-ind-asof">-</span></div>
             </div>
+            <div class="indicator-method hidden" id="stat-ind-method"></div>
 
-            <div class="modal-prediction" id="modal-prediction">Best Entry: Loading...</div>
+            <div class="modal-prediction" id="modal-prediction">Loading...</div>
 
             <div id="ai-analysis-section" class="ai-analysis-section"></div>
 
@@ -469,14 +474,14 @@
     </div>
 
     <!-- ===== MODULAR SCRIPTS ===== -->
-    <script type="module" src="js/core/globals.js?v=15.2"></script>
-    <script src="js/config.js?v=15.2"></script>
-    <script src="js/auth.js?v=15.2"></script>
-    <script src="js/ui.js?v=15.2"></script>
-    <script src="js/filter.js?v=15.2"></script>
-    <script src="js/chart.js?v=15.2"></script>
-    <script src="js/portfolio.js?v=15.2"></script>
-    <script src="js/main.js?v=15.2"></script>
+    <script type="module" src="js/core/globals.js?v=15.4"></script>
+    <script src="js/config.js?v=15.4"></script>
+    <script src="js/auth.js?v=15.4"></script>
+    <script src="js/ui.js?v=15.4"></script>
+    <script src="js/filter.js?v=15.4"></script>
+    <script src="js/chart.js?v=15.4"></script>
+    <script src="js/portfolio.js?v=15.4"></script>
+    <script src="js/main.js?v=15.4"></script>
 
     <script>
         // Mobile Menu Toggle

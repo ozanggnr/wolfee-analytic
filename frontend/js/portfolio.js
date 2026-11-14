@@ -156,19 +156,16 @@ window.loadPortfolio = async function() {
             const res = await (window.authFetch || fetch)(`${API_URL}/api/watchlist`);
             if (res.ok) {
                 const data = await res.json();
+                // Indicator fields pass through as sent: null stays null and
+                // renders as "Not available" (REQ-27); nothing is filled in.
                 window._cachedCloudWatchlist = data.items.map(item => ({
+                    ...item,
                     symbol: item.market === 'BIST100' ? `${item.ticker}.IS` : item.ticker,
                     ticker: item.ticker,
                     name: item.name || item.ticker,
                     price: item.price || 0,
                     change_pct: item.change_pct || 0,
                     volume: item.volume || 0,
-                    day_high: item.day_high || item.price,
-                    day_low: item.day_low || item.price,
-                    rsi: item.rsi || 50,
-                    currency: item.currency,
-                    market: item.market,
-                    prediction: item.prediction,
                     inPortfolio: true
                 }));
                 try {

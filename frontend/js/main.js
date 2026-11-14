@@ -182,10 +182,10 @@ function updateChangedCards(newStocks) {
                 }
                 if (trendEl) {
                     trendEl.style.color = color;
-                    trendEl.textContent = isUp ? 'Bullish' : 'Bearish';
+                    trendEl.textContent = isUp ? 'Up today' : 'Down today';
                 }
                 if (sigChip && typeof getSignalStyle === 'function') {
-                    const sig = getSignalStyle(newStock.prediction);
+                    const sig = getSignalStyle(window.WolfeeFields.fieldValue(newStock, 'prediction'));
                     sigChip.style.color = sig.color;
                     sigChip.style.background = sig.bg;
                     sigChip.style.borderColor = sig.border;
@@ -226,10 +226,10 @@ async function loadAIInsight() {
     if (aiSection) aiSection.classList.remove('hidden');
     try {
         const res = await fetch(`${API_URL}/api/insight`);
+        if (!res.ok) throw new Error('Insight unavailable');
         const data = await res.json();
-        const text = window.WolfeeSafe.aiTextToHTML(data.insight || 'Analyzing market data...');
         const aiTextEl = document.getElementById('ai-text');
-        if (aiTextEl) aiTextEl.innerHTML = text;
+        if (aiTextEl) renderAIResponse(aiTextEl, data, 'insight');
     } catch (e) {
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) aiTextEl.innerText = '🐺 AI Protocol Offline.';

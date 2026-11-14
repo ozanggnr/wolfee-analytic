@@ -61,15 +61,28 @@ function getSignalStyle(prediction) {
             label: prediction
         };
     }
-    // Fallback: derive from change direction
-    const isUp = !p.includes('DECLIN') && !p.includes('DOWN') && !p.includes('LOSS');
+    // Any other label (including the descriptive wording from REQ-24) is shown
+    // as sent, in a neutral style; a missing label is shown as not available.
+    const hasLabel = typeof prediction === 'string' && prediction.trim() !== '';
     return {
-        color: isUp ? '#10f5a8' : '#ff4f6e',
-        bg: isUp ? 'rgba(16,245,168,0.08)' : 'rgba(255,79,110,0.08)',
-        border: isUp ? 'rgba(16,245,168,0.2)' : 'rgba(255,79,110,0.2)',
-        icon: isUp ? '🟢' : '🔴',
-        label: prediction || (isUp ? 'Positive momentum' : 'Downward pressure')
+        color: hasLabel ? 'var(--text-primary)' : 'var(--text-muted)',
+        bg: 'rgba(148,163,184,0.08)',
+        border: 'rgba(148,163,184,0.22)',
+        icon: '',
+        label: hasLabel ? prediction : window.WolfeeFields.NOT_AVAILABLE
     };
+}
+
+/** RSI value for a card stat cell, with its as-of date when there is one. */
+function rsiStatHTML(stock) {
+    const F = window.WolfeeFields;
+    const rsi = F.numberField(stock, 'rsi');
+    if (rsi === null) {
+        return `<span class="not-available">${esc(F.NOT_AVAILABLE)}</span>`;
+    }
+    const asOf = F.indicatorsAsOf(stock);
+    const asOfHTML = asOf ? `<small class="indicator-asof">as of ${esc(asOf)}</small>` : '';
+    return `<span style="color: ${getRsiColor(rsi)}">${rsi.toFixed(1)}${asOfHTML}</span>`;
 }
 
 function renderStockCard(stock) {
@@ -88,7 +101,7 @@ function renderStockCard(stock) {
     const isUp = (stock.change_pct || 0) >= 0;
     const icon = isUp ? '▲' : '▼';
     const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
-    const sig = getSignalStyle(stock.prediction);
+    const sig = getSignalStyle(window.WolfeeFields.fieldValue(stock, 'prediction'));
 
     const card = document.createElement('div');
     card.className = 'stock-card skeleton';
@@ -117,11 +130,11 @@ function renderStockCard(stock) {
             </div>
             <div class="stat-item">
                 <span>RSI</span>
-                <span style="color: ${getRsiColor(stock.rsi)}">${(stock.rsi||50).toFixed(1)}</span>
+                ${rsiStatHTML(stock)}
             </div>
             <div class="stat-item">
                 <span>Trend</span>
-                <span style="color: ${priceColor}">${isUp ? 'Bullish' : 'Bearish'}</span>
+                <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
             </div>
         </div>
         <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
@@ -225,15 +238,17 @@ window.openExchangeModal = function(pair, price, change_pct) {
         change_pct: change_pct,
         currency: 'TRY',
         market_type: 'CURRENCY',
-        rsi: 50,
-        ma_20: price,
-        volatility: 'LOW',
-        prediction: 'Currency pair tracking',
-        reason: 'Currency pair tracking',
-        day_low: price * 0.99,
-        day_high: price * 1.01,
-        open: price,
-        previous_close: price,
+        // The exchange-rate feed carries none of these; show them as not
+        // available rather than estimating them from the rate (REQ-27).
+        rsi: null,
+        ma_20: null,
+        volatility: null,
+        prediction: null,
+        reason: null,
+        day_low: null,
+        day_high: null,
+        open: null,
+        previous_close: null,
         volume: 0
     };
     if (typeof openModal === 'function') openModal(stock);
@@ -280,12 +295,14 @@ window.renderOpportunitiesPage = function() {
         const isUp = (stock.change_pct || 0) >= 0;
         const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
         const icon = isUp ? '▲' : '▼';
-        const sig = getSignalStyle(stock.prediction);
+        const sig = getSignalStyle(window.WolfeeFields.fieldValue(stock, 'prediction'));
         
+        // Badges only from available inputs (REQ-27): no RSI, no RSI badge
+        const rsi = window.WolfeeFields.numberField(stock, 'rsi');
         let badges = '';
-        if (stock.rsi < 35) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
+        if (rsi !== null && rsi < 35) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
         if (stock.change_pct > 2) badges += '<span class="opp-badge badge-trend">Uptrend</span> ';
-        if (!badges) badges = '<span class="opp-badge badge-golden">Value Pick</span> ';
+        const reason = window.WolfeeFields.fieldValue(stock, 'reason');
         
         const card = document.createElement('div');
         card.className = 'stock-card';
@@ -310,18 +327,18 @@ window.renderOpportunitiesPage = function() {
                 </div>
                 <div class="stat-item">
                     <span>RSI</span>
-                    <span style="color: ${getRsiColor(stock.rsi)}">${(stock.rsi||50).toFixed(1)}</span>
+                    ${rsiStatHTML(stock)}
                 </div>
                 <div class="stat-item">
                     <span>Trend</span>
-                    <span style="color: ${priceColor}">${isUp ? 'Bullish' : 'Bearish'}</span>
+                    <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
                 </div>
             </div>
-            <div style="margin: 5px 0;">${badges}</div>
+            ${badges ? `<div style="margin: 5px 0;">${badges}</div>` : ''}
             <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
                 ${sig.icon} ${esc(sig.label)}
             </div>
-            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${esc(stock.reason || 'Positive signals detected.')}</div>
+            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${esc(typeof reason === 'string' ? reason : window.WolfeeFields.NOT_AVAILABLE)}</div>
         `;
         card.onclick = () => openModal(stock);
         grid.appendChild(card);
@@ -368,13 +385,51 @@ function openModal(stock) {
     _fetchLivePriceForModal(stock.symbol);
 }
 
+/**
+ * A price field as display text. Missing, estimated or zero values (the
+ * providers send 0 for bid/ask they do not have) are not available; nothing
+ * is derived from the last price.
+ */
+function _modalPriceText(stock, field, currency) {
+    const F = window.WolfeeFields;
+    const value = F.numberField(stock, field);
+    return value !== null && value > 0 ? `${value.toFixed(2)} ${currency}` : F.NOT_AVAILABLE;
+}
+
+function _setModalText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
+function _volatilityText(stock) {
+    const F = window.WolfeeFields;
+    const level = F.fieldValue(stock, 'volatility');
+    const pct = F.numberField(stock, 'volatility_pct');
+    const parts = [];
+    if (typeof level === 'string') parts.push(level);
+    if (pct !== null) parts.push(`${pct.toFixed(1)}%`);
+    return parts.length > 0 ? parts.join(' · ') : F.NOT_AVAILABLE;
+}
+
+function _applyIndicatorsToModal(stock, currency) {
+    const F = window.WolfeeFields;
+    _setModalText('stat-rsi', F.formatNumberField(stock, 'rsi', 1));
+    _setModalText('stat-ma20', F.formatNumberField(stock, 'ma_20', 2, ` ${currency}`));
+    _setModalText('stat-volatility', _volatilityText(stock));
+    _setModalText('stat-ind-asof', F.indicatorsAsOf(stock) || F.NOT_AVAILABLE);
+
+    const method = F.fieldValue(stock, 'indicator_method');
+    const methodEl = document.getElementById('stat-ind-method');
+    if (methodEl) {
+        methodEl.textContent = typeof method === 'string' ? `Method: ${method}` : '';
+        methodEl.classList.toggle('hidden', typeof method !== 'string');
+    }
+}
+
 function _applyStockToModal(stock, currency, isLive) {
     if (!currency) currency = getCurrencySymbol(stock.currency);
+    const F = window.WolfeeFields;
     const price = stock.price || 0;
-    const day_low = stock.day_low || (price * 0.98);
-    const day_high = stock.day_high || (price * 1.02);
-    const open_price = stock.open || stock.open_price || (price * 0.99);
-    const prev_close = stock.previous_close || (price * 0.99);
 
     const lastEl = document.getElementById('stat-last');
     if (lastEl) {
@@ -388,10 +443,8 @@ function _applyStockToModal(stock, currency, isLive) {
     }
 
     document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
-    const bidEl = document.getElementById('stat-bid');
-    if (bidEl) bidEl.textContent = stock.bid ? `${stock.bid.toFixed(2)} ${currency}` : `${(price*0.998).toFixed(2)} ${currency}`;
-    const askEl = document.getElementById('stat-ask');
-    if (askEl) askEl.textContent = stock.ask ? `${stock.ask.toFixed(2)} ${currency}` : `${(price*1.002).toFixed(2)} ${currency}`;
+    _setModalText('stat-bid', _modalPriceText(stock, 'bid', currency));
+    _setModalText('stat-ask', _modalPriceText(stock, 'ask', currency));
 
     const changeEl = document.getElementById('stat-change');
     if (changeEl) {
@@ -399,21 +452,20 @@ function _applyStockToModal(stock, currency, isLive) {
         changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     }
 
-    const lowEl = document.getElementById('stat-low');
-    if (lowEl) lowEl.textContent = `${day_low.toFixed(2)} ${currency}`;
-    const highEl = document.getElementById('stat-high');
-    if (highEl) highEl.textContent = `${day_high.toFixed(2)} ${currency}`;
-    const vwapEl = document.getElementById('stat-vwap');
-    if (vwapEl) vwapEl.textContent = `${open_price.toFixed(2)} ${currency}`;
-    const volTlEl = document.getElementById('stat-vol-tl');
-    if (volTlEl) volTlEl.textContent = `${prev_close.toFixed(2)} ${currency}`;
-    const volLotEl = document.getElementById('stat-vol-lot');
-    if (volLotEl) volLotEl.textContent = formatNumber(stock.volume || 0);
+    _setModalText('stat-low', _modalPriceText(stock, 'day_low', currency));
+    _setModalText('stat-high', _modalPriceText(stock, 'day_high', currency));
+    _setModalText('stat-vwap', _modalPriceText(
+        { ...stock, open: stock.open ?? stock.open_price }, 'open', currency));
+    _setModalText('stat-vol-tl', _modalPriceText(stock, 'previous_close', currency));
+    _setModalText('stat-vol-lot', formatNumber(stock.volume || 0));
+    _applyIndicatorsToModal(stock, currency);
 
     const predEl = document.getElementById('modal-prediction');
     if (predEl) {
-        predEl.textContent = stock.prediction || 'Stable trend';
-        predEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const prediction = F.fieldValue(stock, 'prediction');
+        const hasLabel = typeof prediction === 'string';
+        predEl.textContent = hasLabel ? prediction : F.NOT_AVAILABLE;
+        predEl.style.color = hasLabel ? 'var(--text-primary)' : 'var(--text-muted)';
     }
 }
 
@@ -442,6 +494,57 @@ async function _fetchLivePriceForModal(symbol) {
 
 const AI_ANALYSIS_LABELS = ['Decision', 'Why this decision', 'Why someone should buy it', 'Why to wait', 'Risk to watch'];
 
+/**
+ * Renders an AI response (/api/insight or /api/ai/analyze) into `container`:
+ * the text, a provenance line and the disclaimer, which is always shown.
+ * Text in the REQ-25 shape is plain and is added as text nodes only; the
+ * older shape may contain markdown and goes through the escaping
+ * aiTextToHTML. `violations` is never read.
+ */
+function renderAIResponse(container, data, textField, highlightLabels = []) {
+    const F = window.WolfeeFields;
+    const info = F.aiProvenance(data, textField);
+
+    const body = document.createElement('div');
+    body.className = 'ai-response-text';
+    if (info.text.trim() === '') {
+        body.textContent = 'AI text not available.';
+    } else if (info.isPlainText) {
+        F.splitLabelledLines(info.text, highlightLabels).forEach((line, index) => {
+            if (index > 0) body.appendChild(document.createElement('br'));
+            if (line.label) {
+                const labelEl = document.createElement('span');
+                labelEl.className = 'ai-label';
+                labelEl.textContent = `${line.label}:`;
+                body.appendChild(labelEl);
+            }
+            body.appendChild(document.createTextNode(line.text));
+        });
+    } else {
+        body.innerHTML = window.WolfeeSafe.aiTextToHTML(info.text, { highlightLabels });
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'ai-meta';
+    const metaParts = [];
+    if (info.generatedAt) metaParts.push(`Generated ${info.generatedAt}`);
+    if (info.inputsAsOf) metaParts.push(`data as of ${info.inputsAsOf}`);
+    meta.textContent = metaParts.join(' · ');
+    if (info.isTemplate) {
+        const badge = document.createElement('span');
+        badge.className = 'ai-template-badge';
+        badge.textContent = 'template';
+        badge.title = 'Written from a fixed template, not by the AI model';
+        meta.appendChild(badge);
+    }
+
+    const disclaimer = document.createElement('div');
+    disclaimer.className = 'ai-disclaimer';
+    disclaimer.textContent = info.disclaimer;
+
+    container.replaceChildren(body, ...(meta.childNodes.length > 0 ? [meta] : []), disclaimer);
+}
+
 window.askWolfeeAI = async function(symbol) {
     const aiSection = document.getElementById('ai-analysis-section');
     if (!aiSection) return;
@@ -452,10 +555,10 @@ window.askWolfeeAI = async function(symbol) {
         const res = await fetch(`${API_URL}/api/ai/analyze/${encodeURIComponent(symbol)}`);
         if (!res.ok) throw new Error('Analysis failed');
         const data = await res.json();
-        const text = window.WolfeeSafe.aiTextToHTML(data.analysis || 'Analysis unavailable', {
-            highlightLabels: AI_ANALYSIS_LABELS
-        });
-        aiSection.innerHTML = `<div class="ai-response">${text}</div>`;
+        const response = document.createElement('div');
+        response.className = 'ai-response';
+        renderAIResponse(response, data, 'analysis', AI_ANALYSIS_LABELS);
+        aiSection.replaceChildren(response);
     } catch(e) {
         aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline. Please try again in a moment.</div>`;
     }
