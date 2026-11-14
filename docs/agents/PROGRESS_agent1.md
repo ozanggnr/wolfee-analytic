@@ -23,7 +23,8 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 - price_history approved (DATABASE_CONTRACT §4.3, REQ-26); volatility added to D4 / REQ-24; corrections accepted by the user
 - WSL test environment (2026-11-14): TESTING.md, backend/requirements-test.txt (`d7dd9d3`); in WSL 224 backend + 9 frontend pass; 179 API tests on a temporary PG 18 cluster
 - PG 16.16 test cluster up (~/wolfee-test/pg16, 127.0.0.1:55432, left running). On it, `agent/backend` @ `771368f`: API tests 179 passed; migration chain up/down/up clean to `d7b2e6f4a913`, `alembic check` clean. Fly Postgres pinned to major 16 (`--image-ref flyio/postgres-flex:16`, DEPLOYMENT §5; comment in fly.toml)
-- Waiting for the user's Step 3c instructions
+- Step 3c (2026-11-14): reviewed and merged `agent/quant-ai` `def3511` → **`da57548`** (REQ-24, REQ-25, labels, open/prev_close) and `agent/frontend` `ceecbda` → **`f0b9fc9`** (REQ-27, v=15.4). WSL: backend 281 passed, frontend 28/28. Decisions recorded (volatility bands, open/prev_close null, label table + 2 %, Up/Down today, local times, 0 = n/a, ai_insights provenance §4.4, daily_bars.py). API_CONTRACT §2.2/§2.4/§3, DATABASE_CONTRACT §2.6/§4.4, PROGRESS_agent3.md rewritten. New REQ-28 (Agent 2 routes + migration), REQ-29 (Agent 4), REQ-30 (Agent 2 open/prev_close). `bb00a11` pre-approved. PG18 cluster deleted
+- **Waiting for the user.** `agent/backend` NOT merged (Step 3b)
 
 ## Next (only after approval)
 - Step 3b: review and merge `agent/backend` (head `e30f1db` on 2026-11-12: REQ-13 `5e464a7`, REQ-15 `a4ce4e7`, REQ-16 `7c484e9`, REQ-9 `6a168a5`). Verify REQ-7 seed CLI. Expect overlap with quant changes (analytics_service vs REQ-17).

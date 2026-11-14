@@ -136,4 +136,7 @@ A report of "tests pass" names the worktree, its commit (from Windows `git log -
 | 2026-11-14 | `Wolfee-backend` @ `771368f` (read-only) | §3.1 on **PostgreSQL 16.16**, fresh `wolfee_tests` | **179 passed** (23 s) |
 | 2026-11-14 | `Wolfee-backend` @ `771368f` (read-only) | §3.2 on **PostgreSQL 16.16**, empty `wolfee_migrations` | upgrade head → downgrade base → upgrade head all exit 0 through `8c15c00878ff`, `a1f3c9d27b10`, `b2e4d8a31c55`, `c3f5a7e91d20`, `d7b2e6f4a913`; single head `d7b2e6f4a913`; `alembic check`: "No new upgrade operations detected"; 14 tables (13 model tables + `alembic_version`) |
 
-The temporary PostgreSQL 18 cluster (`~/wolfee-test/pg18`) is stopped and no longer used. It can be deleted with `rm -rf ~/wolfee-test/pg18 ~/wolfee-test/pg18.log`.
+| 2026-11-14 | `wolfee-integration` @ `f0b9fc9` (after merging `agent/quant-ai` `def3511` and `agent/frontend` `ceecbda`) | §2 backend | **281 passed**, 1 warning (67 s) |
+| 2026-11-14 | `wolfee-integration` @ `f0b9fc9` | §2 frontend | **28 tests, 28 pass, 0 fail** |
+
+The temporary PostgreSQL 18 cluster (`~/wolfee-test/pg18` and `pg18.log`) was deleted on 2026-11-14.

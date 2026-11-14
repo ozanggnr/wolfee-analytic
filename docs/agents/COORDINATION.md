@@ -149,6 +149,15 @@ Also decided by the user on 2026-11-12:
 
 - Portfolio base currency: the database keeps accepting other codes (`portfolios.base_currency` is `CHAR(3)` with no CHECK limiting it to TRY); the API enforces TRY only (`schemas.portfolio.SUPPORTED_BASE_CURRENCIES`). No migration is needed to add or remove a currency later.
 
+Decided by the user on 2026-11-14 (Step 3c):
+
+- **Volatility bands:** `LOW` < 25 %, `MEDIUM` 25 % to < 50 %, `HIGH` ≥ 50 % of annualised 20-day volatility; `null` without history (`quant.signals.classify_volatility`).
+- **`open` / `previous_close`:** `null` when the provider does not supply them; never derived from each other or from the day's change (REQ-30 for the cache).
+- **Descriptive labels (extends D5):** Agent 3's label table (API_CONTRACT §2.2 "Card labels") with a **2 %** "near the 20-day average" threshold; "Up today" / "Down today" instead of "Bullish" / "Bearish"; every timestamp shown in the viewer's local time zone; a price of 0 is "not available".
+- **`ai_insights` provenance:** a migration by Agent 2 adds `generated_by`, `generated_at`, `inputs_as_of`, `is_fallback`; old rows (no provenance) are ignored (DATABASE_CONTRACT §4.4, REQ-28).
+- **History client** stays in Agent 2's `services/daily_bars.py` (DATABASE_CONTRACT §4.3).
+- Agent 2's `bb00a11` (seven `StockData` Python-side defaults removed) is **pre-approved by Agent 1**. It merges with `agent/backend` in Step 3b, which is not started.
+
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
 ### Requests between agents
@@ -382,7 +391,10 @@ Needs:     quant side of D4. quant.signals.enrich_quote (and anything else produ
            Agent 2 wires it in. Tests: no history -> all None; known closes -> known values.
 Why:       D4 — never present an estimate as an indicator
 Blocking:  no (blocks REQ-26 wiring and REQ-27 display)
-Status:    open
+Status:    DONE (Agent 3 side) 2026-11-14 — agent/quant-ai 7683167, 38e14d7, 724b2b2, merged into
+           integration at da57548. Input shape: Sequence[quant.types.DailyClose]. Temporary
+           legacy_estimates mode in analysis.analyze_stock (flagged in estimated_fields) until
+           Agent 2's consumers accept null and history is wired (REQ-26, bb00a11)
 
 ID:        REQ-25
 From:      Agent 1 (decision D5)
@@ -397,7 +409,9 @@ Needs:     move /api/insight (and /insight) and /api/ai/analyze/{symbol} onto th
            (no insight from an empty data set).
 Why:       D5 — the legacy prompts ask the model to act as a financial adviser
 Blocking:  no
-Status:    open
+Status:    DONE (Agent 3 side) 2026-11-14 — fc9640a, def3511, merged at da57548:
+           ai.insights.market_insight_response / stock_analysis_response; adviser prompts
+           removed. Route wiring and the ai_insights provenance columns: Agent 2, REQ-28
 
 ID:        REQ-26
 From:      Agent 1 (decision D4)
@@ -411,7 +425,11 @@ Needs:     fetch and cache daily price history for the market-card symbols from 
 Why:       D4 — real indicators need real history; Fly stops idle machines, so an in-memory
            cache would refetch every instrument's history on each cold start
 Blocking:  no
-Status:    open — storage decided (price_history table)
+Status:    in progress on agent/backend — 771368f (price_history table d7b2e6f4a913 and
+           daily-close fetch job; migration chain verified on PG 16.16, TESTING.md §5).
+           History client stays in services/daily_bars.py (user, 2026-11-14). Not yet
+           reviewed or merged. Still needed: workers use quant.signals.enrich_quote with
+           this history (REQ-10), so the cards stop showing estimates
 
 ID:        REQ-27
 From:      Agent 1 (decisions D4 and D5)
@@ -425,5 +443,52 @@ Needs:     (a) show "not available" (not 0, not a dash that reads as a value) wh
            Bump the asset version.
 Why:       D4 and D5
 Blocking:  no — the frontend can handle null now; the backend changes follow
+Status:    DONE 2026-11-14 — agent/frontend 3aef977, ceecbda (market-fields.js, assets v=15.4),
+           merged into integration at f0b9fc9. Follow-ups in REQ-29
+```
+
+Logged 2026-11-14 (Step 3c review):
+
+```
+ID:        REQ-28
+From:      Agent 1 (user decisions 2026-11-14)
+To:        Agent 2
+Needs:     (a) the ai_insights migration of DATABASE_CONTRACT §4.4 (generated_by, generated_at,
+           inputs_as_of, is_fallback; nullable, no backfill) plus the model;
+           (b) wire /api/insight, /insight and /api/ai/analyze/{symbol} to
+           ai.insights.market_insight_response / stock_analysis_response (call them through
+           asyncio.to_thread), store new insight rows with all four provenance values, and never
+           serve a row whose generated_by is NULL (regenerate instead);
+           (c) tests: old row ignored, new row carries provenance, violations never in a response.
+Why:       D5 — today the routes return text only, and /api/insight may serve pre-D5 adviser text
+Blocking:  no
+Status:    open
+
+ID:        REQ-29
+From:      Agent 1 (Step 3c review)
+To:        Agent 4
+Needs:     (a) show rsi / ma_20 / volatility as values only when indicators_as_of is a real date
+           (as the AI layer already does). Today any non-null value is shown, so the cards still
+           display the workers' single-day estimates, which carry neither estimated_fields nor
+           indicators_as_of;
+           (b) the opportunities "Oversold" badge uses rsi < 35; align it with the label table
+           (rsi < 30) or drop it;
+           (c) the "Uptrend" badge is driven by one day's change_pct > 2: reword it in the
+           "Up today" style (e.g. "Up more than 2% today") or drop it.
+           Bump the asset version.
+Why:       D4 and the 2026-11-14 label decisions
+Blocking:  no
+Status:    open
+
+ID:        REQ-30
+From:      Agent 1 (user decision 2026-11-14: open/previous_close null when not provided)
+To:        Agent 2
+Needs:     data_sources (global_market.py and the BIST source) return None instead of 0.0 for a
+           missing open / previous_close; drop default=0 from StockData.open_price and
+           previous_close (Python-side only, no DDL: the columns are nullable without a server
+           default); readers accept None. Same shape as bb00a11.
+Why:       analysis.analyze_stock already returns None, but the cache and the market cards still
+           store and show 0
+Blocking:  no
 Status:    open
 ```

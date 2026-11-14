@@ -82,39 +82,59 @@ Allow-list of fixed origins plus `RAILWAY_PUBLIC_DOMAIN`, `CORS_ORIGINS` (comma 
 
 **`Stock` object** (from `_stock_to_dict`):
 
+Shape after decisions D4 (2026-11-12) and the 2026-11-14 label decisions. `| null` = not available; it is never filled in.
+
 ```
-symbol          string
-name            string
-price           number
-change_pct      number   percent, e.g. 1.25
-volume          number
-day_high        number
-day_low         number
-open            number
-previous_close  number
-bid             number   always 0 from current providers
-ask             number   always 0 from current providers
-rsi             number   see warning below
-ma_20           number   see warning below
-volatility      "LOW" | "MEDIUM" | "HIGH"
-currency        string   "TRY", "USD", or provider currency
-market_type     "BIST" | "GLOBAL" | "COMMODITY"
-prediction      string   label text, e.g. "ACCUMULATE — steady upward movement"
-reason          string   same text as prediction
-is_favorable    boolean  change_pct > 0
-is_buyable      boolean  change_pct > 0.5 and rsi < 65
-market_cap      number
+symbol            string
+name              string
+price             number
+change_pct        number          percent, e.g. 1.25
+volume            number
+day_high          number | null   provider value only; never price ±1 %; 0 = not available
+day_low           number | null   same
+open              number | null   provider value only; never derived from previous_close or the change
+previous_close    number | null   provider value only; never derived from the change
+bid, ask          number          always 0 from current providers (0 = not available)
+rsi               number | null   RSI 14 (Wilder) from real daily closes (needs 15 closes)
+ma_20             number | null   20-day simple average of real daily closes (needs 20)
+volatility        "LOW" | "MEDIUM" | "HIGH" | null   from volatility_pct: LOW < 25, MEDIUM 25 to < 50, HIGH >= 50
+volatility_pct    number | null   20-day volatility, annualised over 252 days, percent (needs 21 closes)
+indicators_as_of  "YYYY-MM-DD" | null   date of the latest close used; null unless an indicator is real
+indicator_method  string | null   e.g. "RSI 14 (Wilder), 20-day simple average and 20-day volatility
+                                  annualised over 252 days, from daily closing prices"; null with indicators_as_of
+estimated_fields  string[]        names of fields in this object that are still single-day estimates
+                                  (temporary, see below); [] when none. Clients treat them as not available
+currency          string          "TRY", "USD", or provider currency
+market_type       "BIST" | "GLOBAL" | "COMMODITY"
+prediction        string | null   descriptive label, see "Card labels" below; never advice
+reason            string | null   same text as prediction
+is_favorable      boolean | null  change_pct > 0; null without a real RSI
+is_buyable        boolean | null  change_pct > 0.5 and rsi < 65; null without a real RSI. A data field, not advice
+market_cap        number
 ```
 
-Warning, verified in `workers._enrich_stock_data` and `analysis.analyze_stock`: the data sources never supply `rsi` or `ma_20`, so both are always computed as `rsi = clamp(50 + 3 × change_pct, 5, 95)` and `ma_20 = price × (1 − change_pct / 200)`. They are not a 14-period RSI or a 20-day average. `volatility` is derived from one day's `change_pct`. No field states whether a price is real-time, delayed or end-of-day.
+**Card labels** (`prediction` / `reason`, `quant.signals.indicator_label`, decided 2026-11-14). Rule order:
 
-**Approved change — decision D4 (user, 2026-11-12), not yet implemented (REQ-24, REQ-26, REQ-27).** The shape stays; the meaning changes:
+| Condition | Label |
+|-----------|-------|
+| no real RSI | `null` |
+| RSI < 30 | `RSI below 30 (oversold)` |
+| RSI > 70 | `RSI above 70 (overbought)` |
+| price or `ma_20` unavailable | `RSI between 30 and 70` |
+| price within **2 %** of `ma_20` | `Near 20-day average` |
+| otherwise | `Above 20-day average` / `Below 20-day average` |
 
-- `rsi`, `ma_20` and the day range (`day_high` / `day_low` where they are today filled with price ±1 %) become **nullable**. They are `null` ("not available") until computed with `quant.indicators` from real daily closes; they are never estimated again.
-- Real history comes from the same source `/api/chart` uses (Agent 2 fetches and caches it, REQ-26).
-- Labels that depend on those values (`is_buyable`, `is_favorable`, the signal prefix of `prediction`, and the `/api/opportunities` filter built on them) get the same treatment: no label (`null`) when an input is unavailable.
-- The same applies wherever these figures are reused (`WatchlistItem.rsi`, the exports' "RSI (14)" column).
-- `volatility` gets the same treatment (user, 2026-11-12): `null` until computed with `quant.indicators.annualized_volatility_pct` from real daily closes; the one-day `change_pct` proxy goes.
+Only in the temporary legacy mode (below) the label states the day's move instead: `Up 1.0% today`, `Down 1.0% today`, `Unchanged today`. The old `PURCHASABLE` / `ACCUMULATE` / `WATCH TO BUY` / `AVOID FOR NOW` / `TAKE PROFITS` labels are gone.
+
+Presentation rules (Agent 4, decided 2026-11-14): a null value, a field listed in `estimated_fields`, and a price of 0 all display as "Not available". The day's direction reads "Up today" / "Down today", never "Bullish" / "Bearish". Every timestamp is shown in the viewer's local time zone; a timestamp without a zone is read as UTC.
+
+**Implementation status on `integration` (2026-11-14):**
+
+- `quant.signals.enrich_quote` and `quant.indicators.daily_indicators` implement all of the above (merge `da57548`). They estimate nothing.
+- `analysis.analyze_stock` (`/api/analyze`, `/api/live-price`) takes real history but has no history source yet. Until Agent 2 supplies it, it runs in a **temporary legacy mode** (`legacy_estimates=True`): `rsi`, `ma_20`, `volatility`, `is_favorable`, `is_buyable` and a missing day range are still the old single-day estimates, and **each one is named in `estimated_fields`**. `open` / `previous_close` are already null when not supplied.
+- The market cards (`/api/market-data/*`, `/api/opportunities`) still come from `workers._enrich_stock_data`, the old copy, until Agent 2 switches it to `enrich_quote` with `price_history` (REQ-10, REQ-26). Those rows carry no `estimated_fields` and no `indicators_as_of`. The AI layer ignores any indicator without a real `indicators_as_of` date, so it never states them. **The cards still display them**, because the frontend shows any non-null value not listed in `estimated_fields` (REQ-29 asks Agent 4 to also require `indicators_as_of`). D4 is therefore not yet visible on the market cards.
+- Legacy mode and `estimated_fields` disappear once every consumer accepts null (Agent 2's `bb00a11`, pending merge) and history is wired in.
+- No field states yet whether a price is real-time, delayed or end-of-day on these legacy endpoints.
 
 ### 2.3 Analysis, prices and history
 
@@ -141,9 +161,29 @@ Accepted `period` values: `1d, 5d, 1wk, 1mo, 3mo, 6mo, 1y, 5y, max`. The data-so
 | GET | `/insight` | no | no caller once `agent/frontend` merges (REQ-6) — was legacy `api.js` | Alias |
 | GET | `/api/ai/analyze/{symbol}` | no | yes (stock modal) | `{"symbol", "analysis": string}`. `404` if the stock is unknown. On other errors: 200 with a placeholder string |
 
-The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template. The response does not say which.
+The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template. Once REQ-28 is done, `generated_by` and `is_fallback` say which.
 
-**Approved change — decision D5 (user, 2026-11-12), not yet implemented (REQ-25, REQ-27).** `/api/insight` and `/api/ai/analyze/{symbol}` move onto the guarded AI layer (§5.4.1): facts computed by deterministic code go in, the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No buy recommendations, entry points, targets or predictions. The existing fields (`insight`, `symbol`, `analysis`) stay for compatibility; the provenance fields of §5.4.1 are added alongside: `generated_by`, `generated_at`, `inputs_as_of`, `is_fallback`, `disclaimer`. `violations` is never returned. The `/insight` alias follows `/api/insight`.
+**Decision D5 (user, 2026-11-12), extended 2026-11-14.** `/api/insight` and `/api/ai/analyze/{symbol}` use the guarded AI layer (§5.4.1): facts computed by deterministic code go in (`ai.facts.market_facts` / `stock_facts`), the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No model call is made when there is no market data. No buy recommendations, entry points, targets or predictions. An indicator reaches the model only when `indicators_as_of` is a real date and the field is not in `estimated_fields`.
+
+Response shape (the existing fields stay; provenance fields added alongside):
+
+```
+GET /api/insight, /insight        GET /api/ai/analyze/{symbol}
+{ "insight": string,              { "symbol": string, "analysis": string,
+  "generated_by": "gemini-… | template",
+  "generated_at": ISO-8601 UTC,
+  "inputs_as_of": ISO-8601 UTC | null,
+  "is_fallback": boolean,
+  "disclaimer": string }          (same five fields) }
+```
+
+`violations` is never returned. Text is plain, may contain `\n`, and is rendered only through `aiTextToHTML()` (§7), with the disclaimer always visible and the timestamps in the viewer's local time.
+
+**Implementation status on `integration` (2026-11-14):**
+
+- The guarded builders exist: `ai.insights.market_insight_response(…)` and `stock_analysis_response(symbol, …)` return exactly the bodies above (merge `da57548`). `ai_service.get_market_insight` / `get_stock_analysis` now return the guarded **text**; the adviser prompts and the advisory signal are removed.
+- The **routes are not wired yet** (`main.py`, Agent 2, REQ-28). They still return only `{"insight"}` / `{"symbol", "analysis"}`, so the frontend shows its default disclaimer.
+- `/api/insight` first serves the newest stored `ai_insights` row. Rows written before D5 may hold adviser wording. Under the approved migration (DATABASE_CONTRACT §4.4), rows without provenance are ignored and regenerated.
 
 ### 2.5 Refresh
 
@@ -163,6 +203,8 @@ The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a tem
 Columns: Symbol, Currency, Name, Report Period, Analysis Date, Trend, Current Price, Start Price, Change %, Change Amt, Period High, High Date, Period Low, Low Date, RSI (14), RSI Status, Volatility %, MA(20), Volume (Period).
 
 In the two portfolio exports, `period` only changes a label: the figures are single-day values, "Period High/Low" are the day's high/low (or price ±1 % when missing) and "RSI (14)" is the estimate from §2.2. Only `/api/export/{period}` computes real period statistics.
+
+D4 status (2026-11-14): `/api/export/{period}` leaves a figure it cannot compute empty and writes RSI Status `Not available` / `Oversold` / `Overbought` / `Neutral` (merged, `da57548`). The two portfolio exports switch to "Not available" instead of price ±1 %, RSI 50 or `MEDIUM` with Agent 2's `bb00a11` (pending the `agent/backend` merge).
 
 ### 2.7 Authentication — prefix `/api/auth`
 
@@ -207,8 +249,8 @@ Enumerations as they appear in the data:
 |------|--------|-------|
 | `market_type` | `BIST`, `GLOBAL`, `COMMODITY` | `stock_data`, Stock responses |
 | watchlist `market` | `BIST100`, `US`, `GLOBAL`, `COMMODITY` | `watchlist_items` — a different vocabulary from `market_type` |
-| `volatility` | `LOW`, `MEDIUM`, `HIGH` | Stock responses |
-| signal label | `PURCHASABLE`, `ACCUMULATE`, `WATCH TO BUY`, `AVOID FOR NOW`, `TAKE PROFITS` | prefix of `prediction`; AI prompt |
+| card label (`prediction` / `reason`) | `RSI below 30 (oversold)`, `RSI above 70 (overbought)`, `RSI between 30 and 70`, `Near 20-day average`, `Above 20-day average`, `Below 20-day average`, or `null`; in legacy mode only: `Up X.X% today`, `Down X.X% today`, `Unchanged today` | `quant.signals.indicator_label`, §2.2. Replaces the advisory labels (`PURCHASABLE` …) removed 2026-11-14 |
+| `volatility` band | `LOW` < 25 %, `MEDIUM` 25 % to < 50 %, `HIGH` ≥ 50 % annualised, or `null` | `quant.signals.classify_volatility` |
 | export `period` | `daily`, `weekly`, `monthly` | export endpoints |
 
 ---

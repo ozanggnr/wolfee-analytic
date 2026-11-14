@@ -103,14 +103,17 @@ No job deletes expired rows.
 | `id` | Integer | PK |
 | `symbol` | String(20) | NOT NULL, indexed, **not unique** |
 | `name` | String(200) | Providers return the ticker itself as the name |
-| `price`, `change_pct`, `volume`, `day_high`, `day_low`, `open_price`, `previous_close`, `bid`, `ask`, `market_cap` | Float | default 0. `bid` and `ask` are always 0 from current providers |
-| `rsi` | Float | default 50. Always the estimate `50 + 3 × change_pct` |
-| `ma_20` | Float | Always the estimate `price × (1 − change_pct / 200)` |
-| `volatility` | String(10) | `LOW` / `MEDIUM` / `HIGH` from one day's change |
+| `price`, `change_pct`, `volume`, `open_price`, `previous_close`, `bid`, `ask`, `market_cap` | Float | Python-side default 0. `bid` and `ask` are always 0 from current providers. A 0 price is displayed as "Not available". `open_price` / `previous_close` should be NULL when the provider gives none (decision 2026-11-14), but the data sources still write 0.0 and the model still defaults to 0 (REQ-30) |
+| `day_high`, `day_low` | Float NULL | Provider value or NULL; never price ±1 % (D4) |
+| `rsi` | Float NULL | NULL unless computed from real daily closes (RSI 14, Wilder) (D4). No default |
+| `ma_20` | Float NULL | NULL unless computed from real daily closes (SMA 20) (D4). No default |
+| `volatility` | String(10) NULL | `LOW` < 25 %, `MEDIUM` 25 % to < 50 %, `HIGH` ≥ 50 % of annualised 20-day volatility, or NULL (D4). No default |
 | `currency` | String(5) | default `TRY` |
 | `market_type` | String(20) | `BIST`, `GLOBAL`, `COMMODITY` |
-| `prediction`, `reason` | String(500) | Rule-based label text; both hold the same string |
-| `is_favorable`, `is_buyable` | Boolean | |
+| `prediction`, `reason` | String(500) NULL | Descriptive label (API_CONTRACT §2.2 "Card labels"); both hold the same string; NULL without a real RSI |
+| `is_favorable`, `is_buyable` | Boolean NULL | NULL without a real RSI. No default |
+
+No DDL is involved: in the migrations every column above is nullable with no server default (`c3f5a7e91d20`). The old Python-side defaults (`rsi` 50, `ma_20` 0, `volatility` `LOW`, `day_high`/`day_low` 0, `is_favorable`/`is_buyable` False) are removed by Agent 2's `bb00a11` (pre-reviewed and approved by Agent 1 on 2026-11-14; arrives with the `agent/backend` merge). **Until then the rows written by `workers._enrich_stock_data` still hold the single-day estimates** (REQ-10, REQ-26).
 | `extra_data` | JSON | Never written |
 | `updated_at` | DateTime (**naive**) | server default now, on update now |
 
@@ -120,7 +123,7 @@ One row per symbol is intended, enforced only by application code (`_upsert_stoc
 
 **Symbol inconsistency.** The scheduled BIST refresh stores symbols without the suffix (`fetch_bist_stock` returns `THYAO`). `/api/live-price` passes the `analyze_stock` result, whose symbol is `THYAO.IS`, to the same upsert. An exact-match lookup for `THYAO.IS` does not find `THYAO`, so a second row is inserted. `_deduplicate_stocks` in `main.py` hides this from the market grid by keeping the first row per suffix-stripped symbol. `/api/ai/analyze/{symbol}` looks up one exact symbol with `scalar_one_or_none`. This was established by reading the code; it was not reproduced against a database.
 
-There is no price history table. Charts are fetched from the provider on every request.
+There is no price history table on `main`. Charts are fetched from the provider on every request. `price_history` is approved (§4.3) and implemented on `agent/backend` (`d7b2e6f4a913`); its history client stays in Agent 2's `services/daily_bars.py` (user, 2026-11-14).
 
 ### 2.7 `turkish_gold`, `exchange_rates`, `ai_insights`
 
@@ -128,7 +131,7 @@ There is no price history table. Charts are fetched from the provider on every r
 
 `exchange_rates`: `id` PK; `pair` String(10) unique (`USD/TRY`, `EUR/TRY`, `GBP/TRY`); `display_name`; `buying`, `selling`, `change_pct` Float; `updated_at` naive. Buying and selling come from the TCMB daily XML; `change_pct` comes from yfinance, a different source. Latest value only — no dated history.
 
-`ai_insights`: `id` PK; `insight_type` String(20) default `daily`; `symbol` String(20) nullable; `insight_text` Text; `created_at` naive. Only `daily` rows are written; the newest 10 are kept and older ones deleted. No `user_id`, model name or fallback flag.
+`ai_insights`: `id` PK; `insight_type` String(20) default `daily`; `symbol` String(20) nullable; `insight_text` Text; `created_at` naive. Only `daily` rows are written; the newest 10 are kept and older ones deleted. No `user_id`, model name or fallback flag (provenance columns approved in §4.4).
 
 ### 2.8 Observations that affect new work
 
@@ -215,7 +218,7 @@ Needed for valuation on past dates, real indicators and risk metrics.
 | Table | Column | Why |
 |-------|--------|-----|
 | `stock_data` | `source` String(20) NULL, `as_of` timestamptz NULL, `freshness` String(12) NULL | Label delayed / real-time / end-of-day data |
-| `ai_insights` | `user_id` NULL FK, `portfolio_id` NULL FK, `model` String(50) NULL, `is_fallback` Boolean NULL, `inputs_as_of` timestamptz NULL | Per-user insights and traceability |
+| `ai_insights` | `user_id` NULL FK, `portfolio_id` NULL FK, `model` String(50) NULL, `is_fallback` Boolean NULL, `inputs_as_of` timestamptz NULL | Per-user insights and traceability. **Provenance part superseded by §4.4** (`generated_by`, `generated_at`, `inputs_as_of`, `is_fallback`, approved 2026-11-14); `user_id` / `portfolio_id` deferred |
 
 All nullable, so existing rows and existing code keep working.
 
@@ -245,7 +248,7 @@ A unique constraint on `stock_data.symbol` is desirable but **not additive**: du
 | M1 | `instruments` + seed from the existing symbol lists | M0 |
 | M2 | `portfolios`, `transactions` | M1, D2, D3 |
 | M3 | `price_history` — **approved, §4.3**. `fx_rate_history` stays deferred (D3) | M1 |
-| M4 | Nullable provenance columns on `stock_data` and `ai_insights` | M0 |
+| M4 | Nullable provenance columns on `stock_data` (open) and `ai_insights` (**approved, §4.4**) | M0 |
 | later | De-duplicate `stock_data` and add the unique constraint | user approval |
 
 Each step is one migration by Agent 2, reviewed by Agent 1, tested for upgrade and downgrade on a copy of the data.
@@ -330,6 +333,27 @@ Rules:
 - No retention or pruning in this migration. About 1 year × 361 instruments is roughly 90,000 rows, which is small.
 - `downgrade` drops the table and its constraints only.
 - Tested by Agent 2 on PostgreSQL 16 and SQLite: `upgrade head` → `downgrade base` → `upgrade head`, then `alembic check` with no differences, as for §4.2.
+- History client: stays in Agent 2's `services/daily_bars.py` (user, 2026-11-14). It fetches from the same provider `/api/chart` uses, and hands `quant.types.DailyClose` values to `quant.indicators.daily_indicators` / `quant.signals.enrich_quote`. No quant code fetches data.
+
+## 4.4 Approved: AI provenance columns on `ai_insights` (APPROVED by the user 2026-11-14 — Agent 2 to write, REQ-28)
+
+One new Alembic revision by Agent 2, after the §4.3 revision (`d7b2e6f4a913` on `agent/backend`). Additive only. Model and migration land in the same change, and `alembic check` stays clean.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `generated_by` | String(100) NULL | model name (e.g. `gemini-…`) or `template`, from `AIResult.generated_by` |
+| `generated_at` | timestamptz NULL | from `AIResult.generated_at` (UTC) |
+| `inputs_as_of` | timestamptz NULL | age of the oldest quote used; NULL when unknown |
+| `is_fallback` | Boolean NULL | `AIResult.is_fallback` |
+
+Rules:
+
+- All four are **nullable with no server default**, so the migration needs no backfill. A NULL means "written before provenance existed".
+- **Old rows are ignored:** a row whose `generated_by` is NULL is never served. `/api/insight` regenerates through `ai.insights.market_insight_response` (and stores the new row with all four values) instead of returning pre-D5 adviser text. Old rows are not deleted or rewritten by the migration; the existing "keep the newest 10" cleanup removes them over time.
+- New rows always set all four columns; `generated_by` and `generated_at` are never NULL on a new row (enforced in code; a NOT NULL constraint would conflict with the old rows).
+- The disclaimer is not stored. It is a constant (`ai.guardrails.DISCLAIMER`) added when the response is built, so a wording change applies to old rows too. `violations` is not stored in this table; it goes to the server log only.
+- This replaces the `model` / `is_fallback` / `inputs_as_of` part of the §3.5 proposal. `user_id` / `portfolio_id` stay deferred until per-user insights are designed.
+- `downgrade` drops the four columns only. Tested on PostgreSQL 16 and SQLite as for §4.2 (TESTING.md §3.2).
 
 ---
 
