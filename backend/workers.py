@@ -153,6 +153,8 @@ async def refresh_all_data(force: bool = False):
             else:
                 logger.info(f"{label} refresh: {result} items")
 
+        await refresh_history_for_active_markets(bist_active, us_active, comm_active)
+
         # Refresh AI insight only if stock data was refreshed or forced
         if bist_active or us_active or force:
             await refresh_ai_insight(force=force)
@@ -166,6 +168,26 @@ async def refresh_all_data(force: bool = False):
         return False
     finally:
         _refresh_running = False
+
+async def refresh_history_for_active_markets(bist_active: bool, us_active: bool, comm_active: bool):
+    """Daily closes into price_history for the markets refreshed this cycle (REQ-26).
+
+    A failure is logged and leaves the quote refresh untouched; indicators stay null.
+    """
+    from quant.symbols import EXCHANGE_BIST, EXCHANGE_COMMODITY, EXCHANGE_US
+    from services.price_history_service import refresh_price_history
+
+    exchanges = [exchange for exchange, active in
+                 ((EXCHANGE_BIST, bist_active), (EXCHANGE_US, us_active), (EXCHANGE_COMMODITY, comm_active))
+                 if active]
+    if not exchanges:
+        return None
+    try:
+        return await refresh_price_history(AsyncSessionLocal, _DB_WRITE_LOCK, exchanges)
+    except Exception:
+        logger.exception("Price history refresh failed; price_history left unchanged")
+        return None
+
 
 async def refresh_bist_stocks() -> int:
     """Refresh all BIST stocks with bounded concurrency"""

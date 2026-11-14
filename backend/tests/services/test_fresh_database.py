@@ -129,7 +129,7 @@ def test_db_pool_null_gives_an_unpooled_engine_and_unknown_values_are_refused():
     assert refused.returncode != 0 and "DB_POOL must be" in refused.stderr
 
 
-CACHE_TABLES = {"stock_data", "turkish_gold", "exchange_rates", "ai_insights"}
+CACHE_TABLES = {"stock_data", "turkish_gold", "exchange_rates", "ai_insights", "price_history"}
 
 
 def test_a_database_built_only_from_migrations_matches_the_models(migrated_database):

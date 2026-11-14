@@ -78,9 +78,35 @@ Verify after each item with the scratch script `verify.sh`:
   - Tests: `tests/api/test_watchlist_summary_cache.py` (4). The old `max-age` assertion in `tests/test_auth_and_watchlist.py` was updated.
   - Results: 442 on SQLite, 176 on PG16, check clean.
   - The deploy runs one uvicorn process, so the in-memory cache is consistent.
-- [ ] REQ-26: **Next.**
-  `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
-- [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
+- [x] REQ-26: `price_history` storage, plus a fetch/cache job from the `/api/chart` source.
+  - Migration `d7b2e6f4a913` (after `c3f5a7e91d20`) and the `PriceHistory` model, exactly as in §4.3:
+    - BigInteger id;
+    - foreign key `ON DELETE RESTRICT`;
+    - NUMERIC(20,6) prices and NUMERIC(24,2) volume;
+    - CHAR(3) currency and `fetched_at` timestamptz;
+    - `uq_price_history_instrument_date` and `ck_price_history_prices`.
+  - `services/daily_bars`: daily bars from the same Yahoo v8 chart endpoint `/api/chart` uses.
+    - Values are stored as supplied, as Decimal; a missing open/high/low stays None.
+    - Dates are the exchange-local day (`gmtoffset`). Today's unfinished bar is skipped.
+    - A bar with no close is dropped, and impossible values are dropped.
+  - `services/price_history_service.refresh_price_history`:
+    - Runs in `refresh_all_data` for the exchanges refreshed that cycle (BIST, US, CMDTY).
+    - Fetches only instruments that are missing days: a 1-year backfill first, then the smallest range covering the gap.
+    - At most 4 requests at once; writes go under `_DB_WRITE_LOCK` as upserts.
+    - A failed or wrong-currency fetch stores nothing and is retried after 6 h.
+  - `price_history_repository.daily_closes` returns `DailyCloseRow(date, close: Decimal)`, oldest first. These are the same fields as Agent 3's `quant.types.DailyClose`.
+  - Tests:
+    - `tests/services/test_price_history.py` (23, against the recorded `tests/fixtures/yahoo_chart_THYAO.IS_1d_2026-11-13.json`).
+    - `tests/api/test_price_history_storage.py` (3, also on PG16).
+    - `price_history` added to the fresh-database table check.
+  - Results: 468 on SQLite, 179 on PG16, check clean at head `d7b2e6f4a913`.
+  - Also on PG16: upgrade head → downgrade base → upgrade head → check, all clean.
+  - Live run: THYAO, AAPL and GC=F gave 754 rows. A second run found nothing due. Agent 3's `daily_indicators` and `enrich_quote` (read-only from `agent/quant-ai` 7683167) accepted the closes unchanged.
+  - **Waits:** passing these closes into `enrich_quote` (the H1 swap of `_enrich_stock_data`) waits until Agent 3's REQ-24 is on `integration`. Until then the cards keep the legacy proxies.
+  - **For Agent 1 / Agent 3:**
+    - `data_sources/**` belongs to Agent 3, and `_fetch_yahoo_chart` is private and fills in OHL, so the daily-bar client lives in Agent 2's `services/daily_bars.py`. It can move into `data_sources` if Agent 3 prefers.
+    - The first cycle on an empty database makes about 361 history requests, then about 1 per instrument per trading day.
+- [ ] REQ-25 routes. **Next, but waits** until Agent 3's guarded layer is on `integration`. It exists on `agent/quant-ai` `fc9640a`, not yet integrated.
 
 ## Earlier (done, see git log)
 REQ-9, REQ-13, REQ-15, REQ-16. These were the analytics endpoints, the migration `c3f5a7e91d20`, and `create_all` limited to SQLite.

@@ -30,3 +30,11 @@ async def get_by_identity(db: AsyncSession, symbol: str, exchange: str) -> Optio
 
 async def all_instruments(db: AsyncSession) -> Sequence[Instrument]:
     return (await db.scalars(select(Instrument))).all()
+
+
+async def active_on_exchanges(db: AsyncSession, exchanges: Sequence[str]) -> Sequence[Instrument]:
+    """Active instruments listed on any of `exchanges`, in a stable order."""
+    if not exchanges:
+        return ()
+    query = select(Instrument).where(Instrument.exchange.in_(list(exchanges)), Instrument.is_active.is_(True))
+    return (await db.scalars(query.order_by(Instrument.exchange, Instrument.symbol))).all()

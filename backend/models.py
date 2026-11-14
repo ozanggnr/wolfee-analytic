@@ -282,3 +282,37 @@ def _forbid_transaction_update(mapper, connection, target):
 @event.listens_for(Transaction, "before_delete")
 def _forbid_transaction_delete(mapper, connection, target):
     raise LedgerImmutableError("transactions are append-only; record a reversal instead of deleting")
+
+
+# DATABASE_CONTRACT §4.3 (approved 2026-11-12, REQ-26): real end-of-day bars, upserted on
+# (instrument_id, date). A price cache, not a ledger: a re-fetched day replaces the row.
+# Only supplied values are stored; nothing is interpolated or filled in.
+PRICE_HISTORY_PRICE_CHECK = (
+    "close > 0"
+    " AND (open IS NULL OR open > 0)"
+    " AND (high IS NULL OR high > 0)"
+    " AND (low IS NULL OR low > 0)"
+    " AND (volume IS NULL OR volume >= 0)"
+    " AND (high IS NULL OR low IS NULL OR high >= low)"
+)
+
+
+class PriceHistory(Base):
+    __tablename__ = "price_history"
+
+    id = Column(_BigIntPK, primary_key=True, autoincrement=True)
+    instrument_id = Column(Integer, ForeignKey("instruments.id", ondelete="RESTRICT"), nullable=False)
+    date = Column(Date, nullable=False)  # trading day, exchange-local
+    open = Column(Numeric(20, 6), nullable=True)
+    high = Column(Numeric(20, 6), nullable=True)
+    low = Column(Numeric(20, 6), nullable=True)
+    close = Column(Numeric(20, 6), nullable=False)
+    volume = Column(Numeric(24, 2), nullable=True)
+    currency = Column(CHAR(3), nullable=False)
+    source = Column(String(30), nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "date", name="uq_price_history_instrument_date"),
+        CheckConstraint(PRICE_HISTORY_PRICE_CHECK, name="ck_price_history_prices"),
+    )
