@@ -33,7 +33,8 @@ Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private 
   - Tests: `tests/services/test_provider_open_close.py` (22; 10 fail on the old code).
   - Results: SQLite 564 passed; PG16 API 187 passed; PG16 base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`; SQLite round trip clean.
   - `data_sources/**` is Agent 3's: only the open / previous_close lines were changed (REQ-30 is addressed to Agent 2). Left as is: `change_pct` is still 0.0 when there is no previous close, and the chart helpers fill a missing open with the close.
-- [ ] 4. Final WSL verification and report.
+- [x] 4. Final WSL verification (code at `5881616`): SQLite 564 passed; PG16.16 API 187 passed (fresh `wolfee_tests_agent2`); PG16 upgrade head → downgrade base → upgrade head → downgrade base → upgrade head all ok, single head `e4a8c2f6b1d3`, `alembic check` "No new upgrade operations detected"; SQLite round trip clean. Live smoke (real Yahoo, throwaway DB): THYAO 252 closes stored, card rsi 71.32 / ma_20 279.61 / volatility HIGH (54.25 %), label "RSI above 70 (overbought)", indicators_as_of 2026-11-13; raw open 315.75 / previous_close 319.25.
+- [ ] REQ-25 routes: done by REQ-28 (the guarded layer is now on integration and wired). Nothing open on my side until the next instruction.
 
 ## Current task (2026-11-13/14): rebase, then REQ-17, 14, 18, 24-support, 19, 20, 21, 26, 25 in order
 
