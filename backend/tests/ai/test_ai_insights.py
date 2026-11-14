@@ -319,6 +319,56 @@ def test_ai_service_passes_grounded_model_text_through():
         assert ai_service.get_stock_analysis("THYAO.IS", STOCK) == grounded
 
 
+# The cache row once indicators are null (REQ-24): every indicator, label and optional
+# quote field is an explicit None. The old ai_service compared and formatted rsi and
+# raised on this, so the insight or analysis was lost.
+NULL_INDICATORS = {
+    "rsi": None, "ma_20": None, "day_high": None, "day_low": None, "volatility": None,
+    "volatility_pct": None, "is_buyable": None, "is_favorable": None, "prediction": None,
+    "reason": None, "indicators_as_of": None, "indicator_method": None,
+    "open": None, "previous_close": None, "volume": None,
+}
+NULL_STOCK = {"symbol": "THYAO.IS", "name": "Turk Hava Yollari", "price": 120.0, "change_pct": 4.0,
+              "currency": "TRY", "market_type": "BIST", **NULL_INDICATORS}
+NULL_MARKET = [{**row, **NULL_INDICATORS} for row in MARKET if isinstance(row, dict)]
+
+
+def test_null_indicators_still_give_a_market_insight():
+    with patch("ai_service._generate_with_gemini", return_value=None):      # model down: template
+        insight = ai_service.get_market_insight(NULL_MARKET)
+
+    assert "Instruments with a price and a daily change: 6." in insight
+    assert "+0.50%" in insight                                              # BIST average, as for MARKET
+    assert "14-day RSI: not available" in insight
+    assert "None" not in insight
+
+
+def test_null_indicators_still_give_a_stock_analysis():
+    with patch("ai_service._generate_with_gemini", return_value=None):
+        analysis = ai_service.get_stock_analysis("THYAO.IS", NULL_STOCK)
+
+    assert "Price: 120.00 TRY." in analysis
+    assert "Change today: +4.00%." in analysis
+    assert "RSI, 20-day average and volatility: not available" in analysis
+    assert "None" not in analysis and "Previous close" not in analysis
+
+
+def test_null_indicators_do_not_stop_grounded_model_text():
+    grounded = "Turk Hava Yollari (THYAO) is at 120.00 TRY, a change of +4.00% today."
+
+    with patch("ai_service._generate_with_gemini", return_value=grounded):
+        assert ai_service.get_stock_analysis("THYAO.IS", NULL_STOCK) == grounded
+        assert stock_analysis_response("THYAO.IS", NULL_STOCK, now=NOW)["is_fallback"] is False
+
+
+def test_a_row_with_a_null_price_or_change_is_skipped_not_fatal():
+    rows = NULL_MARKET + [{"symbol": "X", "price": None, "change_pct": None, **NULL_INDICATORS}]
+
+    with patch("ai_service._generate_with_gemini", return_value=None):
+        assert ai_service.get_market_insight(rows) == ai_service.get_market_insight(NULL_MARKET)
+        assert "not available" in ai_service.get_stock_analysis("X", rows[-1])
+
+
 def test_adviser_prompts_and_signal_labels_are_retired_from_ai_service():
     for name in ("_compute_signal", "_fallback_stock_analysis", "_fallback_insight", "_get_model"):
         assert not hasattr(ai_service, name)
