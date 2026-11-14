@@ -49,7 +49,19 @@ Verify after each item with the scratch script `verify.sh`:
     - **Agent 2 (H1):** `workers._enrich_stock_data` still estimates, until Agent 3's canonical enrichment lands.
     - **Agent 1:** DATABASE_CONTRACT §2.6 still says `rsi` "default 50".
     - **Agent 4:** legacy endpoints may now send null for these fields (REQ-27).
-- [ ] REQ-19 **Next.** (`normalize_symbol` for the watchlist market), REQ-20 (no insight from empty data), REQ-21 (watchlist summary cache invalidation).
+- [x] REQ-19: the watchlist market is decided by the server.
+  - Cause: the frontend (`frontend/js/portfolio.js:73-74`, Agent 4) sends `market: "US"` whenever its own BIST list lookup misses, and the backend trusted the hint.
+  - `services/watchlist_symbols.resolve` decides the market in this order:
+    1. an explicit suffix;
+    2. the `instruments` table;
+    3. the `quant.universe` lists;
+    4. the hint, only for a symbol known nowhere.
+  - A hint that is impossible for the symbol's form returns 422. FX maps to `GLOBAL`, which has no watchlist value of its own.
+  - Tests: `tests/api/test_watchlist_market.py` covers THYAO, THYAO.IS, AAPL and GC=F, each with and without a hint (14 tests, 9 failed before the fix).
+  - Results: 426 on SQLite, 170 on PG16, check clean.
+  - Existing rows stored as "US" are not rewritten; production starts with an empty database (D8).
+- [ ] REQ-20 (no insight from empty data). **Next.**
+- [ ] REQ-21 (watchlist summary cache invalidation).
 - [ ] REQ-26: `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
 - [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
 

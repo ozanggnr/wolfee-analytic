@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import User, WatchlistItem, StockData
 from security_middleware import get_current_user
-from analysis import BIST_SYMBOLS, GLOBAL_SYMBOLS, analyze_stock
+from analysis import analyze_stock
+from services import watchlist_symbols
 from services.market_display import price_level, rounded
 
 logger = logging.getLogger("watchlist_routes")
@@ -225,21 +226,18 @@ async def add_to_watchlist(
 ):
     """
     Add a stock ticker to user's portfolio watchlist.
-    Automatically identifies market ('BIST100' or 'US') if not specified.
+    The market is resolved on the server; a client-supplied market is only a hint.
     """
     raw_ticker = req.ticker.strip().upper()
     if not raw_ticker:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticker symbol required.")
 
-    # Determine market
-    market = req.market
-    if not market:
-        # Check if BIST stock
-        clean_sym = raw_ticker.replace(".IS", "")
-        is_bist = raw_ticker.endswith(".IS") or any(s.replace(".IS", "") == clean_sym for s in BIST_SYMBOLS)
-        market = "BIST100" if is_bist else "US"
-
-    canonical_ticker = raw_ticker.replace(".IS", "") if market == "BIST100" else raw_ticker
+    # The server decides the market; req.market is only a hint (REQ-19).
+    try:
+        resolved = await watchlist_symbols.resolve(db, raw_ticker, req.market)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    canonical_ticker, market = resolved.ticker, resolved.market
 
     # Check if already in watchlist
     existing = await db.execute(
