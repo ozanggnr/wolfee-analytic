@@ -13,7 +13,7 @@ from quant.indicators import (
     rsi,
     sma,
 )
-from quant.signals import classify_volatility, enrich_quote, is_buyable, is_favorable, signal_text
+from quant.signals import classify_volatility, enrich_quote, indicator_label, is_buyable, is_favorable
 from quant.symbols import instrument_seed, normalize_symbol
 from quant.types import DailyClose
 from quant.universe import BIST_SYMBOLS, COMMODITIES_SYMBOLS, GLOBAL_SYMBOLS
@@ -207,7 +207,7 @@ def test_with_history_indicators_and_labels_are_real():
     assert result["ma_20"] == 110.5
     assert result["volatility_pct"] == 0.79                    # 0.788, checked against statistics.stdev above
     assert result["volatility"] == "LOW"
-    assert result["prediction"] == result["reason"] == "TAKE PROFITS — up 4.0%, overbought"
+    assert result["prediction"] == result["reason"] == "RSI above 70 (overbought)"
     assert (result["is_favorable"], result["is_buyable"]) == (True, False)
     assert (result["day_high"], result["day_low"]) == (121.0, 118.5)
     assert result["indicators_as_of"] == "2026-01-21"
@@ -221,7 +221,7 @@ def test_short_history_gives_only_what_it_supports():
 
     assert result["rsi"] == 50.0
     assert (result["ma_20"], result["volatility"], result["volatility_pct"]) == (None, None, None)
-    assert result["prediction"] == "ACCUMULATE — steady upward movement"
+    assert result["prediction"] == "RSI between 30 and 70"         # 15 closes: no 20-day average yet
     assert (result["is_favorable"], result["is_buyable"]) == (True, False)
     assert result["indicators_as_of"] == "2026-01-15"
 
@@ -232,11 +232,12 @@ def test_history_too_short_for_rsi_gives_no_labels():
     assert {field: result[field] for field in NULL_FIELDS} == dict.fromkeys(NULL_FIELDS)
 
 
-def test_labels_need_the_days_change_too():
+def test_the_two_flags_need_the_days_change_too():
     result = enrich_quote({"symbol": "X", "price": 100.0}, "BIST", "TRY", RISING)
 
     assert result["rsi"] == 100.0
-    assert (result["prediction"], result["is_favorable"], result["is_buyable"]) == (None, None, None)
+    assert result["prediction"] == "RSI above 70 (overbought)"     # describes the RSI alone
+    assert (result["is_favorable"], result["is_buyable"]) == (None, None)
 
 
 def test_enrich_quote_does_not_mutate_its_input():
@@ -248,28 +249,35 @@ def test_enrich_quote_does_not_mutate_its_input():
 
 
 @pytest.mark.parametrize(
-    "change_pct, rsi_value, expected",
+    "rsi_value, price, ma_20, expected",
     [
-        (6, 50, "PURCHASABLE — strong momentum +6.0%"),
-        (3, 60, "PURCHASABLE — positive trend +3.0%"),
-        (1, 55, "PURCHASABLE — rising +1.0%"),
-        (-1, 30, "ACCUMULATE — oversold, potential bounce"),
-        (0.2, 50, "ACCUMULATE — steady upward movement"),
-        (0.2, 62, "WATCH TO BUY — conditions improving"),
-        (4, 80, "TAKE PROFITS — up 4.0%, overbought"),
-        (1, 70, "WATCH TO BUY — slightly overbought, wait for pullback"),
-        (-3, 50, "AVOID FOR NOW — declining -3.0%"),
-        (-1, 50, "WATCH TO BUY — minor dip, monitor closely"),
-        (-1, 38, "ACCUMULATE — dip into value zone"),
-        (-1, 40, "WATCH TO BUY — neutral, awaiting direction"),
+        (29.99, 100.0, 100.0, "RSI below 30 (oversold)"),       # the RSI band wins over the average
+        (70.01, 100.0, 100.0, "RSI above 70 (overbought)"),
+        (30.0, None, None, "RSI between 30 and 70"),            # 30 and 70 themselves are inside the band
+        (70.0, None, None, "RSI between 30 and 70"),
+        (50.0, 100.0, None, "RSI between 30 and 70"),           # no 20-day average yet
+        (50.0, 100.0, 100.0, "Near 20-day average"),
+        (50.0, 102.0, 100.0, "Near 20-day average"),            # 2 % away is still near
+        (50.0, 98.0, 100.0, "Near 20-day average"),
+        (50.0, 103.0, 100.0, "Above 20-day average"),
+        (50.0, 97.0, 100.0, "Below 20-day average"),
     ],
 )
-def test_label_rules_are_unchanged_when_the_rsi_is_real(change_pct, rsi_value, expected):
-    assert signal_text(change_pct, rsi_value) == expected
+def test_labels_describe_the_indicators(rsi_value, price, ma_20, expected):
+    assert indicator_label(rsi_value, price, ma_20) == expected
+
+
+def test_no_label_tells_the_reader_what_to_do():
+    labels = {indicator_label(r, p, 100.0) for r in (10.0, 50.0, 90.0) for p in (None, 90.0, 100.0, 110.0)}
+
+    assert len(labels) == 6
+    for label in labels:
+        for word in ("BUY", "PURCHAS", "ACCUMULATE", "PROFIT", "AVOID", "WATCH", "HOLD", "SELL", "WAIT"):
+            assert word not in label.upper()
 
 
 def test_labels_are_none_without_their_inputs():
-    assert signal_text(3.0, None) is None and signal_text(None, 50.0) is None
+    assert indicator_label(None) is None and indicator_label(None, 100.0, 100.0) is None
     assert is_buyable(3.0, None) is None and is_favorable(3.0, None) is None
     assert (is_buyable(3.0, 50.0), is_buyable(3.0, 70.0), is_buyable(0.4, 50.0)) == (True, False, False)
     assert (is_favorable(0.1, 50.0), is_favorable(-0.1, 50.0)) == (True, False)

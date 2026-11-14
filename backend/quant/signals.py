@@ -6,6 +6,10 @@ come from real daily closes through :mod:`quant.indicators`, or they are
 figures (``prediction`` / ``reason``, ``is_buyable``, ``is_favorable``) is
 ``None`` whenever the RSI it needs is unavailable.
 
+``prediction`` / ``reason`` describe the indicators ("RSI above 70
+(overbought)", "Near 20-day average"); they never tell the reader to buy, hold
+or sell. ``is_buyable`` and ``is_favorable`` remain as data fields.
+
 Output values are floats because this feeds the display cache, never portfolio
 arithmetic.
 """
@@ -22,6 +26,10 @@ from quant.types import DailyClose
 MEDIUM_VOLATILITY_PCT = 25
 HIGH_VOLATILITY_PCT = 50
 BUYABLE_MIN_CHANGE_PCT = 0.5
+RSI_OVERSOLD = 30
+RSI_OVERBOUGHT = 70
+# Price within this many percent of the 20-day average is described as "near" it.
+NEAR_AVERAGE_PCT = 2
 BUYABLE_MAX_RSI = 65
 
 
@@ -36,36 +44,26 @@ def classify_volatility(volatility_pct: float | Decimal | None) -> str | None:
     return "LOW"
 
 
-def signal_text(change_pct: float | None, rsi: float | None) -> str | None:
-    """Rule-based label shown as ``prediction`` / ``reason``; None without a real RSI.
+def indicator_label(
+    rsi: float | None, price: float | None = None, ma_20: float | None = None
+) -> str | None:
+    """Descriptive label shown as ``prediction`` / ``reason``; None without a real RSI.
 
-    Rule order matters.
+    It states what the indicators are and recommends nothing. The RSI bands
+    come first; inside them the label places the price against the 20-day
+    average when both are known.
     """
-    if change_pct is None or rsi is None:
+    if rsi is None:
         return None
-    if change_pct > 5 and rsi < 70:
-        return f"PURCHASABLE — strong momentum +{change_pct:.1f}%"
-    if change_pct > 2 and rsi < 65:
-        return f"PURCHASABLE — positive trend +{change_pct:.1f}%"
-    if change_pct > 0.5 and rsi < 60:
-        return f"PURCHASABLE — rising +{change_pct:.1f}%"
-    if rsi < 35:
-        return "ACCUMULATE — oversold, potential bounce"
-    if change_pct >= 0 and rsi < 55:
-        return "ACCUMULATE — steady upward movement"
-    if change_pct >= 0 and rsi < 65:
-        return "WATCH TO BUY — conditions improving"
-    if rsi > 72 and change_pct > 3:
-        return f"TAKE PROFITS — up {change_pct:.1f}%, overbought"
-    if rsi > 65:
-        return "WATCH TO BUY — slightly overbought, wait for pullback"
-    if change_pct < -2:
-        return f"AVOID FOR NOW — declining {change_pct:.1f}%"
-    if change_pct < 0 and rsi > 40:
-        return "WATCH TO BUY — minor dip, monitor closely"
-    if change_pct < 0 and rsi < 40:
-        return "ACCUMULATE — dip into value zone"
-    return "WATCH TO BUY — neutral, awaiting direction"
+    if rsi < RSI_OVERSOLD:
+        return f"RSI below {RSI_OVERSOLD} (oversold)"
+    if rsi > RSI_OVERBOUGHT:
+        return f"RSI above {RSI_OVERBOUGHT} (overbought)"
+    if not price or not ma_20:
+        return f"RSI between {RSI_OVERSOLD} and {RSI_OVERBOUGHT}"
+    if abs(price - ma_20) <= ma_20 * NEAR_AVERAGE_PCT / 100:
+        return "Near 20-day average"
+    return "Above 20-day average" if price > ma_20 else "Below 20-day average"
 
 
 def is_favorable(change_pct: float | None, rsi: float | None) -> bool | None:
@@ -92,7 +90,8 @@ def enrich_quote(
     ``history`` is the instrument's real daily closes (any order, one per
     date). Without it ``rsi``, ``ma_20``, ``volatility``, ``volatility_pct``,
     ``prediction``, ``reason``, ``is_favorable`` and ``is_buyable`` are all
-    None. Any ``rsi`` or ``ma_20`` already present in ``data`` is ignored: it
+    None. ``prediction`` / ``reason`` need the RSI; the two flags need the
+    day's change as well. Any ``rsi`` or ``ma_20`` already present in ``data`` is ignored: it
     may be an old estimate. ``day_high`` and ``day_low`` are None unless the
     provider supplied them. The input is not modified.
     """
@@ -100,7 +99,8 @@ def enrich_quote(
     rsi = _rounded(indicators.rsi_14)
     volatility_pct = _rounded(indicators.volatility_pct)
     change_pct = _number(data.get("change_pct"))
-    prediction = signal_text(change_pct, rsi)
+    ma_20 = _rounded(indicators.sma_20)
+    prediction = indicator_label(rsi, _number(data.get("price")), ma_20)
     has_indicator = any(
         value is not None for value in (indicators.rsi_14, indicators.sma_20, indicators.volatility_pct)
     )
@@ -112,7 +112,7 @@ def enrich_quote(
         "day_high": _number(data.get("day_high")) or None,
         "day_low": _number(data.get("day_low")) or None,
         "rsi": rsi,
-        "ma_20": _rounded(indicators.sma_20),
+        "ma_20": ma_20,
         "volatility": classify_volatility(volatility_pct),
         "volatility_pct": volatility_pct,
         "prediction": prediction,

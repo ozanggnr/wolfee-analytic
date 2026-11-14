@@ -122,7 +122,7 @@ def _percent(value: Decimal, signed: bool = False) -> str:
 # Input rows are the display dicts of the market cache: symbol, name, price,
 # change_pct, currency, market_type, previous_close, day_low, day_high, volume
 # and, only when computed from real history, rsi, ma_20, volatility_pct with
-# indicators_as_of. No label such as "PURCHASABLE" is ever turned into a fact.
+# indicators_as_of. The card label (``prediction``) is never turned into a fact.
 # --------------------------------------------------------------------------
 
 NO_MARKET_DATA = Fact("Market data", "not available yet — no instrument has a price")

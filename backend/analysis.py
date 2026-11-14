@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from quant.signals import enrich_quote, is_buyable, signal_text
+from quant.signals import enrich_quote, is_buyable
 # The symbol lists now live in quant.universe; re-exported for existing importers.
 from quant.universe import BIST_SYMBOLS, COMMODITIES_SYMBOLS, GLOBAL_SYMBOLS  # noqa: F401
 
@@ -44,6 +44,15 @@ def calculate_indicators(df: pd.DataFrame):
     return df
 
 
+def _day_change_label(change_pct):
+    """The day's move in words: the only label that needs no indicator."""
+    if change_pct > 0:
+        return f"Up {change_pct:.1f}% today"
+    if change_pct < 0:
+        return f"Down {abs(change_pct):.1f}% today"
+    return "Unchanged today"
+
+
 def _legacy_estimates(price, change_pct, day_high, day_low):
     """TEMPORARY — the single-day estimates decision D4 removes.
 
@@ -52,11 +61,14 @@ def _legacy_estimates(price, change_pct, day_high, day_low):
     keep working until Agent 2 makes them accept None (REQ-26). These are not a
     14-period RSI, a 20-day average or a volatility measure. Delete this
     function and the ``legacy_estimates`` flag once those callers are changed.
+
+    ``prediction`` / ``reason`` are not estimates: with no real RSI to describe
+    they state the day's change, which the provider supplied.
     """
     rsi = max(5, min(95, 50 + (change_pct * 3)))
     ma_20 = price * (1 - change_pct / 200) if price else 0
-    prediction = signal_text(change_pct, rsi)
-    estimated = ["rsi", "ma_20", "volatility", "prediction", "reason", "is_favorable", "is_buyable"]
+    prediction = _day_change_label(change_pct)
+    estimated = ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable"]
     estimated += [field for field, value in (("day_high", day_high), ("day_low", day_low)) if not value]
     return {
         "estimated_fields": estimated,
@@ -127,6 +139,7 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
         # They come from real daily closes or are None; the day range is never estimated.
         enriched = enrich_quote(
             {
+                "price": price,
                 "change_pct": change_pct,
                 "day_high": data.get('day_high', 0) or data.get('high', 0),
                 "day_low": data.get('day_low', 0) or data.get('low', 0),
@@ -305,9 +318,9 @@ def get_bulk_analysis(period: str):
             if rsi_val is None:
                 rsi_status = "Not available"
             elif rsi_val > 70:
-                rsi_status = "Overbought (High Risk)"
+                rsi_status = "Overbought"
             elif rsi_val < 30:
-                rsi_status = "Oversold (Value)"
+                rsi_status = "Oversold"
             else:
                 rsi_status = "Neutral"
 

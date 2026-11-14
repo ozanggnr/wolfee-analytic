@@ -40,7 +40,7 @@ STOCK = {
     "day_low": 118.5, "day_high": 121.0, "volume": 1234567,
     "rsi": 100.0, "ma_20": 110.5, "volatility_pct": 0.79, "volatility": "LOW",
     "indicators_as_of": "2026-01-21",
-    "prediction": "TAKE PROFITS — up 4.0%, overbought", "is_buyable": False,
+    "prediction": "RSI above 70 (overbought)", "is_buyable": False,
 }
 
 # What analyze_stock still returns in its temporary legacy mode: estimates, flagged as such.
@@ -48,9 +48,9 @@ LEGACY_STOCK = {
     "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0, "currency": "USD",
     "market_type": "GLOBAL", "previous_close": 198.02, "day_high": 202.0, "day_low": 198.0,
     "volume": 1000, "rsi": 53.0, "ma_20": 199.0, "volatility": "LOW",
-    "prediction": "PURCHASABLE — rising +1.0%", "indicators_as_of": None,
-    "estimated_fields": ["rsi", "ma_20", "volatility", "prediction", "reason",
-                         "is_favorable", "is_buyable", "day_high", "day_low"],
+    "prediction": "Up 1.0% today", "indicators_as_of": None,
+    "estimated_fields": ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable",
+                         "day_high", "day_low"],
 }
 
 

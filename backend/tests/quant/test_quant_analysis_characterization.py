@@ -38,12 +38,12 @@ def test_default_call_still_returns_the_legacy_estimates_until_callers_accept_no
         "currency": "EUR", "market_cap": 5.0, "volume": 1000,
         "day_high": 202.0, "day_low": 198.0, "open": None, "previous_close": None,
         "bid": 0.0, "ask": 0.0, "rsi": 53.0, "ma_20": 199.0,
-        "prediction": "PURCHASABLE — rising +1.0%", "reason": "PURCHASABLE — rising +1.0%",
+        "prediction": "Up 1.0% today", "reason": "Up 1.0% today",
         "buy_signals": [], "is_favorable": True, "is_buyable": True,
         "volatility": "LOW", "volatility_pct": None,
         "indicators_as_of": None, "indicator_method": None,
-        "estimated_fields": ["rsi", "ma_20", "volatility", "prediction", "reason",
-                             "is_favorable", "is_buyable", "day_high", "day_low"],
+        "estimated_fields": ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable",
+                             "day_high", "day_low"],
         "market_type": "GLOBAL",
     }
 
@@ -55,7 +55,9 @@ def test_legacy_estimates_for_a_falling_bist_stock_are_unchanged():
         result = analysis.analyze_stock("THYAO.IS")
 
     assert (result["rsi"], result["ma_20"], result["volatility"]) == (32.0, 309.0, "HIGH")
-    assert result["prediction"] == "ACCUMULATE — oversold, potential bounce"
+    # No real RSI to describe, so the label states the day's change and nothing else.
+    assert result["prediction"] == result["reason"] == "Down 6.0% today"
+    assert "prediction" not in result["estimated_fields"]
     assert (result["is_favorable"], result["is_buyable"]) == (False, False)
     assert result["indicators_as_of"] is None
     # The provider supplied the day range, so only the indicators and labels are estimates.
@@ -111,7 +113,7 @@ def test_real_history_gives_real_indicators_and_labels():
     assert result["ma_20"] == 110.5
     assert result["volatility_pct"] == round(expected_volatility, 2) == 0.79
     assert result["volatility"] == "LOW"
-    assert result["prediction"] == "TAKE PROFITS — up 4.0%, overbought"
+    assert result["prediction"] == result["reason"] == "RSI above 70 (overbought)"
     assert (result["is_favorable"], result["is_buyable"]) == (True, False)
     assert result["indicators_as_of"] == "2026-01-21"
     assert result["indicator_method"] == INDICATOR_METHOD
