@@ -41,7 +41,9 @@ def test_default_call_still_returns_the_legacy_estimates_until_callers_accept_no
         "prediction": "PURCHASABLE — rising +1.0%", "reason": "PURCHASABLE — rising +1.0%",
         "buy_signals": [], "is_favorable": True, "is_buyable": True,
         "volatility": "LOW", "volatility_pct": None,
-        "indicators_as_of": None, "indicator_method": None,      # None marks the figures as estimates
+        "indicators_as_of": None, "indicator_method": None,
+        "estimated_fields": ["rsi", "ma_20", "volatility", "prediction", "reason",
+                             "is_favorable", "is_buyable", "day_high", "day_low"],
         "market_type": "GLOBAL",
     }
 
@@ -56,6 +58,8 @@ def test_legacy_estimates_for_a_falling_bist_stock_are_unchanged():
     assert result["prediction"] == "ACCUMULATE — oversold, potential bounce"
     assert (result["is_favorable"], result["is_buyable"]) == (False, False)
     assert result["indicators_as_of"] is None
+    # The provider supplied the day range, so only the indicators and labels are estimates.
+    assert "rsi" in result["estimated_fields"] and "day_high" not in result["estimated_fields"]
 
 
 def test_global_stock_without_history_has_no_indicators_or_labels():
@@ -71,7 +75,7 @@ def test_global_stock_without_history_has_no_indicators_or_labels():
         "prediction": None, "reason": None,
         "buy_signals": [], "is_favorable": None, "is_buyable": None,
         "volatility": None, "volatility_pct": None,
-        "indicators_as_of": None, "indicator_method": None,
+        "indicators_as_of": None, "indicator_method": None, "estimated_fields": [],
         "market_type": "GLOBAL",
     }
 

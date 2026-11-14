@@ -56,7 +56,10 @@ def _legacy_estimates(price, change_pct, day_high, day_low):
     rsi = max(5, min(95, 50 + (change_pct * 3)))
     ma_20 = price * (1 - change_pct / 200) if price else 0
     prediction = signal_text(change_pct, rsi)
+    estimated = ["rsi", "ma_20", "volatility", "prediction", "reason", "is_favorable", "is_buyable"]
+    estimated += [field for field, value in (("day_high", day_high), ("day_low", day_low)) if not value]
     return {
+        "estimated_fields": estimated,
         "day_high": day_high or (round(price * 1.01, 2) if price else 0),
         "day_low": day_low or (round(price * 0.99, 2) if price else 0),
         "rsi": round(rsi, 2),
@@ -171,6 +174,9 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
             "volatility_pct": enriched["volatility_pct"],
             "indicators_as_of": enriched["indicators_as_of"],
             "indicator_method": enriched["indicator_method"],
+            # Names of the fields above that are single-day estimates, not measurements
+            # (only in the temporary legacy mode). The AI layer never states them.
+            "estimated_fields": enriched.get("estimated_fields", []),
             "market_type": market_type,
         }
 
