@@ -1,11 +1,25 @@
 # Agent 2 (Backend) progress
 
-Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` acfd92e on 2026-11-13. Local commits only: no push, no merge.
+Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` 490995e on 2026-11-14 (no conflicts; before that acfd92e). Local commits only: no push, no merge.
 Resume protocol: `git status`, read this file, continue from "In progress" / "Next".
 
-Test commands (from the worktree root, Python 3.11.9 venv in the session scratchpad):
-- Full suite: `python -m pytest backend/tests -q -p no:cacheprovider -W ignore`
-- Postgres API tests (empty, disposable DB): `WOLFEE_TEST_POSTGRES_URL=postgresql://postgres@127.0.0.1:55432/wolfee_tests python -m pytest backend/tests/api -q -p no:cacheprovider -W ignore`
+Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private names so other agents' runs cannot delete my database mid-run: SQLite file `~/wolfee-test/agent2/test.db`, Postgres databases `wolfee_tests_agent2` and `wolfee_migrations_agent2` on the PG16 cluster (port 55432). (The shared `~/wolfee-test/test.db` gave one run with 6 "readonly database" failures; the same commit passed 525/525 on rerun.)
+
+## Current task (2026-11-14, second batch): history wiring, REQ-28, REQ-30, WSL verification
+
+- [x] Rebase onto `integration` 490995e: no conflicts (no file changed on both sides). 525 passed on SQLite.
+- [x] 1. History wiring (REQ-24/26, fixes REQ-10). `workers._enrich_stock_data` and its estimate/advice-label copy are deleted.
+  - `workers._enrich_quotes` calls `quant.signals.enrich_quote(data, market_type, currency, history=...)` for every BIST, Global and commodity quote and for the `/api/live-price` cache update.
+  - `services/card_history.histories_for` reads the stored `price_history` closes as `DailyClose(date, Decimal(str(close)))`, two queries per market. An unknown instrument, no stored close, or a failed read (logged) gives `history=None`, so the indicators are null.
+  - `indicators_as_of`, `indicator_method` and `volatility_pct` are kept in `stock_data.extra_data` (JSON, previously never written; no stock_data provenance columns exist, DATABASE_CONTRACT §4 M4 still open). `_stock_to_dict` returns them, plus `estimated_fields: []`; `prediction` / `reason` pass null through.
+  - `refresh_all_data` runs the history refresh before the quotes, so the cards use the newest closes; on an empty cache the quotes go first.
+  - The watchlist no longer turns a null label into "Bullish" / "Bearish".
+  - Tests: `tests/services/test_card_enrichment.py` (7), `tests/api/test_live_price_cache.py` (1); 7 of the 8 fail on the old code (it stored rsi 68 and "PURCHASABLE — strong momentum +6.0%").
+  - Results: SQLite 533 passed; PG16 API 180 passed; migrations base→head→base→head ok, `alembic check` clean at `d7b2e6f4a913`.
+  - Still estimating: `analysis.analyze_stock` (`/api/analyze`, `/api/live-price` response) keeps Agent 3's `legacy_estimates=True` default; its result is re-enriched before it reaches the cache.
+- [ ] 2. REQ-28: `ai_insights` provenance migration (§4.4) and the routes on `ai.insights`.
+- [ ] 3. REQ-30: null, not 0.0, for a missing open / previous_close.
+- [ ] 4. Final WSL verification and report.
 
 ## Current task (2026-11-13/14): rebase, then REQ-17, 14, 18, 24-support, 19, 20, 21, 26, 25 in order
 
