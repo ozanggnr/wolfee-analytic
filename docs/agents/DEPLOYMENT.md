@@ -139,9 +139,16 @@ Set secrets with `fly secrets set NAME=…`. **No values are recorded here.**
 Recommended: **one unmanaged single-node Fly Postgres**, the development configuration (shared-cpu-1x, 256 MB, 1 GB volume), in `fra`, attached to the app:
 
 ```
-fly postgres create --name wolfee-db --region fra   # choose "Development - Single node"
+fly postgres create --name wolfee-db --region fra --image-ref flyio/postgres-flex:16   # choose "Development - Single node"
 fly postgres attach wolfee-db --app wolfee-analytics
 ```
+
+**PostgreSQL major version is pinned to 16** (user, 2026-11-14), the same major as the official test cluster (TESTING.md §3, 16.16 in WSL):
+
+- `--image-ref flyio/postgres-flex:16` is required. Without it, `fly postgres create` uses Fly's current default, which can be a newer major. The `16` tag tracks the latest 16.x (16.11 on Docker Hub, checked 2026-11-14), so minor and security updates still arrive. Exact minor versions cannot match: Fly's images lag the PGDG packages.
+- **Verify right after creation**, before `attach`: `fly postgres connect -a wolfee-db`, then `SHOW server_version;` must start with `16.`. If it does not, destroy the empty database app and create it again with the image ref.
+- **Upgrades:** before any `fly image update -a wolfee-db`, check that the target image is still a `16.x` tag. A major upgrade (16 → 17+) needs a dump and restore, plus moving the test cluster to the same major first. It is a decision for the user, not a routine update.
+- `fly.toml` cannot pin this: Postgres is a separate Fly app, created by the command above. `fly.toml` only carries a comment that points here.
 
 - When the CLI offers to stop the single node when idle, accept it: it then costs only storage while nobody uses the app. First request after idle waits for both machines to start.
 - Unmanaged means Fly does not handle backups, upgrades or failover. Acceptable because the data is disposable. Take a volume snapshot before risky migrations (`fly volumes snapshots create`).
@@ -210,6 +217,19 @@ PostgreSQL **16.2**, empty database, `agent/backend` at `978b054`, Python 3.11.9
 | Backend tests against Postgres | 64 passed, then stopped at the first error: the API test fixtures create the asyncpg pool in one event loop (`asyncio.run(init_db())`) and reuse it in the TestClient's loop. A test-harness problem, not a product defect. Service tests are hard-wired to SQLite. REQ-9 stays open: Agent 2 to make the fixtures Postgres-safe (for example `NullPool` under test) |
 
 Not verified: anything on Fly itself; the release command in a Fly release machine; memory use at 512 MB; cold-start time.
+
+### 8.1 Re-verification in the official test environment (2026-11-14, WSL, PostgreSQL 16.16)
+
+Commands in TESTING.md §3.1 / §3.2, run read-only against `agent/backend` @ `771368f`:
+
+| Step | Result |
+|------|--------|
+| `alembic upgrade head` on an empty database | `8c15c00878ff` → `a1f3c9d27b10` → `b2e4d8a31c55` → `c3f5a7e91d20` (REQ-16) → `d7b2e6f4a913` (price_history, REQ-26), exit 0. F1 is fixed: no driver change needed |
+| `alembic downgrade base` | all five downgrades, exit 0 |
+| `alembic upgrade head` again | clean, single head `d7b2e6f4a913` |
+| `alembic check` | "No new upgrade operations detected", exit 0: migrations alone build the models' schema |
+| Tables | 14: the 13 model tables + `alembic_version` |
+| API tests on Postgres (REQ-9 harness) | **179 passed**. The §8 event-loop problem is solved by `DB_POOL=null` under test |
 
 ---
 
