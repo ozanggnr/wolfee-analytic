@@ -61,13 +61,20 @@ window.getFilteredStocks = function(baseStocks, query = '') {
             
             const symMatch = sym.toLowerCase().includes(lowerQuery);
             const nameMatch = (stock.name || '').toLowerCase().includes(lowerQuery);
-            const predMatch = (stock.prediction || '').toLowerCase().includes(lowerQuery);
-            const reasonMatch = (stock.reason || '').toLowerCase().includes(lowerQuery);
-            
+            // Unavailable values (null or estimated, REQ-27) are not searchable
+            const F = window.WolfeeFields;
+            const textOf = (field) => {
+                const value = F.fieldValue(stock, field);
+                return typeof value === 'string' ? value.toLowerCase() : '';
+            };
+            const predMatch = textOf('prediction').includes(lowerQuery);
+            const reasonMatch = textOf('reason').includes(lowerQuery);
+
             const priceStr = (stock.price || 0).toFixed(2);
             const changeStr = (stock.change_pct || 0).toFixed(2);
             const volStr = (stock.volume || 0).toString();
-            const rsiStr = (stock.rsi || 0).toFixed(2);
+            const rsi = F.numberField(stock, 'rsi');
+            const rsiStr = rsi === null ? '' : rsi.toFixed(2);
             
             const numMatch = priceStr.includes(lowerQuery) || 
                              changeStr.includes(lowerQuery) || 
