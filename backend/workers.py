@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 # Import will be done lazily to avoid circular imports
 _refresh_running = False
 _last_refresh_time = 0
+
+# The refreshers fetch concurrently but write one at a time. SQLite allows a single
+# writer; without this, one refresher's open write transaction made the others fail
+# with "database is locked" (REQ-18: exchange_rates stayed empty). Write phases are
+# short and hold no network calls.
+_DB_WRITE_LOCK = asyncio.Lock()
 MIN_REFRESH_INTERVAL_SECONDS = 90  # Don't refresh more than once per 90s
 AI_INSIGHT_CACHE_HOURS = int(os.getenv("AI_INSIGHT_CACHE_HOURS", "4"))
 
@@ -186,7 +192,7 @@ async def refresh_bist_stocks() -> int:
     valid_data = [d for d in results if d]
 
     count = 0
-    async with AsyncSessionLocal() as session:
+    async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
         for data in valid_data:
             try:
                 await _upsert_stock(session, data)
@@ -219,7 +225,7 @@ async def refresh_global_stocks() -> int:
     valid_data = [d for d in results if d]
 
     count = 0
-    async with AsyncSessionLocal() as session:
+    async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
         for data in valid_data:
             try:
                 await _upsert_stock(session, data)
@@ -234,22 +240,27 @@ async def refresh_commodities() -> int:
     from analysis import COMMODITIES_SYMBOLS
     from data_sources.global_market import fetch_commodity_data
     
+    # Fetch everything first: a session left open across network calls kept a
+    # write transaction open and locked SQLite for the other refreshers (REQ-18).
+    fetched = []
+    for symbol, name in COMMODITIES_SYMBOLS.items():
+        try:
+            data = await asyncio.to_thread(fetch_commodity_data, symbol)
+            if not data:
+                continue
+            data['name'] = name
+            fetched.append(_enrich_stock_data(data, market_type='COMMODITY', currency='USD'))
+        except Exception as e:
+            logger.error(f"Commodity refresh error {symbol}: {e}")
+
     count = 0
-    async with AsyncSessionLocal() as session:
-        for symbol, name in COMMODITIES_SYMBOLS.items():
+    async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
+        for data in fetched:
             try:
-                data = await asyncio.to_thread(fetch_commodity_data, symbol)
-                if not data:
-                    continue
-                
-                data['name'] = name
-                data = _enrich_stock_data(data, market_type='COMMODITY', currency='USD')
                 await _upsert_stock(session, data)
                 count += 1
-                
             except Exception as e:
-                logger.error(f"Commodity refresh error {symbol}: {e}")
-        
+                logger.error(f"Commodity upsert error {data.get('symbol')}: {e}")
         await session.commit()
     return count
 
@@ -262,7 +273,7 @@ async def refresh_turkish_gold() -> int:
         if not gold_data:
             return 0
         
-        async with AsyncSessionLocal() as session:
+        async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
             for item in gold_data:
                 existing = await session.execute(
                     select(TurkishGold).where(TurkishGold.gold_type == item['gold_type'])
@@ -291,9 +302,11 @@ async def refresh_exchange_rates() -> int:
     try:
         rates = await asyncio.to_thread(fetch_exchange_rates)
         if not rates:
+            # Never filled in: TRY conversion reports missing_fx_rate until a fetch succeeds.
+            logger.error("Exchange rate refresh: TCMB returned no rates; exchange_rates left unchanged")
             return 0
         
-        async with AsyncSessionLocal() as session:
+        async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
             for item in rates:
                 existing = await session.execute(
                     select(ExchangeRate).where(ExchangeRate.pair == item['pair'])
@@ -311,8 +324,8 @@ async def refresh_exchange_rates() -> int:
             
             await session.commit()
         return len(rates)
-    except Exception as e:
-        logger.error(f"Exchange rate refresh error: {e}")
+    except Exception:
+        logger.exception("Exchange rate refresh failed; exchange_rates left unchanged")
         return 0
 
 async def refresh_ai_insight(force: bool = False) -> bool:
