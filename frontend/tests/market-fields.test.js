@@ -8,7 +8,7 @@ import {
     numberField,
     formatNumberField,
     indicatorsAsOf,
-    formatTimestampUTC,
+    formatTimestamp,
     aiProvenance,
     splitLabelledLines,
 } from '../js/core/market-fields.js';
@@ -72,13 +72,28 @@ test('indicatorsAsOf accepts only a real YYYY-MM-DD date', () => {
     }
 });
 
-test('formatTimestampUTC formats ISO timestamps in UTC and rejects anything else', () => {
-    assert.equal(formatTimestampUTC('2026-11-14T09:05:00+03:00'), '2026-11-14 06:05 UTC');
-    assert.equal(formatTimestampUTC('2026-11-14T06:05:00Z'), '2026-11-14 06:05 UTC');
-    assert.equal(formatTimestampUTC('2026-11-14T06:05:00.123456'), '2026-11-14 06:05 UTC');
+test('formatTimestamp shows the instant in the requested time zone', () => {
+    const istanbul = { timeZone: 'Europe/Istanbul' };
 
-    for (const value of ['', 'yesterday', null, undefined, 42]) {
-        assert.equal(formatTimestampUTC(value), null, String(value));
+    assert.equal(formatTimestamp('2026-11-14T06:05:00Z', istanbul), '2026-11-14 09:05 GMT+3');
+    assert.equal(formatTimestamp('2026-11-14T09:05:00+03:00', { timeZone: 'UTC' }), '2026-11-14 06:05 UTC');
+    assert.equal(formatTimestamp('2026-11-14T22:30:00Z', istanbul), '2026-11-15 01:30 GMT+3');
+});
+
+test('formatTimestamp reads a timestamp without a zone as UTC', () => {
+    assert.equal(formatTimestamp('2026-11-14T06:05:00.123456', { timeZone: 'Europe/Istanbul' }), '2026-11-14 09:05 GMT+3');
+});
+
+test('formatTimestamp without a time zone uses the runtime zone', () => {
+    const value = '2026-11-14T06:05:00Z';
+    const runtimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    assert.equal(formatTimestamp(value), formatTimestamp(value, { timeZone: runtimeZone }));
+});
+
+test('formatTimestamp rejects anything that is not an ISO timestamp', () => {
+    for (const value of ['', 'yesterday', '2026-11-14', '2026-11-14T25:99:00Z', null, undefined, 42]) {
+        assert.equal(formatTimestamp(value), null, String(value));
     }
 });
 
@@ -91,14 +106,14 @@ test('aiProvenance reads the new response shape', () => {
         is_fallback: false,
         disclaimer: 'Descriptive only. Not investment advice.',
         violations: ['should never surface'],
-    }, 'analysis');
+    }, 'analysis', { timeZone: 'Europe/Istanbul' });
 
     assert.deepEqual(result, {
         text: 'Price is above its 20-day average.',
         isPlainText: true,
         disclaimer: 'Descriptive only. Not investment advice.',
-        generatedAt: '2026-11-14 06:05 UTC',
-        inputsAsOf: '2026-11-13 15:00 UTC',
+        generatedAt: '2026-11-14 09:05 GMT+3',
+        inputsAsOf: '2026-11-13 18:00 GMT+3',
         isTemplate: false,
     });
 });

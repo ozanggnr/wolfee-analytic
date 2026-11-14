@@ -134,7 +134,7 @@ function renderStockCard(stock) {
             </div>
             <div class="stat-item">
                 <span>Trend</span>
-                <span style="color: ${priceColor}">${isUp ? 'Bullish' : 'Bearish'}</span>
+                <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
             </div>
         </div>
         <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
@@ -331,7 +331,7 @@ window.renderOpportunitiesPage = function() {
                 </div>
                 <div class="stat-item">
                     <span>Trend</span>
-                    <span style="color: ${priceColor}">${isUp ? 'Bullish' : 'Bearish'}</span>
+                    <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
                 </div>
             </div>
             ${badges ? `<div style="margin: 5px 0;">${badges}</div>` : ''}

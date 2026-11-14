@@ -78,12 +78,14 @@ export function indicatorsAsOf(record) {
 }
 
 /**
+ * Formats a timestamp in the viewer's time zone, or in `timeZone` when given.
  * A timestamp without a zone is read as UTC (Python's naive utcnow()).
  *
  * @param {unknown} value ISO 8601 timestamp
- * @returns {string | null} "YYYY-MM-DD HH:MM UTC"
+ * @param {{ timeZone?: string }} [options] IANA zone; omit for the viewer's
+ * @returns {string | null} "YYYY-MM-DD HH:MM <zone>", e.g. "2026-11-14 09:05 GMT+3"
  */
-export function formatTimestampUTC(value) {
+export function formatTimestamp(value, options = {}) {
     if (typeof value !== 'string') return null;
 
     const trimmed = value.trim();
@@ -92,19 +94,31 @@ export function formatTimestampUTC(value) {
 
     const date = new Date(match[1] ? trimmed : `${trimmed}Z`);
     if (Number.isNaN(date.getTime())) return null;
-    return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+        timeZone: options.timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZoneName: 'short',
+    }).formatToParts(date).map(({ type, value: part }) => [type, part]));
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${parts.timeZoneName}`;
 }
 
 /**
  * @param {Record<string, unknown> | null | undefined} response body of
  *   /api/insight or /api/ai/analyze/{symbol}
  * @param {'insight' | 'analysis'} textField
+ * @param {{ timeZone?: string }} [options] passed to formatTimestamp
  * @returns {{ text: string, isPlainText: boolean, disclaimer: string,
  *   generatedAt: string | null, inputsAsOf: string | null, isTemplate: boolean }}
  *   `isPlainText` is true for the REQ-25 shape (which carries a disclaimer);
  *   the older shape may still contain markdown.
  */
-export function aiProvenance(response, textField) {
+export function aiProvenance(response, textField, options = {}) {
     const body = response && typeof response === 'object' ? response : {};
     const text = typeof body[textField] === 'string' ? body[textField] : '';
     const hasDisclaimerField = typeof body.disclaimer === 'string';
@@ -116,8 +130,8 @@ export function aiProvenance(response, textField) {
         text,
         isPlainText: hasDisclaimerField,
         disclaimer,
-        generatedAt: formatTimestampUTC(body.generated_at),
-        inputsAsOf: formatTimestampUTC(body.inputs_as_of),
+        generatedAt: formatTimestamp(body.generated_at, options),
+        inputsAsOf: formatTimestamp(body.inputs_as_of, options),
         isTemplate: body.is_fallback === true || body.generated_by === 'template',
     };
 }

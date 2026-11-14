@@ -182,7 +182,7 @@ function updateChangedCards(newStocks) {
                 }
                 if (trendEl) {
                     trendEl.style.color = color;
-                    trendEl.textContent = isUp ? 'Bullish' : 'Bearish';
+                    trendEl.textContent = isUp ? 'Up today' : 'Down today';
                 }
                 if (sigChip && typeof getSignalStyle === 'function') {
                     const sig = getSignalStyle(window.WolfeeFields.fieldValue(newStock, 'prediction'));
