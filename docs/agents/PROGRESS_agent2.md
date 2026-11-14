@@ -48,6 +48,7 @@ Verify after each item with the scratch script `verify.sh`:
     - **Agent 3:** `ai_service.get_market_insight` compares `rsi < 30`, and `get_stock_analysis` formats `rsi`/`ma_20` with `:.0f`. Both raise on null. The callers catch it, so there's no 500, but the insight or analysis is lost. Also `analysis.py`: the 100–102 day-range estimate and the 253–283 bulk export.
     - **Agent 2 (H1):** `workers._enrich_stock_data` still estimates, until Agent 3's canonical enrichment lands.
     - **Agent 1:** DATABASE_CONTRACT §2.6 still says `rsi` "default 50".
+    - **Agent 1 sign-off needed:** `models.py` is a shared contract. bb00a11 removed the Python-side defaults of seven `stock_data` columns (rsi, ma_20, day_high, day_low, volatility, is_favorable, is_buyable). There is no DDL change and `alembic check` is clean, but it was committed without prior sign-off.
     - **Agent 4:** legacy endpoints may now send null for these fields (REQ-27).
 - [x] REQ-19: the watchlist market is decided by the server.
   - Cause: the frontend (`frontend/js/portfolio.js:73-74`, Agent 4) sends `market: "US"` whenever its own BIST list lookup misses, and the backend trusted the hint.
@@ -69,8 +70,16 @@ Verify after each item with the scratch script `verify.sh`:
   - The route returns the "still loading" placeholder, unstored. Once data is ready it uses every row, via `asyncio.to_thread`, and still stores nothing.
   - Tests: `tests/services/test_insight_readiness.py` (10) and `tests/api/test_insight_api.py` (2).
   - Results: 438 on SQLite, 172 on PG16, check clean.
-- [ ] REQ-21 (watchlist summary cache invalidation). **Next.**
-- [ ] REQ-26: `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
+- [x] REQ-21: the watchlist summary changes immediately after POST or DELETE.
+  - Cause: the server cache was already evicted, but `/summary` sent `Cache-Control: private, max-age=60`. The frontend refetches without `force_refresh`, so the browser served its HTTP-cached copy.
+  - Fix:
+    - The header is now `no-store, private`; the 60 s cache stays server-side.
+    - A per-user generation counter stops a summary computed across a change from being cached.
+  - Tests: `tests/api/test_watchlist_summary_cache.py` (4). The old `max-age` assertion in `tests/test_auth_and_watchlist.py` was updated.
+  - Results: 442 on SQLite, 176 on PG16, check clean.
+  - The deploy runs one uvicorn process, so the in-memory cache is consistent.
+- [ ] REQ-26: **Next.**
+  `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
 - [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
 
 ## Earlier (done, see git log)

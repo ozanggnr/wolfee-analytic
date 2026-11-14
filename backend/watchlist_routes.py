@@ -34,10 +34,15 @@ router = APIRouter(prefix="/api/watchlist", tags=["Portfolio Watchlist"])
 # ============================================================
 SUMMARY_CACHE_TTL = 60  # seconds
 _summary_cache: Dict[int, Dict[str, Any]] = {}
+# Bumped on every watchlist change, so a summary computed across a change is not cached (REQ-21).
+_summary_generation: Dict[int, int] = {}
+# The server cache above is evicted on change; a browser's HTTP cache would not be (REQ-21).
+SUMMARY_CACHE_CONTROL = "no-store, private"
 
 
 def invalidate_user_cache(user_id: int):
     """Evict user's summary cache when watchlist changes."""
+    _summary_generation[user_id] = _summary_generation.get(user_id, 0) + 1
     _summary_cache.pop(user_id, None)
 
 
@@ -321,6 +326,8 @@ async def get_watchlist_summary(
     """
     now_ts = time.time()
     user_id = current_user.id
+    generation = _summary_generation.get(user_id, 0)
+    response.headers["Cache-Control"] = SUMMARY_CACHE_CONTROL
 
     # Check 60-second cache
     cached_entry = _summary_cache.get(user_id)
@@ -331,7 +338,6 @@ async def get_watchlist_summary(
             data = cached_entry["data"].copy()
             data["from_cache"] = True
             data["cache_expires_in"] = remaining
-            response.headers["Cache-Control"] = f"private, max-age={remaining}"
             return data
 
     # Fetch user watchlist items
@@ -424,11 +430,11 @@ async def get_watchlist_summary(
         "cache_expires_in": SUMMARY_CACHE_TTL
     }
 
-    # Store in cache
-    _summary_cache[user_id] = {
-        "data": summary_data,
-        "cached_at": now_ts
-    }
+    # Store in cache, unless the watchlist changed while this summary was computed
+    if _summary_generation.get(user_id, 0) == generation:
+        _summary_cache[user_id] = {
+            "data": summary_data,
+            "cached_at": now_ts
+        }
 
-    response.headers["Cache-Control"] = f"private, max-age={SUMMARY_CACHE_TTL}"
     return summary_data
