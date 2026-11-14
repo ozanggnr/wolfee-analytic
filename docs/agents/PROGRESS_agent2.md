@@ -60,8 +60,16 @@ Verify after each item with the scratch script `verify.sh`:
   - Tests: `tests/api/test_watchlist_market.py` covers THYAO, THYAO.IS, AAPL and GC=F, each with and without a hint (14 tests, 9 failed before the fix).
   - Results: 426 on SQLite, 170 on PG16, check clean.
   - Existing rows stored as "US" are not rewritten; production starts with an empty database (D8).
-- [ ] REQ-20 (no insight from empty data). **Next.**
-- [ ] REQ-21 (watchlist summary cache invalidation).
+- [x] REQ-20: no insight from empty or partial stock data.
+  - Causes:
+    - `refresh_ai_insight` stored an insight from whatever rows existed, even after a failed BIST or Global refresh.
+    - `/api/insight` built one on the fly from `limit(50)` rows, which is partial by construction, and ran the synchronous Gemini call on the event loop.
+  - `services/insight_readiness`: an insight needs ≥50% of both the BIST and Global universes, counting distinct symbols.
+  - The worker logs and returns False; nothing is stored.
+  - The route returns the "still loading" placeholder, unstored. Once data is ready it uses every row, via `asyncio.to_thread`, and still stores nothing.
+  - Tests: `tests/services/test_insight_readiness.py` (10) and `tests/api/test_insight_api.py` (2).
+  - Results: 438 on SQLite, 172 on PG16, check clean.
+- [ ] REQ-21 (watchlist summary cache invalidation). **Next.**
 - [ ] REQ-26: `price_history` migration (DATABASE_CONTRACT §4.3), plus a fetch/cache job from the `/api/chart` source, in Agent 3's REQ-24 input shape.
 - [ ] REQ-25 routes. Waits until Agent 3 delivers the guarded layer.
 

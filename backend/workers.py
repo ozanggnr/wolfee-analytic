@@ -355,7 +355,12 @@ async def refresh_ai_insight(force: bool = False) -> bool:
             result = await session.execute(select(StockData))
             stocks = result.scalars().all()
 
-            if not stocks:
+            # REQ-20: never build (or store) an insight from an empty or partial cache.
+            from services import insight_readiness
+            counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
+            if not insight_readiness.is_ready(counts):
+                logger.warning("AI insight not generated: stock data incomplete (%s)",
+                               insight_readiness.describe(counts))
                 return False
 
             market_data = [{

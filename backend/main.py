@@ -25,6 +25,7 @@ from security_middleware import SecurityMiddleware, get_optional_user
 import auth_routes
 import watchlist_routes
 from watchlist_routes import _enrich_watchlist_tickers
+from services import insight_readiness
 from services.market_display import portfolio_export_row, unavailable_export_row
 
 # Configure logging
@@ -515,11 +516,15 @@ async def get_insight():
             if insight and insight.insight_text:
                 return {"insight": insight.insight_text}
 
-            # Generate on-the-fly if no cached insight
-            stock_result = await session.execute(select(StockData).limit(50))
-            stocks = stock_result.scalars().all()
+            # No stored insight yet. REQ-20: until both markets are cached, show the
+            # placeholder; otherwise build one from every cached row. Neither is stored:
+            # the worker stores insights after a refresh.
+            stocks = (await session.execute(select(StockData))).scalars().all()
+            counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
+            if not insight_readiness.is_ready(counts):
+                return {"insight": insight_readiness.INSIGHT_LOADING_TEXT}
             stock_list = [_stock_to_dict(s) for s in stocks]
-            insight_text = get_market_insight(stock_list)
+            insight_text = await asyncio.to_thread(get_market_insight, stock_list)
             return {"insight": insight_text}
 
     except Exception as e:
