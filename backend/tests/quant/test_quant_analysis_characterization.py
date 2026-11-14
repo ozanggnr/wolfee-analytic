@@ -36,7 +36,7 @@ def test_default_call_still_returns_the_legacy_estimates_until_callers_accept_no
     assert result == {
         "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0,
         "currency": "EUR", "market_cap": 5.0, "volume": 1000,
-        "day_high": 202.0, "day_low": 198.0, "open": 198.0, "previous_close": 198.02,
+        "day_high": 202.0, "day_low": 198.0, "open": None, "previous_close": None,
         "bid": 0.0, "ask": 0.0, "rsi": 53.0, "ma_20": 199.0,
         "prediction": "PURCHASABLE — rising +1.0%", "reason": "PURCHASABLE — rising +1.0%",
         "buy_signals": [], "is_favorable": True, "is_buyable": True,
@@ -70,7 +70,7 @@ def test_global_stock_without_history_has_no_indicators_or_labels():
     assert result == {
         "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0,
         "currency": "EUR", "market_cap": 5.0, "volume": 1000,
-        "day_high": None, "day_low": None, "open": 198.0, "previous_close": 198.02,
+        "day_high": None, "day_low": None, "open": None, "previous_close": None,
         "bid": 0.0, "ask": 0.0, "rsi": None, "ma_20": None,
         "prediction": None, "reason": None,
         "buy_signals": [], "is_favorable": None, "is_buyable": None,
@@ -90,6 +90,7 @@ def test_bist_stock_keeps_suffix_currency_and_the_providers_day_range():
     assert result["currency"] == "TRY"
     assert result["market_type"] == "BIST"
     assert (result["day_high"], result["day_low"]) == (320.0, 298.0)
+    assert (result["open"], result["previous_close"]) == (318.0, 319.15)
     assert (result["rsi"], result["ma_20"], result["volatility"]) == (None, None, None)
     assert (result["prediction"], result["is_favorable"], result["is_buyable"]) == (None, None, None)
 
@@ -140,3 +141,11 @@ def test_opportunities_need_a_label_that_could_be_computed():
     ]
 
     assert [o["symbol"] for o in analysis.get_market_opportunities(cached)] == ["B"]
+
+
+def test_open_and_previous_close_are_not_derived_from_each_other():
+    with patch("data_sources.global_market.fetch_global_stock",
+               return_value=_raw("AAPL", 200.0, 1.0, previous_close=198.0)):
+        result = analysis.analyze_stock("AAPL")
+
+    assert (result["open"], result["previous_close"]) == (None, 198.0)

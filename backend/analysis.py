@@ -142,13 +142,6 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
         open_price = data.get('open', 0) or data.get('open_price', 0)
         volume = data.get('volume', 0)
 
-        if not open_price and prev_close:
-            open_price = prev_close
-        elif not open_price and price:
-            open_price = round(price * (1 - change_pct / 100), 2)
-        if not prev_close and price:
-            prev_close = round(price / (1 + change_pct / 100), 2)
-
         result = {
             "symbol": symbol,
             "name": data.get('name', symbol.replace('.IS', '')),
@@ -159,8 +152,10 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
             "volume": int(volume) if volume else 0,
             "day_high": round(day_high, 2) if day_high else (0 if legacy_estimates and history is None else None),
             "day_low": round(day_low, 2) if day_low else (0 if legacy_estimates and history is None else None),
-            "open": round(open_price, 2) if open_price else 0,
-            "previous_close": round(prev_close, 2) if prev_close else 0,
+            # None when the provider gave none: they are never derived from each other
+            # or from the day's change.
+            "open": round(open_price, 2) if open_price else None,
+            "previous_close": round(prev_close, 2) if prev_close else None,
             "bid": data.get('bid', 0),
             "ask": data.get('ask', 0),
             "rsi": enriched["rsi"],
