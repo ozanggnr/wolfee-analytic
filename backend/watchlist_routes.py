@@ -144,7 +144,8 @@ async def _enrich_watchlist_tickers(
                 "day_low": price_level(stock_record.day_low),
                 "rsi": rounded(stock_record.rsi, 1),
                 "currency": stock_record.currency or ("TRY" if is_bist else "USD"),
-                "prediction": stock_record.prediction or ("Bullish" if (stock_record.change_pct or 0) >= 0 else "Bearish"),
+                # A null label stays null (D4): no "Bullish" / "Bearish" from one day's move.
+                "prediction": stock_record.prediction,
                 "market_type": stock_record.market_type or item.market
             })
         else:

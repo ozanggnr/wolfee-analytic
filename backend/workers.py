@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import select, delete, func, desc
 from database import AsyncSessionLocal
 from models import StockData, TurkishGold, ExchangeRate, AIInsight
+from quant.signals import enrich_quote
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,13 @@ async def refresh_all_data(force: bool = False):
 
     logger.info(f"🔄 Starting refresh for active markets: {', '.join(task_labels)}...")
 
+    # History before quotes, so this cycle's cards use the newest closes (REQ-10). On an
+    # empty cache the quotes go first: the first year-long backfill must not hold back the
+    # cards, whose indicators then fill in on the next cycle.
+    history_first = bist_count > 0 and global_count > 0 and comm_count > 0
     try:
+        if history_first:
+            await refresh_history_for_active_markets(bist_active, us_active, comm_active)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for label, result in zip(task_labels, results):
             if isinstance(result, Exception):
@@ -153,7 +160,8 @@ async def refresh_all_data(force: bool = False):
             else:
                 logger.info(f"{label} refresh: {result} items")
 
-        await refresh_history_for_active_markets(bist_active, us_active, comm_active)
+        if not history_first:
+            await refresh_history_for_active_markets(bist_active, us_active, comm_active)
 
         # Refresh AI insight only if stock data was refreshed or forced
         if bist_active or us_active or force:
@@ -189,6 +197,33 @@ async def refresh_history_for_active_markets(bist_active: bool, us_active: bool,
         return None
 
 
+async def _enrich_quotes(quotes: list, market_type: str, currency_of) -> list:
+    """Enrich raw quotes with real daily closes from price_history (REQ-10, D4).
+
+    ``quant.signals.enrich_quote`` is the single copy of the card enrichment (H1).
+    A quote without stored history, or every quote when the history read fails,
+    gets ``history=None``: its indicators and labels are null, never estimated.
+    """
+    from services import card_history
+
+    try:
+        async with AsyncSessionLocal() as session:
+            histories = await card_history.histories_for(session, market_type, [q.get('symbol') for q in quotes])
+    except Exception:
+        logger.exception("%s: reading price history failed; indicators stay null this cycle", market_type)
+        histories = {}
+
+    enriched = []
+    for quote in quotes:
+        currency = currency_of(quote)
+        try:
+            enriched.append(enrich_quote(quote, market_type, currency, history=histories.get(quote.get('symbol'))))
+        except (ValueError, ArithmeticError):
+            logger.exception("Indicators failed for %s; stored without them", quote.get('symbol'))
+            enriched.append(enrich_quote(quote, market_type, currency, history=None))
+    return enriched
+
+
 async def refresh_bist_stocks() -> int:
     """Refresh all BIST stocks with bounded concurrency"""
     from analysis import BIST_SYMBOLS
@@ -204,7 +239,7 @@ async def refresh_bist_stocks() -> int:
                     data = await asyncio.to_thread(fetch_bist_stock_fallback, symbol)
                 if not data:
                     return None
-                return _enrich_stock_data(data, market_type='BIST', currency='TRY')
+                return data
             except Exception as e:
                 logger.error(f"BIST refresh error {symbol}: {e}")
                 return None
@@ -212,6 +247,7 @@ async def refresh_bist_stocks() -> int:
     tasks = [fetch_one(s) for s in BIST_SYMBOLS]
     results = await asyncio.gather(*tasks)
     valid_data = [d for d in results if d]
+    valid_data = await _enrich_quotes(valid_data, 'BIST', lambda quote: 'TRY')
 
     count = 0
     async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
@@ -237,7 +273,7 @@ async def refresh_global_stocks() -> int:
                 data = await asyncio.to_thread(fetch_global_stock, symbol)
                 if not data:
                     return None
-                return _enrich_stock_data(data, market_type='GLOBAL', currency=data.get('currency', 'USD') or 'USD')
+                return data
             except Exception as e:
                 logger.error(f"Global refresh error {symbol}: {e}")
                 return None
@@ -245,6 +281,7 @@ async def refresh_global_stocks() -> int:
     tasks = [fetch_one(s) for s in GLOBAL_SYMBOLS]
     results = await asyncio.gather(*tasks)
     valid_data = [d for d in results if d]
+    valid_data = await _enrich_quotes(valid_data, 'GLOBAL', lambda quote: quote.get('currency') or 'USD')
 
     count = 0
     async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
@@ -271,9 +308,11 @@ async def refresh_commodities() -> int:
             if not data:
                 continue
             data['name'] = name
-            fetched.append(_enrich_stock_data(data, market_type='COMMODITY', currency='USD'))
+            fetched.append(data)
         except Exception as e:
             logger.error(f"Commodity refresh error {symbol}: {e}")
+
+    fetched = await _enrich_quotes(fetched, 'COMMODITY', lambda quote: 'USD')
 
     count = 0
     async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
@@ -423,69 +462,17 @@ async def refresh_ai_insight(force: bool = False) -> bool:
         logger.error(f"AI insight refresh error: {e}")
         return False
 
-def _enrich_stock_data(data: dict, market_type: str, currency: str) -> dict:
-    """Add analysis fields to raw stock data"""
-    price = data.get('price', 0)
-    change_pct = data.get('change_pct', 0)
-    prev_close = data.get('previous_close', 0)
-    
-    # Calculate RSI estimate from change if not available
-    rsi = data.get('rsi', 0)
-    if not rsi or rsi == 0:
-        rsi = 50 + (change_pct * 3)
-        rsi = max(5, min(95, rsi))
-    
-    # MA_20 estimate
-    ma_20 = data.get('ma_20', 0)
-    if not ma_20 or ma_20 == 0:
-        ma_20 = price * (1 - change_pct / 200) if price else 0
-    
-    # Volatility classification
-    volatility = 'HIGH' if abs(change_pct) > 5 else 'MEDIUM' if abs(change_pct) > 2 else 'LOW'
-    
-    # Smart prediction label — uses both change_pct and RSI for accuracy
-    if change_pct > 5 and rsi < 70:
-        prediction = f"PURCHASABLE — strong momentum +{change_pct:.1f}%"
-    elif change_pct > 2 and rsi < 65:
-        prediction = f"PURCHASABLE — positive trend +{change_pct:.1f}%"
-    elif change_pct > 0.5 and rsi < 60:
-        prediction = f"PURCHASABLE — rising +{change_pct:.1f}%"
-    elif rsi < 35:
-        prediction = "ACCUMULATE — oversold, potential bounce"
-    elif change_pct >= 0 and rsi < 55:
-        prediction = "ACCUMULATE — steady upward movement"
-    elif change_pct >= 0 and rsi < 65:
-        prediction = "WATCH TO BUY — conditions improving"
-    elif rsi > 72 and change_pct > 3:
-        prediction = f"TAKE PROFITS — up {change_pct:.1f}%, overbought"
-    elif rsi > 65:
-        prediction = "WATCH TO BUY — slightly overbought, wait for pullback"
-    elif change_pct < -2:
-        prediction = f"AVOID FOR NOW — declining {change_pct:.1f}%"
-    elif change_pct < 0 and rsi > 40:
-        prediction = "WATCH TO BUY — minor dip, monitor closely"
-    elif change_pct < 0 and rsi < 40:
-        prediction = "ACCUMULATE — dip into value zone"
-    else:
-        prediction = "WATCH TO BUY — neutral, awaiting direction"
-    
-    data.update({
-        'currency': currency,
-        'market_type': market_type,
-        'rsi': round(rsi, 2),
-        'ma_20': round(ma_20, 2) if ma_20 else 0,
-        'volatility': volatility,
-        'prediction': prediction,
-        'reason': prediction,
-        'is_favorable': change_pct > 0,
-        'is_buyable': change_pct > 0.5 and rsi < 65,
-    })
-    
-    return data
-
 # Values computed from price history, and the labels built on them (decision D4). A None
 # here means "not available" and must reach the cache, replacing any earlier estimate.
-_INDICATOR_FIELDS = ('day_high', 'day_low', 'rsi', 'ma_20', 'volatility', 'is_favorable', 'is_buyable')
+_INDICATOR_FIELDS = ('day_high', 'day_low', 'rsi', 'ma_20', 'volatility', 'is_favorable', 'is_buyable',
+                     'prediction', 'reason')
+# Where the indicators came from. stock_data has no columns for these (DATABASE_CONTRACT
+# §4 M4 is still open), so they live in the JSON extra_data column, replaced on every write.
+_PROVENANCE_FIELDS = ('indicators_as_of', 'indicator_method', 'volatility_pct')
+
+
+def _indicator_provenance(data: dict) -> dict:
+    return {field: data.get(field) for field in _PROVENANCE_FIELDS}
 
 
 async def _upsert_stock(session, data: dict):
@@ -515,6 +502,8 @@ async def _upsert_stock(session, data: dict):
                 continue
             if data[src_key] is not None or src_key in _INDICATOR_FIELDS:
                 setattr(existing, db_key, data[src_key])
+        if 'indicators_as_of' in data:
+            existing.extra_data = _indicator_provenance(data)
         existing.updated_at = datetime.utcnow()
     else:
         # Map field names
@@ -535,11 +524,12 @@ async def _upsert_stock(session, data: dict):
             volatility=data.get('volatility'),
             currency=data.get('currency', 'USD'),
             market_type=data.get('market_type', 'GLOBAL'),
-            prediction=data.get('prediction', ''),
-            reason=data.get('reason', ''),
+            prediction=data.get('prediction'),
+            reason=data.get('reason'),
             is_favorable=data.get('is_favorable'),
             is_buyable=data.get('is_buyable'),
-            market_cap=data.get('market_cap', 0)
+            market_cap=data.get('market_cap', 0),
+            extra_data=_indicator_provenance(data),
         )
         session.add(stock)
 

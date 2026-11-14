@@ -328,13 +328,13 @@ async def get_live_price(symbol: str, background_tasks: BackgroundTasks):
         # Queue background DB update so next poll benefits from fresh data
         async def _update_db(sym, d):
             try:
-                from workers import _enrich_stock_data, _upsert_stock
-                async with AsyncSessionLocal() as sess:
-                    enriched = _enrich_stock_data(
-                        d.copy(),
-                        market_type=d.get("market_type", "GLOBAL"),
-                        currency=d.get("currency", "USD")
-                    )
+                from workers import _DB_WRITE_LOCK, _enrich_quotes, _upsert_stock
+                # Re-enriched from stored history: the analyze_stock result may still carry
+                # its legacy single-day estimates, which must not reach the card cache (D4).
+                market_type = d.get("market_type", "GLOBAL")
+                enriched = (await _enrich_quotes([dict(d)], market_type,
+                                                 lambda quote: quote.get("currency") or "USD"))[0]
+                async with _DB_WRITE_LOCK, AsyncSessionLocal() as sess:
                     await _upsert_stock(sess, enriched)
                     await sess.commit()
             except Exception as ex:
@@ -862,6 +862,12 @@ if os.path.exists(frontend_path):
 # HELPERS
 # ============================================================
 
+def _indicator_provenance(stock: StockData) -> dict:
+    """``indicators_as_of``, ``indicator_method`` and ``volatility_pct`` kept in extra_data by the workers."""
+    stored = stock.extra_data if isinstance(stock.extra_data, dict) else {}
+    return {field: stored.get(field) for field in ("indicators_as_of", "indicator_method", "volatility_pct")}
+
+
 def _stock_to_dict(stock: StockData) -> dict:
     """Convert StockData model to dict for API response."""
     return {
@@ -881,10 +887,13 @@ def _stock_to_dict(stock: StockData) -> dict:
         "rsi": stock.rsi,
         "ma_20": stock.ma_20,
         "volatility": stock.volatility,
+        **_indicator_provenance(stock),
+        # Cache rows are enriched from real history only (REQ-10), so nothing is estimated.
+        "estimated_fields": [],
         "currency": stock.currency or "USD",
         "market_type": stock.market_type or "GLOBAL",
-        "prediction": stock.prediction or "",
-        "reason": stock.reason or "",
+        "prediction": stock.prediction,
+        "reason": stock.reason,
         "is_favorable": stock.is_favorable,
         "is_buyable": stock.is_buyable,
         "market_cap": stock.market_cap or 0,

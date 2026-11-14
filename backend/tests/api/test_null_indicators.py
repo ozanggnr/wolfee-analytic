@@ -55,6 +55,7 @@ def test_the_watchlist_keeps_null_indicators_from_the_cache(user):
     assert response.status_code == 200, response.text
     item = next(i for i in response.json()["items"] if i["ticker"] == ticker)
     assert (item["price"], item["rsi"], item["day_high"], item["day_low"]) == (101.5, None, None, None)
+    assert item["prediction"] is None  # was "Bullish" from the day's change
 
 
 def test_the_watchlist_keeps_null_indicators_from_the_live_fallback(user, monkeypatch):
