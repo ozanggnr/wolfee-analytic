@@ -21,6 +21,7 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 
 ## Done 2026-11-12 (after Step 3a)
 - price_history approved (DATABASE_CONTRACT §4.3, REQ-26); volatility added to D4 / REQ-24; corrections accepted by the user
+- WSL test environment (2026-11-14): TESTING.md, backend/requirements-test.txt (`d7dd9d3`); in WSL 224 backend + 9 frontend pass; 179 API tests on a temporary PG 18 cluster. PG16 needs the user's one-time sudo step (TESTING §3), then rerun §3.1/§3.2 on 16
 
 ## Next (only after approval)
 - Step 3b: review and merge `agent/backend` (head `e30f1db` on 2026-11-12: REQ-13 `5e464a7`, REQ-15 `a4ce4e7`, REQ-16 `7c484e9`, REQ-9 `6a168a5`). Verify REQ-7 seed CLI. Expect overlap with quant changes (analytics_service vs REQ-17).
