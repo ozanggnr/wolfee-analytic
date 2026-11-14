@@ -27,4 +27,4 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 
 ## Notes for whoever resumes
 - `fly.toml` release_command needs `services.instrument_service`, which exists only after `agent/backend` merges.
-- Test commands: backend `python -m pytest backend/tests -q -p no:cacheprovider` from the worktree root (Python 3.11.9 venv in the scratchpad, scratch SQLite DATABASE_URL); frontend `node --test` in `frontend/`.
+- Tests run in WSL only; exact commands in docs/agents/TESTING.md (venv ~/venvs/wolfee, Node ~/.local/opt/node, PG test cluster port 55432). Git stays on Windows.

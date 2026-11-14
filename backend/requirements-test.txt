@@ -1,0 +1,3 @@
+# Test-only dependencies, installed on top of requirements.lock. Not in the Docker image.
+# See docs/agents/TESTING.md.
+pytest==9.2.0
