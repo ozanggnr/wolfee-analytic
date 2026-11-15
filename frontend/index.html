@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="css/market.css?v=15.5">
     <link rel="stylesheet" href="css/modal.css?v=15.5">
     <link rel="stylesheet" href="css/watchlist.css?v=15.5">
+    <link rel="stylesheet" href="css/auth.css?v=15.5">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -363,106 +364,102 @@
     </div>
 
     <!-- ===== AUTH MODAL (Login / Register / Forgot / Reset) ===== -->
-    <div id="auth-modal" class="modal hidden">
+    <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" aria-describedby="auth-modal-subtitle">
         <div class="modal-content auth-modal-content">
-            <span class="close-modal" onclick="closeAuthModal()">&times;</span>
+            <button type="button" class="close-modal" aria-label="Close" onclick="closeAuthModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
             <div class="auth-modal-header">
-                <div class="modal-header-badge">🔐 Wolfee Account</div>
-                <h2 id="auth-modal-title" class="auth-modal-title">Welcome Back</h2>
-                <p id="auth-modal-subtitle" class="auth-modal-subtitle">Sign in to access your cloud watchlist and live analytics.</p>
-                <div class="auth-tabs">
-                    <button class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign In</button>
-                    <button class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
-                    <button class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot</button>
+                <p class="auth-kicker">Wolfee account</p>
+                <h2 id="auth-modal-title" class="auth-modal-title">Sign in</h2>
+                <p id="auth-modal-subtitle" class="auth-modal-subtitle">Sign in to sync your watchlist across devices.</p>
+                <div class="auth-tabs" role="group" aria-label="Account actions">
+                    <button type="button" class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign in</button>
+                    <button type="button" class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
+                    <button type="button" class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot password</button>
                 </div>
             </div>
 
-            <!-- Alert notification box -->
-            <div id="auth-alert" class="auth-alert hidden"></div>
+            <!-- Messages from the server: errors and confirmations -->
+            <div id="auth-alert" class="auth-alert hidden" role="status" aria-live="polite"></div>
 
             <!-- Login Form -->
             <form id="login-form" class="auth-form-view" onsubmit="handleLoginSubmit(event)">
-                <div class="auth-field">
-                    <label for="login-email">Email Address</label>
-                    <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+                <div class="field">
+                    <label for="login-email">Email address</label>
+                    <input type="email" id="login-email" required autocomplete="email">
                 </div>
-                <div class="auth-field">
+                <div class="field">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" required placeholder="••••••••••" autocomplete="current-password">
+                    <input type="password" id="login-password" required autocomplete="current-password">
                 </div>
-                <div id="login-captcha-wrap" class="auth-field hidden">
-                    <label>Security Verification (CAPTCHA)</label>
+                <div id="login-captcha-wrap" class="field hidden">
+                    <span class="field-label">Security check</span>
                     <div class="captcha-placeholder">
-                        <span class="captcha-badge">🛡️ Bot Protection Active</span>
                         <input type="hidden" id="login-captcha" value="dev-captcha-pass">
-                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Security challenge active after multiple attempts.</p>
+                        <p class="field-hint">A security check is active after several sign-in attempts.</p>
                     </div>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
-                    <a href="javascript:void(0)" onclick="switchAuthTab('forgot')" style="color:var(--nexa-accent); font-size:0.85rem; text-decoration:none;">Forgot password?</a>
-                    <a href="javascript:void(0)" onclick="switchAuthTab('resend')" style="color:var(--text-secondary); font-size:0.85rem; text-decoration:none;">Resend verify link</a>
+                <div class="auth-links">
+                    <button type="button" class="link-btn" onclick="switchAuthTab('forgot')">Forgot password?</button>
+                    <button type="button" class="link-btn is-quiet" onclick="switchAuthTab('resend')">Resend verification email</button>
                 </div>
-                <button type="submit" id="login-submit-btn" class="gradient-btn auth-submit-btn">Sign In to Wolfee</button>
+                <button type="submit" id="login-submit-btn" class="gradient-btn auth-submit-btn">Sign in</button>
             </form>
 
             <!-- Register Form -->
             <form id="register-form" class="auth-form-view hidden" onsubmit="handleRegisterSubmit(event)">
-                <div class="auth-field">
-                    <label for="reg-email">Email Address</label>
-                    <input type="email" id="reg-email" required placeholder="you@example.com" autocomplete="email">
+                <div class="field">
+                    <label for="reg-email">Email address</label>
+                    <input type="email" id="reg-email" required autocomplete="email">
                 </div>
-                <div class="auth-field">
+                <div class="field">
                     <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" required placeholder="At least 10 characters" autocomplete="new-password" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.style.color=p.valid?'var(--success-color)':'var(--danger-color)'; }">
-                    <span id="pw-hint" class="auth-hint">Minimum 10 characters required</span>
+                    <input type="password" id="reg-password" required autocomplete="new-password" aria-describedby="pw-hint" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.classList.toggle('is-valid', p.valid); h.classList.toggle('is-invalid', !p.valid); }">
+                    <span id="pw-hint" class="field-hint auth-hint">At least 10 characters</span>
                 </div>
-                <div class="auth-field">
-                    <label for="reg-confirm">Confirm Password</label>
-                    <input type="password" id="reg-confirm" required placeholder="Repeat password" autocomplete="new-password">
+                <div class="field">
+                    <label for="reg-confirm">Confirm password</label>
+                    <input type="password" id="reg-confirm" required autocomplete="new-password">
                 </div>
-                <div class="auth-field">
-                    <label>Security Verification</label>
-                    <div class="captcha-placeholder">
-                        <span class="captcha-badge">🛡️ Bot Protection</span>
-                        <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
-                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Protected by automated bot detection.</p>
-                    </div>
+                <div class="captcha-placeholder">
+                    <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
+                    <p class="field-hint">Registration is protected by automated bot detection.</p>
                 </div>
-                <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create Account</button>
+                <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create account</button>
             </form>
 
             <!-- Forgot Password Form -->
             <form id="forgot-form" class="auth-form-view hidden" onsubmit="handleForgotPasswordSubmit(event)">
-                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1rem;">Enter your account email to receive reset instructions:</p>
-                <div class="auth-field">
-                    <label for="forgot-email">Email Address</label>
-                    <input type="email" id="forgot-email" required placeholder="you@example.com">
+                <div class="field">
+                    <label for="forgot-email">Email address</label>
+                    <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-hint">
+                    <span class="field-hint" id="forgot-hint">We send a reset link to this address if it has an account.</span>
                 </div>
-                <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send Reset Link</button>
+                <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send reset link</button>
             </form>
 
             <!-- Resend Verification Form -->
             <form id="resend-form" class="auth-form-view hidden" onsubmit="event.preventDefault(); const em=document.getElementById('resend-email').value; if(em) authFetch(`${API_URL}/api/auth/resend-verification`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em})}).then(r=>r.json()).then(d=>showAuthAlert(d.message,true));">
-                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1rem;">Need a fresh verification email?</p>
-                <div class="auth-field">
-                    <label for="resend-email">Email Address</label>
-                    <input type="email" id="resend-email" required placeholder="you@example.com">
+                <div class="field">
+                    <label for="resend-email">Email address</label>
+                    <input type="email" id="resend-email" required autocomplete="email">
                 </div>
-                <button type="submit" class="gradient-btn auth-submit-btn">Resend Verification</button>
+                <button type="submit" class="gradient-btn auth-submit-btn">Resend verification email</button>
             </form>
 
             <!-- Reset Password Form -->
             <form id="reset-form" class="auth-form-view hidden" onsubmit="handleResetPasswordSubmit(event)">
-                <h3 style="margin:0 0 1rem 0;font-size:1rem;color:var(--nexa-accent);">Set New Password</h3>
-                <div class="auth-field">
-                    <label for="reset-new-password">New Password</label>
-                    <input type="password" id="reset-new-password" required placeholder="At least 10 characters">
+                <div class="field">
+                    <label for="reset-new-password">New password</label>
+                    <input type="password" id="reset-new-password" required autocomplete="new-password" aria-describedby="reset-hint">
+                    <span class="field-hint" id="reset-hint">At least 10 characters</span>
                 </div>
-                <div class="auth-field">
-                    <label for="reset-confirm-password">Confirm New Password</label>
-                    <input type="password" id="reset-confirm-password" required placeholder="Repeat password">
+                <div class="field">
+                    <label for="reset-confirm-password">Confirm new password</label>
+                    <input type="password" id="reset-confirm-password" required autocomplete="new-password">
                 </div>
-                <button type="submit" class="gradient-btn auth-submit-btn">Save New Password</button>
+                <button type="submit" class="gradient-btn auth-submit-btn">Save new password</button>
             </form>
         </div>
     </div>

@@ -175,13 +175,21 @@
     window.openAuthModal = function (tab = 'login') {
         const modal = document.getElementById('auth-modal');
         if (!modal) return;
+        if (modal.classList.contains('hidden') && typeof _modalReturnFocus !== 'undefined') {
+            _modalReturnFocus = document.activeElement;
+        }
         modal.classList.remove('hidden');
+        document.body.classList.add('no-scroll');
         switchAuthTab(tab);
+        // Focus the first field of the open form
+        const firstField = modal.querySelector('.auth-form-view:not(.hidden) input:not([type="hidden"])');
+        if (firstField) firstField.focus();
     };
 
     window.closeAuthModal = function () {
         const modal = document.getElementById('auth-modal');
-        if (modal) modal.classList.add('hidden');
+        if (modal && !modal.classList.contains('hidden') && typeof closeModalWithAnim === 'function') closeModalWithAnim();
+        else if (modal) modal.classList.add('hidden');
         clearAuthAlerts();
     };
 
@@ -192,6 +200,7 @@
         const targetBtn = document.getElementById(`auth-tab-${tab}`);
         const targetView = document.getElementById(`${tab}-form`) || document.getElementById(`auth-view-${tab}`);
 
+        document.querySelectorAll('.auth-tab-btn').forEach(btn => btn.setAttribute('aria-pressed', String(btn === targetBtn)));
         if (targetBtn) targetBtn.classList.add('active');
         if (targetView) targetView.classList.remove('hidden');
 
@@ -199,20 +208,20 @@
         const subEl = document.getElementById('auth-modal-subtitle');
         if (titleEl && subEl) {
             if (tab === 'login') {
-                titleEl.textContent = 'Welcome Back';
-                subEl.textContent = 'Sign in to access your cloud watchlist and live analytics.';
+                titleEl.textContent = 'Sign in';
+                subEl.textContent = 'Sign in to sync your watchlist across devices.';
             } else if (tab === 'register') {
-                titleEl.textContent = 'Create Account';
-                subEl.textContent = 'Create a secure Wolfee account to sync your portfolio anywhere.';
+                titleEl.textContent = 'Create an account';
+                subEl.textContent = 'An account keeps your watchlist on every device you sign in on.';
             } else if (tab === 'forgot') {
-                titleEl.textContent = 'Reset Password';
-                subEl.textContent = 'Enter your account email to receive secure recovery instructions.';
+                titleEl.textContent = 'Reset your password';
+                subEl.textContent = 'Enter the email address of your account.';
             } else if (tab === 'resend') {
-                titleEl.textContent = 'Resend Verification';
-                subEl.textContent = 'Enter your email to request a new account activation link.';
+                titleEl.textContent = 'Resend verification email';
+                subEl.textContent = 'We send a new activation link to this address.';
             } else if (tab === 'reset') {
-                titleEl.textContent = 'New Password';
-                subEl.textContent = 'Create a strong, secure password for your Wolfee account.';
+                titleEl.textContent = 'Set a new password';
+                subEl.textContent = 'Choose a password of at least 10 characters.';
             }
         }
 
@@ -224,6 +233,7 @@
         if (!alertEl) return;
         alertEl.textContent = message;
         alertEl.className = 'auth-alert ' + (isSuccess ? 'auth-alert-success' : 'auth-alert-error');
+        alertEl.setAttribute('role', isSuccess ? 'status' : 'alert');
         alertEl.classList.remove('hidden');
     }
 
