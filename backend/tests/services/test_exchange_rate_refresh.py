@@ -93,7 +93,7 @@ def test_the_parser_reads_the_recorded_tcmb_response(recorded_tcmb):
     rates = turkish_market.fetch_exchange_rates()
 
     assert {r["pair"]: (r["buying"], r["selling"]) for r in rates} == RECORDED_RATES
-    assert all(r["change_pct"] == 0.0 for r in rates)  # Yahoo unavailable: no change figure
+    assert all(r["change_pct"] is None for r in rates)  # Yahoo unavailable: no change figure, not 0.0
 
 
 def test_the_refresh_stores_the_recorded_rates(recorded_tcmb, sessions):

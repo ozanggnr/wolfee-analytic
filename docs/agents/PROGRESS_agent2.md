@@ -5,7 +5,20 @@ Resume protocol: `git status`, read this file, continue from "In progress" / "Ne
 
 Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private names so other agents' runs cannot delete my database mid-run: SQLite file `~/wolfee-test/agent2/test.db`, Postgres databases `wolfee_tests_agent2` and `wolfee_migrations_agent2` on the PG16 cluster (port 55432). (The shared `~/wolfee-test/test.db` gave one run with 6 "readonly database" failures; the same commit passed 525/525 on rerun.)
 
-## Current task (2026-11-14, second batch): history wiring, REQ-28, REQ-30, WSL verification
+## Current task (2026-11-15): REQ-31 (a)–(f)
+
+- [x] Rebase onto `integration` 3515621: fast-forward (integration already held all my commits).
+- [x] (a) HIGH `de7b239`: watchlist `round(None)` on change_pct. Cached, live and placeholder rows keep null; the summary lists a null ticker but skips it in counts, average and biggest mover; `avg_change_pct` is null when no ticker has a change. 2 tests (fail without the fix).
+- [x] (b) `c924427`: `market_placeholder(loading=True)` when readiness fails ("still loading" template). Test updated (fails without).
+- [x] (c) `69d20d4`: the third chart parser in `main.py` is gone; the last resort retries `_fetch_yahoo_chart` / `_fetch_yahoo_chart_global` (chart_row, missing OHL stay null). `test_chart_fallback.py` (2, fail on old code).
+- [x] (d) `1e6e91e`: `stock_card` keeps null change_pct, no `estimated_fields`; export Change % / Change Amt / Trend / Start Price "Not available" when unknown. `test_market_display_change.py` (5).
+- [x] (e) `d4eb20e`: FX change via `daily_change_pct` (None without previous close); gold change None when missing/unreadable; `change_pct` model defaults removed (no DDL); refreshers store None. `test_rate_and_gold_change.py` (6); recorded-TCMB test now expects null.
+- [x] (f) `96f39e2`: `backend/api_router.py` deleted (no importer); guard test `tests/test_no_unused_router.py`.
+- Verification (WSL, own DB names): SQLite 598 passed; PG16.16 API 191 passed; PG16 base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`.
+- For Agent 4: the UI renders a null `change_pct` (watchlist summary, gold, FX) and a null `avg_change_pct` as "0.00%" (`portfolio.js:342-419`, `ui.js:177-218`); they should show "Not available".
+- For Agent 1: TEAM_STRUCTURE.md:58 and IMPLEMENTATION_STATUS.md:29,199 still list `api_router.py`.
+
+## Earlier task (2026-11-14, second batch): history wiring, REQ-28, REQ-30, WSL verification
 
 - [x] Rebase onto `integration` 490995e: no conflicts (no file changed on both sides). 525 passed on SQLite.
 - [x] 1. History wiring (REQ-24/26, fixes REQ-10). `workers._enrich_stock_data` and its estimate/advice-label copy are deleted.

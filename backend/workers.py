@@ -344,7 +344,7 @@ async def refresh_turkish_gold() -> int:
                 if existing:
                     existing.buying_price = item['buying_price']
                     existing.selling_price = item['selling_price']
-                    existing.change_pct = item.get('change_pct', 0)
+                    existing.change_pct = item.get('change_pct')
                     existing.display_name = item['display_name']
                     existing.updated_at = datetime.utcnow()
                 else:
@@ -377,7 +377,7 @@ async def refresh_exchange_rates() -> int:
                 if existing:
                     existing.buying = item['buying']
                     existing.selling = item['selling']
-                    existing.change_pct = item.get('change_pct', 0)
+                    existing.change_pct = item.get('change_pct')
                     existing.display_name = item['display_name']
                     existing.updated_at = datetime.utcnow()
                 else:

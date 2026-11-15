@@ -76,9 +76,10 @@ async def market_response(market_data: Sequence[Mapping[str, Any]], inputs_as_of
                                    inputs_as_of=inputs_as_of, generate=generate_text)
 
 
-def market_placeholder(now: Optional[datetime] = None) -> dict:
-    """The template's "no market data" insight: used while data loads and on any error."""
-    return market_insight_response(None, now=now or _now(), generate=None)
+def market_placeholder(now: Optional[datetime] = None, loading: bool = False) -> dict:
+    """The template insight, without a model call: ``loading=True`` while the cache is still
+    filling ("still loading"), otherwise "no market data" (used on any error)."""
+    return market_insight_response(None, now=now or _now(), generate=None, loading=loading)
 
 
 async def stock_response(symbol: str, stock_data: Mapping[str, Any], inputs_as_of: Optional[datetime],

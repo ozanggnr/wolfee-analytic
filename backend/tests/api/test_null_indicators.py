@@ -163,3 +163,42 @@ def test_rsi_status_needs_a_real_rsi(rsi, status):
     from services.market_display import rsi_status
 
     assert rsi_status(rsi) == status
+
+
+def test_a_null_change_pct_stays_null_and_is_left_out_of_the_summary(user, monkeypatch):
+    """REQ-31 (a): round(None) on change_pct crashed the watchlist with a 500."""
+    no_previous_close, moving = _ticker(), _ticker()
+    asyncio.run(_watch(user.user_id, no_previous_close, cached=False))
+    asyncio.run(_watch(user.user_id, moving, cached=False))
+    changes = {no_previous_close: None, moving: -2.5}
+    monkeypatch.setattr(watchlist_routes, "analyze_stock", lambda key, *args, **kwargs: {
+        "symbol": key, "name": key, "price": 55.0, "change_pct": changes[key.replace(".IS", "")],
+        "currency": "TRY", **NULL_INDICATORS})
+    watchlist_routes.invalidate_user_cache(user.user_id)
+
+    response = user.get("/api/watchlist")
+    summary = user.get("/api/watchlist/summary").json()
+
+    assert response.status_code == 200, response.text
+    items = {i["ticker"]: i for i in response.json()["items"]}
+    assert (items[no_previous_close]["change_pct"], items[moving]["change_pct"]) == (None, -2.5)
+    listed = {c["symbol"]: c["change_pct"] for c in summary["ticker_changes"]}
+    assert listed[no_previous_close] is None
+    assert summary["biggest_mover"]["symbol"] != no_previous_close
+    assert summary["up_count"] + summary["down_count"] + summary["flat_count"] == summary["total_count"] - 1
+
+
+def test_a_cached_null_change_pct_stays_null(user):
+    ticker = _ticker()
+    asyncio.run(_watch(user.user_id, ticker, cached=True))
+
+    async def null_change():
+        from sqlalchemy import update
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(StockData).where(StockData.symbol == f"{ticker}.IS").values(change_pct=None))
+            await session.commit()
+
+    asyncio.run(null_change())
+    item = next(i for i in user.get("/api/watchlist").json()["items"] if i["ticker"] == ticker)
+
+    assert item["change_pct"] is None  # was 0.0, a move that was not observed

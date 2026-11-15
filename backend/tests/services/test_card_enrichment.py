@@ -116,7 +116,7 @@ def test_cards_get_the_indicators_of_the_stored_closes(factory, bist_quote):
     assert card["indicators_as_of"] == LAST_CLOSE_DAY.isoformat()
     assert card["indicator_method"] == expected["indicator_method"]
     assert card["volatility_pct"] == expected["volatility_pct"]
-    assert card["estimated_fields"] == []
+    assert "estimated_fields" not in card
 
 
 def test_without_history_a_big_move_produces_no_estimate(factory, bist_quote):

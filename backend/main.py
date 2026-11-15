@@ -406,58 +406,15 @@ async def get_chart_data(symbol: str, period: str):
             from data_sources.global_market import fetch_global_history
             data = await asyncio.to_thread(fetch_global_history, symbol, period)
 
-        # Last-resort: call Yahoo Finance chart API directly in the endpoint itself
+        # Last resort: one more try of the direct chart API through Agent 3's helpers, which
+        # keep a missing open/high/low null (chart_row) instead of filling it with the close.
         if not data:
-            import httpx as _httpx
-            from data_sources.turkish_market import PERIOD_MAP as BIST_PERIOD_MAP
-            from data_sources.global_market import PERIOD_MAP as GLOBAL_PERIOD_MAP
-            period_map = BIST_PERIOD_MAP if symbol.endswith(".IS") else GLOBAL_PERIOD_MAP
-            yf_period, yf_interval = period_map.get(period, ("1y", "1d"))
-
-            def _direct_chart_fetch():
-                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-                params = {
-                    "range": yf_period, "interval": yf_interval,
-                    "includePrePost": "false", "events": "div,splits",
-                }
-                hdrs = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept": "application/json",
-                    "Referer": "https://finance.yahoo.com/",
-                }
-                with _httpx.Client(timeout=20, headers=hdrs, follow_redirects=True) as c:
-                    r = c.get(url, params=params)
-                    r.raise_for_status()
-                    body = r.json()
-                result = body.get("chart", {}).get("result", [])
-                if not result:
-                    return None
-                rec = result[0]
-                timestamps = rec.get("timestamp", [])
-                quote = rec.get("indicators", {}).get("quote", [{}])[0]
-                closes  = quote.get("close",  [])
-                opens   = quote.get("open",   [])
-                highs   = quote.get("high",   [])
-                lows    = quote.get("low",    [])
-                volumes = quote.get("volume", [])
-                from datetime import datetime as _dt
-                rows = []
-                for i, ts in enumerate(timestamps):
-                    c_val = closes[i] if i < len(closes) else None
-                    if c_val is None:
-                        continue
-                    rows.append({
-                        "time":   _dt.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
-                        "open":   round(float(opens[i])   if i < len(opens)   and opens[i]   else c_val, 4),
-                        "high":   round(float(highs[i])   if i < len(highs)   and highs[i]   else c_val, 4),
-                        "low":    round(float(lows[i])    if i < len(lows)    and lows[i]    else c_val, 4),
-                        "close":  round(float(c_val), 4),
-                        "volume": int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
-                    })
-                return rows or None
-
-            data = await asyncio.to_thread(_direct_chart_fetch)
+            if symbol.endswith(".IS"):
+                from data_sources.turkish_market import PERIOD_MAP as chart_periods, _fetch_yahoo_chart as fetch_chart
+            else:
+                from data_sources.global_market import PERIOD_MAP as chart_periods, _fetch_yahoo_chart_global as fetch_chart
+            yf_period, yf_interval = chart_periods.get(period, ("1y", "1d"))
+            data = await asyncio.to_thread(fetch_chart, symbol, yf_period, yf_interval)
 
         if not data:
             raise HTTPException(status_code=404, detail="No chart data available")
@@ -529,7 +486,7 @@ async def get_insight():
                 stocks = (await session.execute(select(StockData))).scalars().all()
             counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
             if not insight_readiness.is_ready(counts):
-                return ai_insight_service.market_placeholder()
+                return ai_insight_service.market_placeholder(loading=True)
 
             response = await ai_insight_service.market_response(
                 [_stock_to_dict(s) for s in stocks], ai_insight_service.oldest_quote_time(stocks))
