@@ -21,6 +21,34 @@ def provided_price(value: Any) -> Optional[float]:
     return number if math.isfinite(number) and number > 0 else None
 
 
+CHART_DECIMALS = 4
+
+
+def chart_level(value: Any) -> Optional[float]:
+    """One open / high / low / close of a chart bar, rounded; None when the provider gave none.
+
+    A missing open, high or low is never filled with the bar's close: a bar
+    drawn from a repeated close would show a range that was not observed.
+    """
+    number = provided_price(value)
+    return None if number is None else round(number, CHART_DECIMALS)
+
+
+def chart_row(time: str, open_: Any, high: Any, low: Any, close: Any, volume: Any) -> Optional[dict]:
+    """A chart bar, or None when it has no close. A missing volume is 0, as before."""
+    close_level = chart_level(close)
+    if close_level is None:
+        return None
+    return {
+        "time": time,
+        "open": chart_level(open_),
+        "high": chart_level(high),
+        "low": chart_level(low),
+        "close": close_level,
+        "volume": int(volume) if provided_price(volume) is not None else 0,
+    }
+
+
 def daily_change_pct(price: Any, previous_close: Any) -> Optional[float]:
     """The day's change in percent against the previous close, to two decimals.
 
