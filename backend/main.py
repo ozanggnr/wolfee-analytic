@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body, Request
@@ -18,13 +18,14 @@ from analysis import (
     analyze_stock, get_market_opportunities, get_bulk_analysis,
     BIST_SYMBOLS, GLOBAL_SYMBOLS, COMMODITIES_SYMBOLS
 )
-from ai_service import get_market_insight, get_stock_analysis
-from workers import refresh_all_data, start_periodic_refresh
+from workers import _DB_WRITE_LOCK, refresh_all_data, start_periodic_refresh
 
 from security_middleware import SecurityMiddleware, get_optional_user
 import auth_routes
 import watchlist_routes
 from watchlist_routes import _enrich_watchlist_tickers
+from services import ai_insight_service, insight_readiness
+from services.market_display import portfolio_export_row, stock_card, unavailable_export_row
 
 # Configure logging
 logging.basicConfig(
@@ -132,6 +133,12 @@ app.add_middleware(SecurityMiddleware)
 # Register Authentication and Watchlist API routers
 app.include_router(auth_routes.router)
 app.include_router(watchlist_routes.router)
+
+# /api/v1 routers (API_CONTRACT §5). Imported here so they register before the static mount.
+from routers import analytics as analytics_router, portfolios as portfolio_router, transactions as transaction_router
+app.include_router(portfolio_router.router)
+app.include_router(transaction_router.router)
+app.include_router(analytics_router.router)
 
 
 # ============================================================
@@ -320,13 +327,13 @@ async def get_live_price(symbol: str, background_tasks: BackgroundTasks):
         # Queue background DB update so next poll benefits from fresh data
         async def _update_db(sym, d):
             try:
-                from workers import _enrich_stock_data, _upsert_stock
-                async with AsyncSessionLocal() as sess:
-                    enriched = _enrich_stock_data(
-                        d.copy(),
-                        market_type=d.get("market_type", "GLOBAL"),
-                        currency=d.get("currency", "USD")
-                    )
+                from workers import _DB_WRITE_LOCK, _enrich_quotes, _upsert_stock
+                # Re-enriched from stored history: the analyze_stock result may still carry
+                # its legacy single-day estimates, which must not reach the card cache (D4).
+                market_type = d.get("market_type", "GLOBAL")
+                enriched = (await _enrich_quotes([dict(d)], market_type,
+                                                 lambda quote: quote.get("currency") or "USD"))[0]
+                async with _DB_WRITE_LOCK, AsyncSessionLocal() as sess:
                     await _upsert_stock(sess, enriched)
                     await sess.commit()
             except Exception as ex:
@@ -492,64 +499,74 @@ async def get_opportunities():
         return {"opportunities": []}
 
 
+# One on-demand insight generation at a time, so concurrent first requests make one model call.
+_insight_generation_lock = asyncio.Lock()
+
+
+async def _stored_insight() -> Optional[dict]:
+    async with AsyncSessionLocal() as session:
+        row = await ai_insight_service.latest_with_provenance(session)
+    return None if row is None else ai_insight_service.stored_response(row)
+
+
 @app.get("/api/insight")
 async def get_insight():
-    """Returns latest AI insight from DB."""
+    """The newest stored insight with provenance; otherwise one generated now and stored (D5, REQ-28).
+
+    A stored row without provenance is never served. Until both markets are cached
+    (REQ-20), and on any error, the response is the guarded layer's template.
+    """
     try:
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AIInsight)
-                .where(AIInsight.insight_type == 'daily')
-                .order_by(desc(AIInsight.created_at))
-                .limit(1)
-            )
-            insight = result.scalar_one_or_none()
+        stored = await _stored_insight()
+        if stored is not None:
+            return stored
 
-            if insight and insight.insight_text:
-                return {"insight": insight.insight_text}
+        async with _insight_generation_lock:
+            stored = await _stored_insight()  # another request may have just generated one
+            if stored is not None:
+                return stored
+            async with AsyncSessionLocal() as session:
+                stocks = (await session.execute(select(StockData))).scalars().all()
+            counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
+            if not insight_readiness.is_ready(counts):
+                return ai_insight_service.market_placeholder()
 
-            # Generate on-the-fly if no cached insight
-            stock_result = await session.execute(select(StockData).limit(50))
-            stocks = stock_result.scalars().all()
-            stock_list = [_stock_to_dict(s) for s in stocks]
-            insight_text = get_market_insight(stock_list)
-            return {"insight": insight_text}
+            response = await ai_insight_service.market_response(
+                [_stock_to_dict(s) for s in stocks], ai_insight_service.oldest_quote_time(stocks))
+            async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
+                await ai_insight_service.store(session, response)
+                await session.commit()
+            return response
 
-    except Exception as e:
-        logger.error(f"Insight error: {e}")
-        return {"insight": "🐺 Wolfee AI is warming up. Check back shortly."}
+    except Exception:
+        logger.exception("Insight error; serving the template")
+        return ai_insight_service.market_placeholder()
 
 
 @app.get("/api/ai/analyze/{symbol}")
 async def get_ai_stock_analysis(symbol: str):
-    """Get Gemini AI deep analysis for a specific stock."""
+    """Guarded description of one instrument with provenance (D5, REQ-28); the template on any error."""
     symbol = validate_symbol_input(symbol)
-    # Try to get stock data from DB first
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(StockData).where(StockData.symbol == symbol)
-            )
-            stock = result.scalar_one_or_none()
+            stock = (await session.execute(
+                select(StockData).where(StockData.symbol == symbol))).scalar_one_or_none()
 
-            if stock:
-                stock_data = _stock_to_dict(stock)
-            else:
-                # Fetch fresh
-                stock_data = analyze_stock(symbol)
+        if stock is not None:
+            stock_data, inputs_as_of = _stock_to_dict(stock), ai_insight_service.utc(stock.updated_at)
+        else:
+            stock_data = await asyncio.to_thread(analyze_stock, symbol)
+            inputs_as_of = datetime.now(timezone.utc)  # fetched just now
+        if not stock_data:
+            raise HTTPException(status_code=404, detail="Stock not found")
 
-            if not stock_data:
-                raise HTTPException(status_code=404, detail="Stock not found")
-
-            import asyncio
-            analysis = await asyncio.to_thread(get_stock_analysis, symbol, stock_data)
-            return {"symbol": symbol, "analysis": analysis}
+        return await ai_insight_service.stock_response(symbol, stock_data, inputs_as_of)
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"AI analysis error for {symbol}: {e}")
-        return {"symbol": symbol, "analysis": "AI analysis temporarily unavailable."}
+    except Exception:
+        logger.exception("AI analysis error for %s; serving the template", symbol)
+        return ai_insight_service.stock_placeholder(symbol)
 
 
 # ============================================================
@@ -629,51 +646,12 @@ async def export_portfolio_post(
         if not stocks:
             raise HTTPException(status_code=400, detail="No stock data provided and your watchlist is empty.")
 
+        if not all(isinstance(stock, dict) for stock in stocks):
+            raise HTTPException(status_code=400, detail="Each stock must be an object.")
+
         today = datetime.now().strftime("%Y-%m-%d")
-        results = []
-
-        for stock in stocks:
-            sym = stock.get('symbol') or stock.get('ticker') or ''
-            name = stock.get('name') or sym
-            price = stock.get('price', 0) or 0
-            change_p = stock.get('change_pct', 0) or 0
-            change_amt = price * (change_p / 100) if price else 0
-            prev_close = stock.get('previous_close', 0) or 0
-            start_price = prev_close if prev_close else (price - change_amt)
-
-            rsi = stock.get('rsi', 0) or 50
-            rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
-
-            trend = stock.get('prediction', '')
-            if not trend:
-                if change_p > 0:
-                    trend = f"📈 UP +{change_p:.1f}%"
-                elif change_p < 0:
-                    trend = f"📉 DOWN {change_p:.1f}%"
-                else:
-                    trend = "➖ Stable"
-
-            results.append({
-                "Symbol": sym,
-                "Currency": stock.get('currency', 'USD') or 'USD',
-                "Name": name,
-                "Report Period": period.capitalize(),
-                "Analysis Date": today,
-                "Trend": trend,
-                "Current Price": round(price, 2),
-                "Start Price": round(start_price, 2),
-                "Change %": round(change_p, 2),
-                "Change Amt": round(change_amt, 2),
-                "Period High": stock.get('day_high', 0) or stock.get('high', 0) or round(price * 1.01, 2),
-                "High Date": today,
-                "Period Low": stock.get('day_low', 0) or stock.get('low', 0) or round(price * 0.99, 2),
-                "Low Date": today,
-                "RSI (14)": round(rsi, 2),
-                "RSI Status": rsi_status,
-                "Volatility %": stock.get('volatility', 'MEDIUM'),
-                "MA(20)": stock.get('ma_20', 0) or 0,
-                "Volume (Period)": stock.get('volume', 0) or 0,
-            })
+        # Indicators may be null (D4): the export shows "Not available", never an estimate.
+        results = [portfolio_export_row(stock, period, today) for stock in stocks]
 
         if not results:
             raise HTTPException(status_code=404, detail="No data found for provided symbols")
@@ -708,57 +686,10 @@ async def export_portfolio_get(symbols: str, period: str):
         for symbol in symbol_list:
             data = analyze_stock(symbol, is_commodity="=" in symbol)
             if data:
-                price = data.get('price', 0) or 0
-                change_p = data.get('change_pct', 0) or 0
-                change_amt = price * (change_p / 100) if price else 0
-                start_price = data.get('previous_close') or (price - change_amt)
-                rsi = data.get('rsi', 0) or 50
-                rsi_status = "Oversold" if rsi < 30 else "Overbought" if rsi > 70 else "Neutral"
-                results.append({
-                    "Symbol": data.get('symbol', symbol),
-                    "Currency": data.get('currency', 'USD') or 'USD',
-                    "Name": data.get('name', symbol),
-                    "Report Period": period.capitalize(),
-                    "Analysis Date": today,
-                    "Trend": data.get('prediction', ''),
-                    "Current Price": round(price, 2),
-                    "Start Price": round(start_price, 2),
-                    "Change %": round(change_p, 2),
-                    "Change Amt": round(change_amt, 2),
-                    "Period High": data.get('day_high', 0) or round(price * 1.01, 2),
-                    "High Date": today,
-                    "Period Low": data.get('day_low', 0) or round(price * 0.99, 2),
-                    "Low Date": today,
-                    "RSI (14)": round(rsi, 2),
-                    "RSI Status": rsi_status,
-                    "Volatility %": data.get('volatility', 'MEDIUM'),
-                    "MA(20)": data.get('ma_20', 0) or 0,
-                    "Volume (Period)": data.get('volume', 0) or 0,
-                })
+                results.append(portfolio_export_row(data, period, today, symbol=symbol))
             else:
-                # Symbol fetch failed — include a stub row so the export still works
-                logger.warning(f"Could not fetch live data for {symbol}, using stub row")
-                results.append({
-                    "Symbol": symbol,
-                    "Currency": "N/A",
-                    "Name": symbol,
-                    "Report Period": period.capitalize(),
-                    "Analysis Date": today,
-                    "Trend": "N/A",
-                    "Current Price": 0,
-                    "Start Price": 0,
-                    "Change %": 0,
-                    "Change Amt": 0,
-                    "Period High": 0,
-                    "High Date": today,
-                    "Period Low": 0,
-                    "Low Date": today,
-                    "RSI (14)": 0,
-                    "RSI Status": "N/A",
-                    "Volatility %": "N/A",
-                    "MA(20)": 0,
-                    "Volume (Period)": 0,
-                })
+                logger.warning(f"Could not fetch live data for {symbol}; exported as not available")
+                results.append(unavailable_export_row(symbol, period, today))
 
         if not results:
             raise HTTPException(status_code=404, detail="No symbols provided")
@@ -936,31 +867,9 @@ if os.path.exists(frontend_path):
 # HELPERS
 # ============================================================
 
-def _stock_to_dict(stock: StockData) -> dict:
-    """Convert StockData model to dict for API response."""
-    return {
-        "symbol": stock.symbol,
-        "name": stock.name or stock.symbol,
-        "price": stock.price or 0,
-        "change_pct": stock.change_pct or 0,
-        "volume": stock.volume or 0,
-        "day_high": stock.day_high or 0,
-        "day_low": stock.day_low or 0,
-        "open": stock.open_price or 0,
-        "previous_close": stock.previous_close or 0,
-        "bid": stock.bid or 0,
-        "ask": stock.ask or 0,
-        "rsi": stock.rsi or 50,
-        "ma_20": stock.ma_20 or 0,
-        "volatility": stock.volatility or "LOW",
-        "currency": stock.currency or "USD",
-        "market_type": stock.market_type or "GLOBAL",
-        "prediction": stock.prediction or "",
-        "reason": stock.reason or "",
-        "is_favorable": stock.is_favorable or False,
-        "is_buyable": stock.is_buyable or False,
-        "market_cap": stock.market_cap or 0,
-    }
+# The card dict lives in services.market_display so the workers' AI insight uses the
+# same rows as the routes.
+_stock_to_dict = stock_card
 
 
 def _deduplicate_stocks(stocks: list[StockData]) -> list[dict]:

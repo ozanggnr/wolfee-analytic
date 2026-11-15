@@ -326,8 +326,8 @@ def test_login_flow_and_session_cookie_security():
     assert "ticker_changes" in summary
     assert len(summary["ticker_changes"]) == 2
 
-    # Verify Cache-Control header
-    assert "max-age" in summary_res.headers.get("Cache-Control", "")
+    # Verify Cache-Control header: the server caches, browsers must not (REQ-21)
+    assert summary_res.headers.get("Cache-Control") == "no-store, private"
 
     # 6. Delete stock from watchlist
     del_res = client.delete(

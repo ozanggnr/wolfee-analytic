@@ -29,7 +29,9 @@ target_metadata = Base.metadata
 # Convert async URLs to sync equivalents for standard alembic migration runs
 sync_url = DATABASE_URL
 if "postgresql+asyncpg://" in sync_url:
-    sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://")
+    # Name the driver: SQLAlchemy 2.1 maps a bare postgresql:// to psycopg 3, but
+    # requirements.txt installs psycopg2-binary.
+    sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
 elif "sqlite+aiosqlite:///" in sync_url:
     sync_url = sync_url.replace("sqlite+aiosqlite:///", "sqlite:///")
 

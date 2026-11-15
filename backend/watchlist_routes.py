@@ -20,7 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import User, WatchlistItem, StockData
 from security_middleware import get_current_user
-from analysis import BIST_SYMBOLS, GLOBAL_SYMBOLS, analyze_stock
+from analysis import analyze_stock
+from services import watchlist_symbols
+from services.market_display import price_level, rounded
 
 logger = logging.getLogger("watchlist_routes")
 
@@ -32,10 +34,15 @@ router = APIRouter(prefix="/api/watchlist", tags=["Portfolio Watchlist"])
 # ============================================================
 SUMMARY_CACHE_TTL = 60  # seconds
 _summary_cache: Dict[int, Dict[str, Any]] = {}
+# Bumped on every watchlist change, so a summary computed across a change is not cached (REQ-21).
+_summary_generation: Dict[int, int] = {}
+# The server cache above is evicted on change; a browser's HTTP cache would not be (REQ-21).
+SUMMARY_CACHE_CONTROL = "no-store, private"
 
 
 def invalidate_user_cache(user_id: int):
     """Evict user's summary cache when watchlist changes."""
+    _summary_generation[user_id] = _summary_generation.get(user_id, 0) + 1
     _summary_cache.pop(user_id, None)
 
 
@@ -79,9 +86,9 @@ class WatchlistItemResponse(BaseModel):
     price: float = 0.0
     change_pct: float = 0.0
     volume: float = 0.0
-    day_high: float = 0.0
-    day_low: float = 0.0
-    rsi: float = 50.0
+    day_high: Optional[float] = None  # null until computed from real history (D4)
+    day_low: Optional[float] = None
+    rsi: Optional[float] = None
     currency: str = "USD"
     prediction: Optional[str] = None
 
@@ -133,11 +140,12 @@ async def _enrich_watchlist_tickers(
                 "price": round(stock_record.price or 0.0, 2),
                 "change_pct": round(stock_record.change_pct or 0.0, 2),
                 "volume": stock_record.volume or 0.0,
-                "day_high": round(stock_record.day_high or stock_record.price or 0.0, 2),
-                "day_low": round(stock_record.day_low or stock_record.price or 0.0, 2),
-                "rsi": round(stock_record.rsi or 50.0, 1),
+                "day_high": price_level(stock_record.day_high),
+                "day_low": price_level(stock_record.day_low),
+                "rsi": rounded(stock_record.rsi, 1),
                 "currency": stock_record.currency or ("TRY" if is_bist else "USD"),
-                "prediction": stock_record.prediction or ("Bullish" if (stock_record.change_pct or 0) >= 0 else "Bearish"),
+                # A null label stays null (D4): no "Bullish" / "Bearish" from one day's move.
+                "prediction": stock_record.prediction,
                 "market_type": stock_record.market_type or item.market
             })
         else:
@@ -158,9 +166,9 @@ async def _enrich_watchlist_tickers(
                     "price": round(live_data.get("price", 0.0), 2),
                     "change_pct": round(live_data.get("change_pct", 0.0), 2),
                     "volume": live_data.get("volume", 0.0),
-                    "day_high": round(live_data.get("day_high", live_data.get("price", 0.0)), 2),
-                    "day_low": round(live_data.get("day_low", live_data.get("price", 0.0)), 2),
-                    "rsi": round(live_data.get("rsi", 50.0), 1),
+                    "day_high": price_level(live_data.get("day_high")),
+                    "day_low": price_level(live_data.get("day_low")),
+                    "rsi": rounded(live_data.get("rsi"), 1),
                     "currency": live_data.get("currency", "TRY" if is_bist else "USD"),
                     "prediction": live_data.get("prediction", ""),
                     "market_type": item.market
@@ -176,9 +184,9 @@ async def _enrich_watchlist_tickers(
                     "price": 0.0,
                     "change_pct": 0.0,
                     "volume": 0.0,
-                    "day_high": 0.0,
-                    "day_low": 0.0,
-                    "rsi": 50.0,
+                    "day_high": None,
+                    "day_low": None,
+                    "rsi": None,
                     "currency": "TRY" if is_bist else "USD",
                     "prediction": "Data updating",
                     "market_type": item.market
@@ -224,21 +232,18 @@ async def add_to_watchlist(
 ):
     """
     Add a stock ticker to user's portfolio watchlist.
-    Automatically identifies market ('BIST100' or 'US') if not specified.
+    The market is resolved on the server; a client-supplied market is only a hint.
     """
     raw_ticker = req.ticker.strip().upper()
     if not raw_ticker:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticker symbol required.")
 
-    # Determine market
-    market = req.market
-    if not market:
-        # Check if BIST stock
-        clean_sym = raw_ticker.replace(".IS", "")
-        is_bist = raw_ticker.endswith(".IS") or any(s.replace(".IS", "") == clean_sym for s in BIST_SYMBOLS)
-        market = "BIST100" if is_bist else "US"
-
-    canonical_ticker = raw_ticker.replace(".IS", "") if market == "BIST100" else raw_ticker
+    # The server decides the market; req.market is only a hint (REQ-19).
+    try:
+        resolved = await watchlist_symbols.resolve(db, raw_ticker, req.market)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    canonical_ticker, market = resolved.ticker, resolved.market
 
     # Check if already in watchlist
     existing = await db.execute(
@@ -322,6 +327,8 @@ async def get_watchlist_summary(
     """
     now_ts = time.time()
     user_id = current_user.id
+    generation = _summary_generation.get(user_id, 0)
+    response.headers["Cache-Control"] = SUMMARY_CACHE_CONTROL
 
     # Check 60-second cache
     cached_entry = _summary_cache.get(user_id)
@@ -332,7 +339,6 @@ async def get_watchlist_summary(
             data = cached_entry["data"].copy()
             data["from_cache"] = True
             data["cache_expires_in"] = remaining
-            response.headers["Cache-Control"] = f"private, max-age={remaining}"
             return data
 
     # Fetch user watchlist items
@@ -425,11 +431,11 @@ async def get_watchlist_summary(
         "cache_expires_in": SUMMARY_CACHE_TTL
     }
 
-    # Store in cache
-    _summary_cache[user_id] = {
-        "data": summary_data,
-        "cached_at": now_ts
-    }
+    # Store in cache, unless the watchlist changed while this summary was computed
+    if _summary_generation.get(user_id, 0) == generation:
+        _summary_cache[user_id] = {
+            "data": summary_data,
+            "cached_at": now_ts
+        }
 
-    response.headers["Cache-Control"] = f"private, max-age={SUMMARY_CACHE_TTL}"
     return summary_data

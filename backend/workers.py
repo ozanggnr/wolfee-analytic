@@ -8,12 +8,19 @@ from typing import Optional
 from sqlalchemy import select, delete, func, desc
 from database import AsyncSessionLocal
 from models import StockData, TurkishGold, ExchangeRate, AIInsight
+from quant.signals import enrich_quote
 
 logger = logging.getLogger(__name__)
 
 # Import will be done lazily to avoid circular imports
 _refresh_running = False
 _last_refresh_time = 0
+
+# The refreshers fetch concurrently but write one at a time. SQLite allows a single
+# writer; without this, one refresher's open write transaction made the others fail
+# with "database is locked" (REQ-18: exchange_rates stayed empty). Write phases are
+# short and hold no network calls.
+_DB_WRITE_LOCK = asyncio.Lock()
 MIN_REFRESH_INTERVAL_SECONDS = 90  # Don't refresh more than once per 90s
 AI_INSIGHT_CACHE_HOURS = int(os.getenv("AI_INSIGHT_CACHE_HOURS", "4"))
 
@@ -139,13 +146,22 @@ async def refresh_all_data(force: bool = False):
 
     logger.info(f"🔄 Starting refresh for active markets: {', '.join(task_labels)}...")
 
+    # History before quotes, so this cycle's cards use the newest closes (REQ-10). On an
+    # empty cache the quotes go first: the first year-long backfill must not hold back the
+    # cards, whose indicators then fill in on the next cycle.
+    history_first = bist_count > 0 and global_count > 0 and comm_count > 0
     try:
+        if history_first:
+            await refresh_history_for_active_markets(bist_active, us_active, comm_active)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for label, result in zip(task_labels, results):
             if isinstance(result, Exception):
                 logger.error(f"{label} refresh failed: {result}")
             else:
                 logger.info(f"{label} refresh: {result} items")
+
+        if not history_first:
+            await refresh_history_for_active_markets(bist_active, us_active, comm_active)
 
         # Refresh AI insight only if stock data was refreshed or forced
         if bist_active or us_active or force:
@@ -160,6 +176,53 @@ async def refresh_all_data(force: bool = False):
         return False
     finally:
         _refresh_running = False
+
+async def refresh_history_for_active_markets(bist_active: bool, us_active: bool, comm_active: bool):
+    """Daily closes into price_history for the markets refreshed this cycle (REQ-26).
+
+    A failure is logged and leaves the quote refresh untouched; indicators stay null.
+    """
+    from quant.symbols import EXCHANGE_BIST, EXCHANGE_COMMODITY, EXCHANGE_US
+    from services.price_history_service import refresh_price_history
+
+    exchanges = [exchange for exchange, active in
+                 ((EXCHANGE_BIST, bist_active), (EXCHANGE_US, us_active), (EXCHANGE_COMMODITY, comm_active))
+                 if active]
+    if not exchanges:
+        return None
+    try:
+        return await refresh_price_history(AsyncSessionLocal, _DB_WRITE_LOCK, exchanges)
+    except Exception:
+        logger.exception("Price history refresh failed; price_history left unchanged")
+        return None
+
+
+async def _enrich_quotes(quotes: list, market_type: str, currency_of) -> list:
+    """Enrich raw quotes with real daily closes from price_history (REQ-10, D4).
+
+    ``quant.signals.enrich_quote`` is the single copy of the card enrichment (H1).
+    A quote without stored history, or every quote when the history read fails,
+    gets ``history=None``: its indicators and labels are null, never estimated.
+    """
+    from services import card_history
+
+    try:
+        async with AsyncSessionLocal() as session:
+            histories = await card_history.histories_for(session, market_type, [q.get('symbol') for q in quotes])
+    except Exception:
+        logger.exception("%s: reading price history failed; indicators stay null this cycle", market_type)
+        histories = {}
+
+    enriched = []
+    for quote in quotes:
+        currency = currency_of(quote)
+        try:
+            enriched.append(enrich_quote(quote, market_type, currency, history=histories.get(quote.get('symbol'))))
+        except (ValueError, ArithmeticError):
+            logger.exception("Indicators failed for %s; stored without them", quote.get('symbol'))
+            enriched.append(enrich_quote(quote, market_type, currency, history=None))
+    return enriched
+
 
 async def refresh_bist_stocks() -> int:
     """Refresh all BIST stocks with bounded concurrency"""
@@ -176,7 +239,7 @@ async def refresh_bist_stocks() -> int:
                     data = await asyncio.to_thread(fetch_bist_stock_fallback, symbol)
                 if not data:
                     return None
-                return _enrich_stock_data(data, market_type='BIST', currency='TRY')
+                return data
             except Exception as e:
                 logger.error(f"BIST refresh error {symbol}: {e}")
                 return None
@@ -184,9 +247,10 @@ async def refresh_bist_stocks() -> int:
     tasks = [fetch_one(s) for s in BIST_SYMBOLS]
     results = await asyncio.gather(*tasks)
     valid_data = [d for d in results if d]
+    valid_data = await _enrich_quotes(valid_data, 'BIST', lambda quote: 'TRY')
 
     count = 0
-    async with AsyncSessionLocal() as session:
+    async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
         for data in valid_data:
             try:
                 await _upsert_stock(session, data)
@@ -209,7 +273,7 @@ async def refresh_global_stocks() -> int:
                 data = await asyncio.to_thread(fetch_global_stock, symbol)
                 if not data:
                     return None
-                return _enrich_stock_data(data, market_type='GLOBAL', currency=data.get('currency', 'USD') or 'USD')
+                return data
             except Exception as e:
                 logger.error(f"Global refresh error {symbol}: {e}")
                 return None
@@ -217,9 +281,10 @@ async def refresh_global_stocks() -> int:
     tasks = [fetch_one(s) for s in GLOBAL_SYMBOLS]
     results = await asyncio.gather(*tasks)
     valid_data = [d for d in results if d]
+    valid_data = await _enrich_quotes(valid_data, 'GLOBAL', lambda quote: quote.get('currency') or 'USD')
 
     count = 0
-    async with AsyncSessionLocal() as session:
+    async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
         for data in valid_data:
             try:
                 await _upsert_stock(session, data)
@@ -234,22 +299,29 @@ async def refresh_commodities() -> int:
     from analysis import COMMODITIES_SYMBOLS
     from data_sources.global_market import fetch_commodity_data
     
+    # Fetch everything first: a session left open across network calls kept a
+    # write transaction open and locked SQLite for the other refreshers (REQ-18).
+    fetched = []
+    for symbol, name in COMMODITIES_SYMBOLS.items():
+        try:
+            data = await asyncio.to_thread(fetch_commodity_data, symbol)
+            if not data:
+                continue
+            data['name'] = name
+            fetched.append(data)
+        except Exception as e:
+            logger.error(f"Commodity refresh error {symbol}: {e}")
+
+    fetched = await _enrich_quotes(fetched, 'COMMODITY', lambda quote: 'USD')
+
     count = 0
-    async with AsyncSessionLocal() as session:
-        for symbol, name in COMMODITIES_SYMBOLS.items():
+    async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
+        for data in fetched:
             try:
-                data = await asyncio.to_thread(fetch_commodity_data, symbol)
-                if not data:
-                    continue
-                
-                data['name'] = name
-                data = _enrich_stock_data(data, market_type='COMMODITY', currency='USD')
                 await _upsert_stock(session, data)
                 count += 1
-                
             except Exception as e:
-                logger.error(f"Commodity refresh error {symbol}: {e}")
-        
+                logger.error(f"Commodity upsert error {data.get('symbol')}: {e}")
         await session.commit()
     return count
 
@@ -262,7 +334,7 @@ async def refresh_turkish_gold() -> int:
         if not gold_data:
             return 0
         
-        async with AsyncSessionLocal() as session:
+        async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
             for item in gold_data:
                 existing = await session.execute(
                     select(TurkishGold).where(TurkishGold.gold_type == item['gold_type'])
@@ -291,9 +363,11 @@ async def refresh_exchange_rates() -> int:
     try:
         rates = await asyncio.to_thread(fetch_exchange_rates)
         if not rates:
+            # Never filled in: TRY conversion reports missing_fx_rate until a fetch succeeds.
+            logger.error("Exchange rate refresh: TCMB returned no rates; exchange_rates left unchanged")
             return 0
         
-        async with AsyncSessionLocal() as session:
+        async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
             for item in rates:
                 existing = await session.execute(
                     select(ExchangeRate).where(ExchangeRate.pair == item['pair'])
@@ -311,137 +385,68 @@ async def refresh_exchange_rates() -> int:
             
             await session.commit()
         return len(rates)
-    except Exception as e:
-        logger.error(f"Exchange rate refresh error: {e}")
+    except Exception:
+        logger.exception("Exchange rate refresh failed; exchange_rates left unchanged")
         return 0
 
 async def refresh_ai_insight(force: bool = False) -> bool:
-    """Generate fresh AI insight with caching (max once per AI_INSIGHT_CACHE_HOURS, default 4h)"""
+    """Store a new guarded market insight with provenance, at most once per AI_INSIGHT_CACHE_HOURS.
+
+    Only a stored row with provenance that came from the model counts as fresh: an old
+    row without provenance (never served, DATABASE_CONTRACT §4.4) or a template fallback
+    is replaced on the next cycle.
+    """
+    from services import ai_insight_service, insight_readiness
+    from services.market_display import stock_card
+
     try:
         async with AsyncSessionLocal() as session:
-            # Check latest insight age
             if not force:
-                latest_res = await session.execute(
-                    select(AIInsight)
-                    .where(AIInsight.insight_type == 'daily')
-                    .order_by(desc(AIInsight.created_at))
-                    .limit(1)
-                )
-                latest_insight = latest_res.scalar_one_or_none()
-                if latest_insight and latest_insight.created_at:
-                    created_at = latest_insight.created_at
-                    now_utc = datetime.now(timezone.utc)
-                    if created_at.tzinfo is None:
-                        created_at = created_at.replace(tzinfo=timezone.utc)
-                    age_hours = (now_utc - created_at).total_seconds() / 3600.0
+                latest = await ai_insight_service.latest_with_provenance(session)
+                if latest is not None and not latest.is_fallback:
+                    age_hours = (datetime.now(timezone.utc)
+                                 - ai_insight_service.utc(latest.generated_at)).total_seconds() / 3600.0
                     if age_hours < AI_INSIGHT_CACHE_HOURS:
                         logger.info(f"ℹ️ AI insight is fresh ({age_hours:.1f}h old < {AI_INSIGHT_CACHE_HOURS}h) — skipping regeneration.")
                         return True
 
-            # Get current stock data from DB
-            result = await session.execute(select(StockData))
-            stocks = result.scalars().all()
+            stocks = (await session.execute(select(StockData))).scalars().all()
 
-            if not stocks:
-                return False
+        # REQ-20: never build (or store) an insight from an empty or partial cache.
+        counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
+        if not insight_readiness.is_ready(counts):
+            logger.warning("AI insight not generated: stock data incomplete (%s)",
+                           insight_readiness.describe(counts))
+            return False
 
-            market_data = [{
-                'symbol': s.symbol,
-                'name': s.name,
-                'price': s.price,
-                'change_pct': s.change_pct,
-                'rsi': s.rsi,
-                'volume': s.volume,
-                'currency': s.currency,
-                'volatility': s.volatility,
-                'day_high': s.day_high,
-                'day_low': s.day_low,
-                'previous_close': s.previous_close
-            } for s in stocks]
+        # No session is open during the model call (REQ-18).
+        response = await ai_insight_service.market_response(
+            [stock_card(s) for s in stocks], ai_insight_service.oldest_quote_time(stocks))
 
-            from ai_service import get_market_insight
-            insight_text = await asyncio.to_thread(get_market_insight, market_data)
-
-            # Save to DB
-            insight = AIInsight(
-                insight_type='daily',
-                insight_text=insight_text
-            )
-            session.add(insight)
-
-            # Prune old insights beyond latest 10 to keep database compact
-            subq = select(AIInsight.id).where(AIInsight.insight_type == 'daily').order_by(desc(AIInsight.created_at)).offset(10)
-            old_ids = (await session.execute(subq)).scalars().all()
-            if old_ids:
-                await session.execute(delete(AIInsight).where(AIInsight.id.in_(old_ids)))
-
+        async with _DB_WRITE_LOCK, AsyncSessionLocal() as session:
+            await ai_insight_service.store(session, response)
             await session.commit()
-            logger.info("✅ Generated fresh AI market insight.")
-
+        logger.info("✅ Stored AI market insight (generated_by=%s, is_fallback=%s).",
+                    response["generated_by"], response["is_fallback"])
         return True
     except Exception as e:
         logger.error(f"AI insight refresh error: {e}")
         return False
 
-def _enrich_stock_data(data: dict, market_type: str, currency: str) -> dict:
-    """Add analysis fields to raw stock data"""
-    price = data.get('price', 0)
-    change_pct = data.get('change_pct', 0)
-    prev_close = data.get('previous_close', 0)
-    
-    # Calculate RSI estimate from change if not available
-    rsi = data.get('rsi', 0)
-    if not rsi or rsi == 0:
-        rsi = 50 + (change_pct * 3)
-        rsi = max(5, min(95, rsi))
-    
-    # MA_20 estimate
-    ma_20 = data.get('ma_20', 0)
-    if not ma_20 or ma_20 == 0:
-        ma_20 = price * (1 - change_pct / 200) if price else 0
-    
-    # Volatility classification
-    volatility = 'HIGH' if abs(change_pct) > 5 else 'MEDIUM' if abs(change_pct) > 2 else 'LOW'
-    
-    # Smart prediction label — uses both change_pct and RSI for accuracy
-    if change_pct > 5 and rsi < 70:
-        prediction = f"PURCHASABLE — strong momentum +{change_pct:.1f}%"
-    elif change_pct > 2 and rsi < 65:
-        prediction = f"PURCHASABLE — positive trend +{change_pct:.1f}%"
-    elif change_pct > 0.5 and rsi < 60:
-        prediction = f"PURCHASABLE — rising +{change_pct:.1f}%"
-    elif rsi < 35:
-        prediction = "ACCUMULATE — oversold, potential bounce"
-    elif change_pct >= 0 and rsi < 55:
-        prediction = "ACCUMULATE — steady upward movement"
-    elif change_pct >= 0 and rsi < 65:
-        prediction = "WATCH TO BUY — conditions improving"
-    elif rsi > 72 and change_pct > 3:
-        prediction = f"TAKE PROFITS — up {change_pct:.1f}%, overbought"
-    elif rsi > 65:
-        prediction = "WATCH TO BUY — slightly overbought, wait for pullback"
-    elif change_pct < -2:
-        prediction = f"AVOID FOR NOW — declining {change_pct:.1f}%"
-    elif change_pct < 0 and rsi > 40:
-        prediction = "WATCH TO BUY — minor dip, monitor closely"
-    elif change_pct < 0 and rsi < 40:
-        prediction = "ACCUMULATE — dip into value zone"
-    else:
-        prediction = "WATCH TO BUY — neutral, awaiting direction"
-    
-    data.update({
-        'currency': currency,
-        'market_type': market_type,
-        'rsi': round(rsi, 2),
-        'ma_20': round(ma_20, 2) if ma_20 else 0,
-        'volatility': volatility,
-        'prediction': prediction,
-        'reason': prediction,
-        'is_favorable': change_pct > 0,
-        'is_buyable': change_pct > 0.5 and rsi < 65,
-    })
-    
-    return data
+# Values computed from price history, and the labels built on them (decision D4). A None
+# here means "not available" and must reach the cache, replacing any earlier estimate.
+_INDICATOR_FIELDS = ('day_high', 'day_low', 'rsi', 'ma_20', 'volatility', 'is_favorable', 'is_buyable',
+                     'prediction', 'reason')
+# Provider values that are None when not supplied (REQ-30); None replaces a stale value.
+_PROVIDER_OPTIONAL_FIELDS = ('open', 'open_price', 'previous_close')
+# Where the indicators came from. stock_data has no columns for these (DATABASE_CONTRACT
+# §4 M4 is still open), so they live in the JSON extra_data column, replaced on every write.
+_PROVENANCE_FIELDS = ('indicators_as_of', 'indicator_method', 'volatility_pct')
+
+
+def _indicator_provenance(data: dict) -> dict:
+    return {field: data.get(field) for field in _PROVENANCE_FIELDS}
+
 
 async def _upsert_stock(session, data: dict):
     """Insert or update a stock record"""
@@ -466,9 +471,12 @@ async def _upsert_stock(session, data: dict):
             'market_cap': 'market_cap'
         }
         for src_key, db_key in field_map.items():
-            if src_key in data and data[src_key] is not None:
-                if hasattr(existing, db_key):
-                    setattr(existing, db_key, data[src_key])
+            if src_key not in data or not hasattr(existing, db_key):
+                continue
+            if data[src_key] is not None or src_key in _INDICATOR_FIELDS + _PROVIDER_OPTIONAL_FIELDS:
+                setattr(existing, db_key, data[src_key])
+        if 'indicators_as_of' in data:
+            existing.extra_data = _indicator_provenance(data)
         existing.updated_at = datetime.utcnow()
     else:
         # Map field names
@@ -478,22 +486,23 @@ async def _upsert_stock(session, data: dict):
             price=data.get('price', 0),
             change_pct=data.get('change_pct', 0),
             volume=data.get('volume', 0),
-            day_high=data.get('day_high', 0),
-            day_low=data.get('day_low', 0),
-            open_price=data.get('open', data.get('open_price', 0)),
-            previous_close=data.get('previous_close', 0),
+            day_high=data.get('day_high'),
+            day_low=data.get('day_low'),
+            open_price=data.get('open', data.get('open_price')),
+            previous_close=data.get('previous_close'),
             bid=data.get('bid', 0),
             ask=data.get('ask', 0),
-            rsi=data.get('rsi', 50),
-            ma_20=data.get('ma_20', 0),
-            volatility=data.get('volatility', 'LOW'),
+            rsi=data.get('rsi'),
+            ma_20=data.get('ma_20'),
+            volatility=data.get('volatility'),
             currency=data.get('currency', 'USD'),
             market_type=data.get('market_type', 'GLOBAL'),
-            prediction=data.get('prediction', ''),
-            reason=data.get('reason', ''),
-            is_favorable=data.get('is_favorable', False),
-            is_buyable=data.get('is_buyable', False),
-            market_cap=data.get('market_cap', 0)
+            prediction=data.get('prediction'),
+            reason=data.get('reason'),
+            is_favorable=data.get('is_favorable'),
+            is_buyable=data.get('is_buyable'),
+            market_cap=data.get('market_cap', 0),
+            extra_data=_indicator_provenance(data),
         )
         session.add(stock)
 

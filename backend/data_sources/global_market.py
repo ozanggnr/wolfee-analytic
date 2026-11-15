@@ -4,6 +4,8 @@ from typing import Optional
 import httpx
 import yfinance as yf
 
+from data_sources.provided import provided_price
+
 logger = logging.getLogger(__name__)
 
 PERIOD_MAP = {
@@ -23,10 +25,10 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
         ticker = yf.Ticker(symbol)
 
         price = 0.0
-        prev_close = 0.0
+        prev_close = None
         day_high = 0.0
         day_low = 0.0
-        open_price = 0.0
+        open_price = None
         volume = 0.0
         market_cap = 0.0
         fifty_day_avg = 0.0
@@ -36,10 +38,10 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
         try:
             fi = ticker.fast_info
             price = float(fi.last_price) if fi.last_price else 0.0
-            prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+            prev_close = provided_price(fi.previous_close)
             day_high = float(fi.day_high) if fi.day_high else 0.0
             day_low = float(fi.day_low) if fi.day_low else 0.0
-            open_price = float(fi.open) if fi.open else 0.0
+            open_price = provided_price(fi.open)
             volume = float(fi.last_volume) if fi.last_volume else 0.0
             market_cap = float(fi.market_cap) if fi.market_cap else 0.0
             fifty_day_avg = float(fi.fifty_day_average) if fi.fifty_day_average else 0.0
@@ -53,8 +55,8 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
                 hist = ticker.history(period="5d")
                 if not hist.empty:
                     price = float(hist["Close"].iloc[-1])
-                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
-                    open_price = float(hist["Open"].iloc[-1])
+                    prev_close = provided_price(hist["Close"].iloc[-2]) if len(hist) > 1 else None
+                    open_price = provided_price(hist["Open"].iloc[-1])
                     day_high = float(hist["High"].iloc[-1])
                     day_low = float(hist["Low"].iloc[-1])
                     volume = float(hist["Volume"].iloc[-1])
@@ -106,10 +108,10 @@ def fetch_global_stock_finnhub(symbol: str, api_key: str) -> Optional[dict]:
             return None
 
         price = float(data.get("c", 0))
-        prev_close = float(data.get("pc", 0))
+        prev_close = provided_price(data.get("pc"))
         day_high = float(data.get("h", 0))
         day_low = float(data.get("l", 0))
-        open_price = float(data.get("o", 0))
+        open_price = provided_price(data.get("o"))
 
         change_pct = 0.0
         if prev_close and prev_close > 0:
@@ -235,20 +237,20 @@ def fetch_commodity_data(symbol: str) -> Optional[dict]:
         ticker = yf.Ticker(symbol)
 
         price = 0.0
-        prev_close = 0.0
+        prev_close = None
         day_high = 0.0
         day_low = 0.0
-        open_price = 0.0
+        open_price = None
         volume = 0.0
 
         # 1. Attempt fast_info
         try:
             fi = ticker.fast_info
             price = float(fi.last_price) if fi.last_price else 0.0
-            prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+            prev_close = provided_price(fi.previous_close)
             day_high = float(fi.day_high) if fi.day_high else 0.0
             day_low = float(fi.day_low) if fi.day_low else 0.0
-            open_price = float(fi.open) if fi.open else 0.0
+            open_price = provided_price(fi.open)
             volume = float(fi.last_volume) if fi.last_volume else 0.0
         except Exception as e:
             logger.debug("Fast info failed for commodity %s: %s", symbol, e)
@@ -259,8 +261,8 @@ def fetch_commodity_data(symbol: str) -> Optional[dict]:
                 hist = ticker.history(period="5d")
                 if not hist.empty:
                     price = float(hist["Close"].iloc[-1])
-                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
-                    open_price = float(hist["Open"].iloc[-1])
+                    prev_close = provided_price(hist["Close"].iloc[-2]) if len(hist) > 1 else None
+                    open_price = provided_price(hist["Open"].iloc[-1])
                     day_high = float(hist["High"].iloc[-1])
                     day_low = float(hist["Low"].iloc[-1])
                     volume = float(hist["Volume"].iloc[-1])

@@ -1,0 +1,108 @@
+{
+ "chart": {
+  "result": [
+   {
+    "meta": {
+     "currency": "TRY",
+     "symbol": "THYAO.IS",
+     "exchangeName": "IST",
+     "instrumentType": "EQUITY",
+     "regularMarketTime": 1794582590,
+     "gmtoffset": 10800,
+     "timezone": "TRT",
+     "exchangeTimezoneName": "Europe/Istanbul",
+     "regularMarketPrice": 320.25,
+     "currentTradingPeriod": {
+      "pre": {
+       "timezone": "TRT",
+       "end": 1794551400,
+       "start": 1794551400,
+       "gmtoffset": 10800
+      },
+      "regular": {
+       "timezone": "TRT",
+       "end": 1794582000,
+       "start": 1794551400,
+       "gmtoffset": 10800
+      },
+      "post": {
+       "timezone": "TRT",
+       "end": 1794582000,
+       "start": 1794582000,
+       "gmtoffset": 10800
+      }
+     },
+     "dataGranularity": "1d",
+     "range": "1mo"
+    },
+    "timestamp": [
+     1793946600,
+     1794205800,
+     1794292200,
+     1794378600,
+     1794465000,
+     1794551400
+    ],
+    "indicators": {
+     "quote": [
+      {
+       "high": [
+        299.75,
+        310.25,
+        318.25,
+        318.25,
+        325.75,
+        323.5
+       ],
+       "close": [
+        299.25,
+        310.0,
+        313.75,
+        314.75,
+        319.0,
+        320.25
+       ],
+       "open": [
+        290.0,
+        301.5,
+        311.5,
+        312.25,
+        315.5,
+        315.75
+       ],
+       "low": [
+        288.0,
+        298.25,
+        311.0,
+        310.75,
+        315.5,
+        315.0
+       ],
+       "volume": [
+        42436087,
+        47781476,
+        49074691,
+        32338328,
+        48809018,
+        29607838
+       ]
+      }
+     ],
+     "adjclose": [
+      {
+       "adjclose": [
+        299.25,
+        310.0,
+        313.75,
+        314.75,
+        319.0,
+        320.25
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "error": null
+ }
+}

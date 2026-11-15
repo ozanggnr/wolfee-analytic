@@ -6,6 +6,8 @@ import httpx
 import yfinance as yf
 from bs4 import BeautifulSoup
 
+from data_sources.provided import provided_price
+
 logger = logging.getLogger(__name__)
 
 HEADERS = {
@@ -39,10 +41,10 @@ def fetch_bist_stock(symbol: str) -> Optional[dict]:
         ticker = yf.Ticker(ticker_symbol)
 
         price = 0.0
-        prev_close = 0.0
+        prev_close = None
         day_high = 0.0
         day_low = 0.0
-        open_price = 0.0
+        open_price = None
         volume = 0.0
         market_cap = 0.0
         fifty_day_avg = 0.0
@@ -51,10 +53,10 @@ def fetch_bist_stock(symbol: str) -> Optional[dict]:
         try:
             fi = ticker.fast_info
             price = float(fi.last_price) if fi.last_price else 0.0
-            prev_close = float(fi.previous_close) if fi.previous_close else 0.0
+            prev_close = provided_price(fi.previous_close)
             day_high = float(fi.day_high) if fi.day_high else 0.0
             day_low = float(fi.day_low) if fi.day_low else 0.0
-            open_price = float(fi.open) if fi.open else 0.0
+            open_price = provided_price(fi.open)
             volume = float(fi.last_volume) if fi.last_volume else 0.0
             market_cap = float(fi.market_cap) if fi.market_cap else 0.0
             fifty_day_avg = float(fi.fifty_day_average) if fi.fifty_day_average else 0.0
@@ -64,10 +66,10 @@ def fetch_bist_stock(symbol: str) -> Optional[dict]:
                 hist = ticker.history(period="5d")
                 if not hist.empty:
                     price = float(hist["Close"].iloc[-1])
-                    prev_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+                    prev_close = provided_price(hist["Close"].iloc[-2]) if len(hist) > 1 else None
                     day_high = float(hist["High"].iloc[-1])
                     day_low = float(hist["Low"].iloc[-1])
-                    open_price = float(hist["Open"].iloc[-1])
+                    open_price = provided_price(hist["Open"].iloc[-1])
                     volume = float(hist["Volume"].iloc[-1])
             except Exception:
                 pass
@@ -150,11 +152,11 @@ def fetch_bist_stock_fallback(symbol: str) -> Optional[dict]:
             name = name_el.get_text(strip=True)
 
         # Try to extract additional data from the info table
-        prev_close = 0.0
+        prev_close = None
         day_high = 0.0
         day_low = 0.0
         volume = 0.0
-        open_price = 0.0
+        open_price = None
 
         rows = soup.find_all("div", class_="P6K39c")
         for row in rows:
@@ -169,11 +171,11 @@ def fetch_bist_stock_fallback(symbol: str) -> Optional[dict]:
                 continue
 
             if "previous close" in label or "önceki kapanış" in label:
-                prev_close = val
+                prev_close = provided_price(val)
             elif "day range" in label or "gün aralığı" in label:
                 pass  # range format, skip
             elif "open" in label or "açılış" in label:
-                open_price = val
+                open_price = provided_price(val)
             elif "volume" in label or "hacim" in label:
                 volume = val
             elif "high" in label or "yüksek" in label:
@@ -181,7 +183,7 @@ def fetch_bist_stock_fallback(symbol: str) -> Optional[dict]:
             elif "low" in label or "düşük" in label:
                 day_low = val
 
-        if prev_close > 0 and price > 0 and change_pct == 0:
+        if prev_close and price > 0 and change_pct == 0:
             change_pct = round((price - prev_close) / prev_close * 100, 2)
 
         return {
