@@ -336,9 +336,12 @@ function openModal(stock) {
     window.currentModalStock = stock;
     const modal = document.getElementById('stock-modal');
     
-    // Add AI button to header
+    // Remember what had focus, to return to it when the dialog closes
+    _modalReturnFocus = document.activeElement;
+    markSelectedCard(stock.symbol);
+
     const title = document.getElementById('modal-title');
-    title.innerHTML = `${esc(stock.name || stock.symbol)} <span style="font-size:0.8rem;color:var(--text-secondary)">${esc(stock.symbol)}</span>`;
+    title.innerHTML = `${esc(stock.name || stock.symbol)} <span class="modal-symbol">${esc(stock.symbol)}</span>`;
     
     const currency = getCurrencySymbol(stock.currency);
     
@@ -356,12 +359,15 @@ function openModal(stock) {
             chartControls.parentNode.insertBefore(aiSection, chartControls);
         }
     }
-    aiSection.innerHTML = '<button class="ai-analyze-btn">🐺 Ask Wolfee AI for Deep Analysis</button>';
+    aiSection.innerHTML = '<button type="button" class="ai-analyze-btn">Ask Wolfee AI for analysis</button>';
     aiSection.querySelector('.ai-analyze-btn').addEventListener('click', () => askWolfeeAI(stock.symbol));
 
     updatePortfolioButtonUI(stock.symbol);
     modal.classList.remove('hidden');
+    modal.scrollTop = 0;
     document.body.classList.add('no-scroll');
+    const closeBtn = modal.querySelector('.close-modal');
+    if (closeBtn) closeBtn.focus();
 
     // Default to 1Y chart
     if (typeof loadChart === 'function') loadChart(stock.symbol, '1y');
@@ -371,20 +377,32 @@ function openModal(stock) {
     _fetchLivePriceForModal(stock.symbol);
 }
 
+let _modalReturnFocus = null;
+
+/** Highlights the card whose detail is open (tint and accent border). */
+function markSelectedCard(symbol) {
+    document.querySelectorAll('.stock-card[aria-current="true"]').forEach(card => card.removeAttribute('aria-current'));
+    if (!symbol) return;
+    const key = baseSymbol({ symbol });
+    document.querySelectorAll(`.stock-card[data-stock-symbol="${CSS.escape(key)}"]`)
+        .forEach(card => card.setAttribute('aria-current', 'true'));
+}
+
 /**
  * A price field as display text. Missing, estimated or zero values (the
  * providers send 0 for bid/ask they do not have) are not available; nothing
  * is derived from the last price.
  */
 function _modalPriceText(stock, field, currency) {
-    const F = window.WolfeeFields;
-    const value = F.numberField(stock, field);
-    return value !== null && value > 0 ? `${value.toFixed(2)} ${currency}` : F.NOT_AVAILABLE;
+    return window.WolfeeFields.formatPrice(stock, field, currency);
 }
 
+/** Sets a key figure; "Not available" is set in the text face, not mono. */
 function _setModalText(id, text) {
     const el = document.getElementById(id);
-    if (el) el.textContent = text;
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('not-available', text === window.WolfeeFields.NOT_AVAILABLE);
 }
 
 function _volatilityText(stock) {
@@ -415,27 +433,26 @@ function _applyIndicatorsToModal(stock, currency) {
 function _applyStockToModal(stock, currency, isLive) {
     if (!currency) currency = getCurrencySymbol(stock.currency);
     const F = window.WolfeeFields;
-    const price = stock.price || 0;
 
+    _setModalText('stat-last', F.formatPrice(stock, 'price', currency));
     const lastEl = document.getElementById('stat-last');
-    if (lastEl) {
-        lastEl.textContent = `${price.toFixed(2)} ${currency}`;
-        if (isLive) {
-            // Flash green to indicate live price just arrived
-            lastEl.style.transition = 'color 0.3s';
-            lastEl.style.color = 'var(--success-color)';
-            setTimeout(() => { lastEl.style.color = ''; }, 1500);
-        }
+    if (lastEl && isLive) {
+        // Brief tint: the live price just arrived
+        lastEl.classList.add('is-flash');
+        setTimeout(() => lastEl.classList.remove('is-flash'), 1500);
     }
 
     document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
     _setModalText('stat-bid', _modalPriceText(stock, 'bid', currency));
     _setModalText('stat-ask', _modalPriceText(stock, 'ask', currency));
 
+    // A null change_pct (no previous close) is not available, never +0.00%
+    _setModalText('stat-change', F.formatChange(stock, { style: 'signed' }));
     const changeEl = document.getElementById('stat-change');
     if (changeEl) {
-        changeEl.textContent = `${(stock.change_pct||0) >= 0 ? '+' : ''}${(stock.change_pct||0).toFixed(2)}%`;
-        changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const direction = F.changeDirection(stock);
+        changeEl.classList.toggle('is-gain', direction === 'up');
+        changeEl.classList.toggle('is-loss', direction === 'down');
     }
 
     _setModalText('stat-low', _modalPriceText(stock, 'day_low', currency));
@@ -446,12 +463,13 @@ function _applyStockToModal(stock, currency, isLive) {
     _setModalText('stat-vol-lot', formatNumber(stock.volume || 0));
     _applyIndicatorsToModal(stock, currency);
 
+    // Descriptive label: shown when there is one, no badge otherwise
     const predEl = document.getElementById('modal-prediction');
     if (predEl) {
         const prediction = F.fieldValue(stock, 'prediction');
         const hasLabel = typeof prediction === 'string';
-        predEl.textContent = hasLabel ? prediction : F.NOT_AVAILABLE;
-        predEl.style.color = hasLabel ? 'var(--text-primary)' : 'var(--text-muted)';
+        predEl.textContent = hasLabel ? prediction : '';
+        predEl.classList.toggle('hidden', !hasLabel);
     }
 }
 
@@ -535,7 +553,7 @@ window.askWolfeeAI = async function(symbol) {
     const aiSection = document.getElementById('ai-analysis-section');
     if (!aiSection) return;
     
-    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${esc(symbol.replace('.IS',''))}...</span></div>`;
+    aiSection.innerHTML = `<div class="ai-response is-loading" role="status"><span class="spinner" aria-hidden="true"></span><span>Wolfee AI is analysing ${esc(symbol.replace('.IS',''))}</span></div>`;
     
     try {
         const res = await fetch(`${API_URL}/api/ai/analyze/${encodeURIComponent(symbol)}`);
@@ -546,7 +564,7 @@ window.askWolfeeAI = async function(symbol) {
         renderAIResponse(response, data, 'analysis', AI_ANALYSIS_LABELS);
         aiSection.replaceChildren(response);
     } catch(e) {
-        aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline. Please try again in a moment.</div>`;
+        aiSection.innerHTML = `<div class="inline-error" role="alert">Wolfee AI could not answer just now. Close this panel and try again in a moment.</div>`;
     }
 }
 
@@ -657,35 +675,32 @@ window.updatePortfolioButtonUI = function(symbol) {
     const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
     const inPortfolio = portfolio.some(s => (s.symbol || s.ticker || '').toUpperCase().replace('.IS', '').trim() === cleanSym);
     
-    if (inPortfolio) {
-        btn.textContent = '− Remove from Watchlist';
-        btn.style.color = 'var(--danger-color)';
-        btn.style.borderColor = 'var(--danger-color)';
-    } else {
-        btn.textContent = '+ Add to Watchlist';
-        btn.style.color = 'var(--accent-color)';
-        btn.style.borderColor = 'var(--accent-color)';
-    }
+    btn.textContent = inPortfolio ? '− Remove from Watchlist' : '+ Add to Watchlist';
+    btn.classList.toggle('is-remove', inPortfolio);
 }
+
+const MODAL_CLOSE_MS = 150;
 
 function closeModalWithAnim() {
     const activeModals = document.querySelectorAll('.modal:not(.hidden)');
-    activeModals.forEach(m => {
-        const content = m.querySelector('.modal-content');
-        if (content) {
-            content.style.animation = 'slideUp 0.25s ease-in forwards';
-        }
-    });
-    
+    if (activeModals.length === 0) return;
+    activeModals.forEach(m => m.classList.add('is-closing'));
+
     setTimeout(() => {
         activeModals.forEach(m => {
             m.classList.add('hidden');
-            const content = m.querySelector('.modal-content');
-            if (content) content.style.animation = '';
+            m.classList.remove('is-closing');
         });
         document.body.classList.remove('no-scroll');
-    }, 240);
+        markSelectedCard(null);
+        if (_modalReturnFocus && document.contains(_modalReturnFocus)) _modalReturnFocus.focus();
+        _modalReturnFocus = null;
+    }, MODAL_CLOSE_MS);
 }
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.querySelector('.modal:not(.hidden)')) closeModalWithAnim();
+});
 
 document.querySelectorAll('.close-modal').forEach(btn => {
     btn.onclick = () => closeModalWithAnim();

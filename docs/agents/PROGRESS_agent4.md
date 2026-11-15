@@ -10,13 +10,14 @@ Visual only: routes, element IDs, form field names, API calls and the safe-html 
 Decisions from the user: four mobile tabs (Market, Opportunities, Watchlist, Account); Account opens sign-in, or a sheet with the email and Log out; blue line chart everywhere, skipping bars without a close; mobile market insight starts at two lines with "Show more"; no label badge when the label is null; a null `change_pct` shows "Not available".
 
 ## Done
+- [x] Page 2: stock modal. Close is a button, dialog semantics, Escape closes, focus returns; blue line chart for every period from closes only (bars without a close skipped); null change shows "Not available"; label badge hidden when null; no inline styles.
 - [x] Page 1: shell and market page. New stylesheets replace `style.css`; navy header; mobile tab bar and Account sheet; one search and filter bar on mobile (filters as a bottom sheet); cards, gold and exchange rates null-safe for `change_pct` and prices (`formatChange`, `formatPrice`, `changeDirection`, `directionClass` in `market-fields.js`); `updated_at` without a zone read as UTC (`parseTimestamp`).
 
 ## In progress
-- Page 2: stock modal (full-screen sheet on mobile, blue line chart).
+- Page 3: Opportunities.
 
 ## Next
-- Page 3 Opportunities, page 4 Watchlist and export, page 5 auth forms.
+- Page 4 Watchlist and export, page 5 auth forms.
 - Then: bump the asset version, WSL tests (frontend and backend), browser check of every page at 1440 and 390 px, final screenshots on the review page.
 - After phase B: REQ-32 Portfolio page on `/api/v1/portfolios`, then the Portfolio tab returns.
 
