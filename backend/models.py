@@ -140,7 +140,7 @@ class TurkishGold(Base):
     display_name = Column(String(100))
     buying_price = Column(Float, default=0)
     selling_price = Column(Float, default=0)
-    change_pct = Column(Float, default=0)
+    change_pct = Column(Float)  # NULL when the source shows no change (REQ-31 e)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
@@ -152,7 +152,7 @@ class ExchangeRate(Base):
     display_name = Column(String(50))
     buying = Column(Float, default=0)
     selling = Column(Float, default=0)
-    change_pct = Column(Float, default=0)
+    change_pct = Column(Float)  # NULL without a previous close (REQ-31 e)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 

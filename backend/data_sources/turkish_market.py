@@ -226,6 +226,14 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
             except ValueError:
                 return 0.0
 
+        def parse_change(text: str) -> Optional[float]:
+            """The page's daily change in percent; None when it shows none (REQ-31 e)."""
+            cleaned = text.replace("%", "").replace("+", "").replace(".", "").replace(",", ".").strip()
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+
         # Primary approach: Bigpara uses table elements for market gold lists
         tables = soup.find_all("table")
         for table in tables:
@@ -251,7 +259,7 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
                 # tds[1] is Alış (Buying), tds[2] is Satış (Selling), tds[3] is Fark (Change %)
                 buying_price = parse_price(tds[1].get_text(strip=True)) if len(tds) > 1 else 0.0
                 selling_price = parse_price(tds[2].get_text(strip=True)) if len(tds) > 2 else 0.0
-                change_pct = parse_price(tds[3].get_text(strip=True)) if len(tds) > 3 else 0.0
+                change_pct = parse_change(tds[3].get_text(strip=True)) if len(tds) > 3 else None
 
                 results.append({
                     "gold_type": gold_type,
@@ -296,11 +304,12 @@ def fetch_turkish_gold() -> Optional[list[dict]]:
 
                 gold_type, display_name = GOLD_TYPE_MAP[matched_key]
                 spans = row.find_all("span")
-                prices = [parse_price(span.get_text(strip=True)) for span in spans]
+                texts = [span.get_text(strip=True) for span in spans]
+                prices = [parse_price(text) for text in texts]
 
                 buying_price = prices[0] if len(prices) > 0 else 0.0
                 selling_price = prices[1] if len(prices) > 1 else 0.0
-                change_pct = prices[2] if len(prices) > 2 else 0.0
+                change_pct = parse_change(texts[2]) if len(texts) > 2 else None
 
                 results.append({
                     "gold_type": gold_type,
@@ -364,14 +373,11 @@ def fetch_exchange_rates() -> Optional[list[dict]]:
                 selling = 0.0
 
             # Calculate change using yfinance
-            change_pct = 0.0
+            # None when Yahoo gives no previous close: an unknown change, not 0.0 (REQ-31 e).
+            change_pct = None
             try:
-                yf_symbol = f"{code}TRY=X"
-                fi = yf.Ticker(yf_symbol).fast_info
-                yf_price = float(fi.last_price) if fi.last_price else 0.0
-                yf_prev_close = float(fi.previous_close) if fi.previous_close else 0.0
-                if yf_prev_close > 0 and yf_price > 0:
-                    change_pct = round((yf_price - yf_prev_close) / yf_prev_close * 100, 2)
+                fi = yf.Ticker(f"{code}TRY=X").fast_info
+                change_pct = daily_change_pct(fi.last_price, fi.previous_close)
             except Exception:
                 pass
 
