@@ -88,7 +88,8 @@ Shape after decisions D4 (2026-11-12) and the 2026-11-14 label decisions. `| nul
 symbol            string
 name              string
 price             number
-change_pct        number          percent, e.g. 1.25
+change_pct        number | null   percent, e.g. 1.25; null when the provider gives no previous close
+                                  (unknown, not 0). Since 836c3a3
 volume            number
 day_high          number | null   provider value only; never price ±1 %; 0 = not available
 day_low           number | null   same
@@ -102,8 +103,6 @@ volatility_pct    number | null   20-day volatility, annualised over 252 days, p
 indicators_as_of  "YYYY-MM-DD" | null   date of the latest close used; null unless an indicator is real
 indicator_method  string | null   e.g. "RSI 14 (Wilder), 20-day simple average and 20-day volatility
                                   annualised over 252 days, from daily closing prices"; null with indicators_as_of
-estimated_fields  string[]        names of fields in this object that are still single-day estimates
-                                  (temporary, see below); [] when none. Clients treat them as not available
 currency          string          "TRY", "USD", or provider currency
 market_type       "BIST" | "GLOBAL" | "COMMODITY"
 prediction        string | null   descriptive label, see "Card labels" below; never advice
@@ -124,18 +123,19 @@ market_cap        number
 | price within **2 %** of `ma_20` | `Near 20-day average` |
 | otherwise | `Above 20-day average` / `Below 20-day average` |
 
-Only in the temporary legacy mode (below) the label states the day's move instead: `Up 1.0% today`, `Down 1.0% today`, `Unchanged today`. The old `PURCHASABLE` / `ACCUMULATE` / `WATCH TO BUY` / `AVOID FOR NOW` / `TAKE PROFITS` labels are gone.
+The temporary legacy mode and its `Up 1.0% today` / `Down 1.0% today` / `Unchanged today` labels were removed at `836c3a3` (2026-11-15). The old `PURCHASABLE` / `ACCUMULATE` / `WATCH TO BUY` / `AVOID FOR NOW` / `TAKE PROFITS` labels are gone.
 
-Presentation rules (Agent 4, decided 2026-11-14): a null value, a field listed in `estimated_fields`, and a price of 0 all display as "Not available". The day's direction reads "Up today" / "Down today", never "Bullish" / "Bearish". Every timestamp is shown in the viewer's local time zone; a timestamp without a zone is read as UTC.
+Presentation rules (Agent 4, decided 2026-11-14): a null value (including a null `change_pct`) and a price of 0 display as "Not available". `estimated_fields` is no longer sent by `analysis.analyze_stock` (`836c3a3`); clients may keep ignoring it. The day's direction reads "Up today" / "Down today", never "Bullish" / "Bearish". Every timestamp is shown in the viewer's local time zone; a timestamp without a zone is read as UTC.
 
-**Implementation status on `integration` (updated 2026-11-15, after the `agent/backend` merge `a63f25d`):**
+**Implementation status on `integration` (updated 2026-11-15, after the `agent/backend` merge `a63f25d` and the `agent/quant-ai` merge `836c3a3`):**
 
 - `quant.signals.enrich_quote` and `quant.indicators.daily_indicators` implement all of the above (merge `da57548`). They estimate nothing.
 - **Market cards** (`/api/market-data/*`, `/api/opportunities`): the workers now enrich every quote with `enrich_quote` and the daily closes stored in `price_history` (REQ-10, REQ-26; `7fa5856`). `workers._enrich_stock_data` is gone. An instrument with too little stored history gets null indicators and labels, shown as "Not available". The `StockData` Python-side defaults are removed, so a null stays null in the cache. `open` / `previous_close` are null when the provider gives none (REQ-30, `5881616`). On a fresh database the cards stay "Not available" until the daily-close job has stored enough closes (15 for RSI, 20 for the average, 21 for volatility).
 - `/api/opportunities` needs a real `is_favorable`, so it is empty for instruments without history.
-- `/api/analyze` and `/api/live-price` still call `analysis.analyze_stock` in its **temporary legacy mode**: the single-day estimates remain in those two responses, **each one named in `estimated_fields`**. The card-cache write that `/api/live-price` queues is re-enriched from stored history, so the estimates do not reach the cards. Removing legacy mode is Agent 3's next item.
+- **Legacy mode is gone** (`agent/quant-ai` `631dc76`, merged at `836c3a3`, 2026-11-15): `analysis.analyze_stock` estimates nothing and no longer returns `estimated_fields`. `/api/analyze` and `/api/live-price` return null indicators and labels when no history is passed, and null `day_high` / `day_low` when the provider gives none.
+- `change_pct` is null when the provider gives no previous close (`daily_change_pct`). Chart bars (`data_sources` history) have a null `open` / `high` / `low` when the provider gave none, instead of the close repeated. **Known gaps, Agent 2 (REQ-31):** the watchlist still calls `round()` on `change_pct` and fails on a null; `market_display.stock_card` still sends `estimated_fields: []` and turns a null `change_pct` into 0; the direct Yahoo chart fallback in `main.py` still fills open/high/low with the close; gold and exchange-rate rows still return 0.0 for a missing change.
 - The frontend (`ceecbda`) still shows any non-null indicator without checking `indicators_as_of` (REQ-29 a). With the workers on `enrich_quote` this no longer exposes estimates on the cards, but the check stays required.
-- No field states yet whether a price is real-time, delayed or end-of-day on these legacy endpoints.
+- No field states yet whether a price on `/api/analyze` and `/api/live-price` is real-time, delayed or end-of-day.
 
 ### 2.3 Analysis, prices and history
 
@@ -164,7 +164,7 @@ Accepted `period` values: `1d, 5d, 1wk, 1mo, 3mo, 6mo, 1y, 5y, max`. The data-so
 
 The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template; `generated_by` and `is_fallback` say which.
 
-**Decision D5 (user, 2026-11-12), extended 2026-11-14.** `/api/insight` and `/api/ai/analyze/{symbol}` use the guarded AI layer (§5.4.1): facts computed by deterministic code go in (`ai.facts.market_facts` / `stock_facts`), the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No model call is made when there is no market data. No buy recommendations, entry points, targets or predictions. An indicator reaches the model only when `indicators_as_of` is a real date and the field is not in `estimated_fields`.
+**Decision D5 (user, 2026-11-12), extended 2026-11-14.** `/api/insight` and `/api/ai/analyze/{symbol}` use the guarded AI layer (§5.4.1): facts computed by deterministic code go in (`ai.facts.market_facts` / `stock_facts`), the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No model call is made when there is no market data. No buy recommendations, entry points, targets or predictions. An indicator reaches the model only when `indicators_as_of` is a real date. While the market cache is still filling, `market_insight(..., loading=True)` returns the "still loading" template without calling the model (`631dc76`; the route does not pass it yet, REQ-31).
 
 Response shape (the existing fields stay; provenance fields added alongside):
 
@@ -250,7 +250,7 @@ Enumerations as they appear in the data:
 |------|--------|-------|
 | `market_type` | `BIST`, `GLOBAL`, `COMMODITY` | `stock_data`, Stock responses |
 | watchlist `market` | `BIST100`, `US`, `GLOBAL`, `COMMODITY` | `watchlist_items` — a different vocabulary from `market_type` |
-| card label (`prediction` / `reason`) | `RSI below 30 (oversold)`, `RSI above 70 (overbought)`, `RSI between 30 and 70`, `Near 20-day average`, `Above 20-day average`, `Below 20-day average`, or `null`; in legacy mode only: `Up X.X% today`, `Down X.X% today`, `Unchanged today` | `quant.signals.indicator_label`, §2.2. Replaces the advisory labels (`PURCHASABLE` …) removed 2026-11-14 |
+| card label (`prediction` / `reason`) | `RSI below 30 (oversold)`, `RSI above 70 (overbought)`, `RSI between 30 and 70`, `Near 20-day average`, `Above 20-day average`, `Below 20-day average`, or `null` (the legacy day-move labels were removed at `836c3a3`) | `quant.signals.indicator_label`, §2.2. Replaces the advisory labels (`PURCHASABLE` …) removed 2026-11-14 |
 | `volatility` band | `LOW` < 25 %, `MEDIUM` 25 % to < 50 %, `HIGH` ≥ 50 % annualised, or `null` | `quant.signals.classify_volatility` |
 | export `period` | `daily`, `weekly`, `monthly` | export endpoints |
 
@@ -414,7 +414,7 @@ Approved behaviour (user, 2026-11-11):
 Decision D3 (TRY base, FX from `exchange_rates`):
 
 - **Base currency is TRY only.** The API accepts no other base currency; the database constraint that also allows USD stays as it is (user decision 2026-11-12).
-- **REQ-15 — implemented in `agent/backend` `a4ce4e7`, not yet merged into `integration`.** A position in a foreign currency gets `fx_rate` from the latest `exchange_rates` row, selling rate (`base`=foreign currency, `quote`=`TRY`, `as_of`=the row's `updated_at`, `source` `exchange_rates`). With no usable rate it reports `missing_fx_rate`. **Data caveat:** the smoke test found `exchange_rates` empty (REQ-18, high priority); until that is fixed every foreign position reports `missing_fx_rate`.
+- **REQ-15 — done in `agent/backend`, merged into `integration` at `a63f25d`.** A position in a foreign currency gets `fx_rate` from the latest `exchange_rates` row, selling rate (`base`=foreign currency, `quote`=`TRY`, `as_of`=the row's `updated_at`, `source` `exchange_rates`). With no usable rate it reports `missing_fx_rate`. **Data caveat:** the smoke test found `exchange_rates` empty (REQ-18, high priority); until that is fixed every foreign position reports `missing_fx_rate`.
 - **REQ-14 — done in `quant`, merged into `integration` at `d489b68`.** When some positions are unvalued, `total_market_value` sums the valued positions, `is_complete` is false, `unvalued_symbols` lists the rest, and `weight` is each valued position's share of that partial total (unvalued positions have `weight` null). Totals are `null` only when no position could be valued. `total_cost_basis` and `total_unrealized_pnl` are also `null` when a valued position has no base-currency cost (a trade without a stored FX rate). Nothing is assumed for the positions left out.
 - `allocation_by` (for the future `/allocation` route) still returns `null` for an incomplete valuation: a group with unvalued holdings would show too small a share.
 - The frontend shows `is_complete=false` as "partial total — N positions not valued" and lists `unvalued_symbols` next to the totals. A partial total must never be presented as the whole. The AI facts (`ai.facts.portfolio_facts`) already word every total as partial in this case.

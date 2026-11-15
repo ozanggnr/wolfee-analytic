@@ -160,6 +160,9 @@ A report of "tests pass" names the worktree, its commit (from Windows `git log -
 | 2026-11-15 | `wolfee-integration` @ `a63f25d` | §3.3 seed on the migrated `wolfee_migrations` | run 1 "361 inserted, 0 updated"; run 2 "0 inserted, 0 updated"; 361 distinct `provider_symbol` |
 | 2026-11-15 | `wolfee-integration` @ `a63f25d` | §2 backend run from `backend/` (REQ-11 check) | 3 failed, 561 passed: the known `test_performance_and_sources.py` failures (`No module named 'backend'`); not evidence, use the repo root |
 
+| 2026-11-15 | `wolfee-integration` @ `836c3a3` (after merging `agent/quant-ai` `631dc76`) | §2 backend (repo root) | **583 passed**, 3 warnings (110 s). No test covers a null `change_pct` in the watchlist (REQ-31 a), so the known crash does not show here |
+| 2026-11-15 | `wolfee-integration` @ `836c3a3` | §2 frontend | **28 tests, 28 pass, 0 fail** |
+
 The temporary PostgreSQL 18 cluster (`~/wolfee-test/pg18` and `pg18.log`) was deleted on 2026-11-14.
 
 Note (2026-11-15): after a WSL restart the PG16 cluster is stopped and the §3 commands fail with "Connection refused". Run the §3 start command first.

@@ -163,6 +163,12 @@ Decided by the user on 2026-11-15 (Step 3b):
 - **`agent/backend` merged alone:** reviewed and merged at `13b8c61` into `integration` (`a63f25d`).
 - **`agent/frontend` waits:** it is not merged in this step. Agent 4 does a UI redesign first; REQ-29 belongs in that work. Until then `integration` serves the frontend from `f0b9fc9` (`ceecbda`, assets `v=15.4`). It is compatible with the merged backend: it reads `insight` / `analysis` plus the provenance fields, which the routes now return.
 
+Decided by the user on 2026-11-15 (Step 3d):
+
+- **`agent/quant-ai` merged at `631dc76`** into `integration` (`836c3a3`): legacy estimate mode and `estimated_fields` removed from `analysis.analyze_stock`; `change_pct` is null without a previous close; chart bars no longer repeat the close for a missing open/high/low; a "still loading" market fact.
+- **Known watchlist crash accepted on `integration`:** `integration` is local-only, so the `round(None)` in `watchlist_routes.py:167` may stay until Agent 2's fix (REQ-31 a) lands next. It must be fixed before anything is deployed.
+- **Portfolio page** for Agent 4 after the redesign (REQ-32).
+
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
 ### Requests between agents
@@ -513,4 +519,39 @@ Why:       analysis.analyze_stock already returns None, but the cache and the ma
 Blocking:  no
 Status:    DONE 2026-11-15 — 5881616 (data_sources return None; no model default; tests in
            test_provider_open_close.py). Merged at a63f25d
+
+ID:        REQ-31
+From:      Agent 1 (review of agent/quant-ai 631dc76, merged at 836c3a3, 2026-11-15)
+To:        Agent 2
+Needs:     (a) HIGH — watchlist_routes.py:167 `round(live_data.get("change_pct", 0.0), 2)` raises
+               TypeError when change_pct is None (no previous close). Accept None and return
+               null; the summary (avg_change_pct, up/down/flat counts, biggest_mover) skips it.
+           (b) services/ai_insight_service.market_placeholder: pass `loading=True` to
+               market_insight_response while the cache is still filling, so the "still loading"
+               fact is used instead of "no instrument has a price".
+           (c) main.py:454-456, the direct Yahoo chart fallback still fills a missing
+               open/high/low with the close. Use data_sources.provided.chart_row instead.
+           (d) services/market_display.stock_card: stop sending `estimated_fields` (line 139)
+               and keep a null change_pct null (line 126 `stock.change_pct or 0`); the export
+               row (line 75) shows "Not available" for it, not 0.0 %.
+           (e) Exchange rates and gold (turkish_market.py ~254, ~303, ~367): a missing previous
+               change is None, not 0.0.
+           (f) Delete backend/api_router.py: nothing imports it.
+Why:       D4 / "never fabricate": since 836c3a3 change_pct and chart open/high/low can be null,
+           and 0 would state a move that was not observed
+Blocking:  (a) blocks deployment, not the local integration branch (user, 2026-11-15)
+Status:    open
+
+ID:        REQ-32
+From:      Agent 1 (user, 2026-11-15)
+To:        Agent 4
+Needs:     after the UI redesign, a Portfolio page on /api/v1/portfolios (API_CONTRACT §5):
+           create and select a portfolio; add and void transactions; holdings; performance;
+           realised P/L in TRY. Show the partial-total state (`is_complete` false: "partial
+           total — N positions not valued" with `unvalued_symbols` next to the totals, API
+           §5.2.1) and the `missing_fx_rate` state (`unavailable_reason` on a position or
+           amount: shown as "Not available", never estimated). Bump the asset version.
+Why:       the ledger API is on integration since a63f25d and has no UI yet
+Blocking:  no — starts after the redesign
+Status:    open
 ```
