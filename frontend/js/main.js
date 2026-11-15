@@ -424,16 +424,26 @@ window.refreshMarket = async function() {
 }
 
 // Portfolio Excel Export
+function setExportStatus(text, isError = false) {
+    const status = document.getElementById('export-status');
+    if (!status) return;
+    status.textContent = text;
+    status.className = isError ? 'export-status inline-error' : 'export-status';
+    status.hidden = text === '';
+}
+
 window.triggerExport = async function(period) {
-    const btnContent = document.querySelector(`.export-card[onclick="triggerExport('${period}')"]`);
-    const originalHTML = btnContent ? btnContent.innerHTML : '';
-    if (btnContent) btnContent.innerHTML = '<div class="export-icon">⏳</div><div class="export-info"><h3>Exporting...</h3></div>';
-    
+    const card = document.querySelector(`.export-card[onclick="triggerExport('${period}')"]`);
+    const cards = document.querySelectorAll('.export-card');
+    const setBusy = (busy) => cards.forEach(c => { c.disabled = busy; });
+    if (card) card.setAttribute('aria-busy', 'true');
+    setBusy(true);
+    setExportStatus('Preparing the Excel file');
+
     try {
         const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
         if (portfolio.length === 0 && !window.currentUser) {
-            alert('Your portfolio is empty! Add some stocks before exporting.');
-            if (btnContent) btnContent.innerHTML = originalHTML;
+            setExportStatus('Your watchlist is empty. Add instruments before exporting.', true);
             return;
         }
 
@@ -452,7 +462,7 @@ window.triggerExport = async function(period) {
             } catch (e) {}
             throw new Error(detail);
         }
-        
+
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -462,17 +472,19 @@ window.triggerExport = async function(period) {
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-        
-        if (btnContent) btnContent.innerHTML = '<div class="export-icon">✅</div><div class="export-info"><h3>Downloaded!</h3></div>';
-        setTimeout(() => { 
-            if (btnContent) btnContent.innerHTML = originalHTML; 
-            if (typeof closeExportModal === 'function') closeExportModal(); 
+
+        setExportStatus('Downloaded.');
+        setTimeout(() => {
+            setExportStatus('');
+            if (typeof closeExportModal === 'function') closeExportModal();
         }, 1500);
     } catch (error) {
         console.error('Export error:', error);
-        alert(error.message || 'Failed to generate portfolio export file.');
-        if (btnContent) btnContent.innerHTML = '<div class="export-icon">❌</div><div class="export-info"><h3>Failed</h3></div>';
-        setTimeout(() => { if (btnContent) btnContent.innerHTML = originalHTML; }, 2000);
+        const detail = typeof error.message === 'string' && error.message ? error.message : 'The export file could not be created.';
+        setExportStatus(`${detail} Try again in a moment.`, true);
+    } finally {
+        if (card) card.removeAttribute('aria-busy');
+        setBusy(false);
     }
 }
 

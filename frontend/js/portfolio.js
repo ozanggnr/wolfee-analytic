@@ -100,11 +100,16 @@ window.togglePortfolioItem = async function(customSymbol = null) {
         stock = (window.allStocks || []).find(s => (s.symbol || '').toUpperCase().replace('.IS', '') === baseSym);
     }
     if (!stock) {
+        // Figures read back from the open detail; "Not available" stays null
+        const shownNumber = (id) => {
+            const value = parseFloat(document.getElementById(id)?.textContent);
+            return Number.isFinite(value) ? value : null;
+        };
         stock = {
             symbol: symbolToToggle,
             name: symbolToToggle,
-            price: parseFloat(document.getElementById('stat-last')?.textContent) || 0,
-            change_pct: parseFloat(document.getElementById('stat-change')?.textContent) || 0,
+            price: shownNumber('stat-last'),
+            change_pct: shownNumber('stat-change'),
             currency: symbolToToggle.endsWith('.IS') ? 'TRY' : 'USD'
         };
     }
@@ -164,7 +169,8 @@ window.loadPortfolio = async function() {
                     ticker: item.ticker,
                     name: item.name || item.ticker,
                     price: item.price || 0,
-                    change_pct: item.change_pct || 0,
+                    // null when there is no previous close: shown as "Not available"
+                    change_pct: item.change_pct ?? null,
                     volume: item.volume || 0,
                     inPortfolio: true
                 }));
@@ -236,45 +242,23 @@ window.loadPortfolioSummaryCard = async function(forceRefresh = false) {
 };
 
 function calculateClientSideSummary(stocks) {
-    let up = 0, down = 0, flat = 0, totalChange = 0;
-    let biggest = null, maxAbs = -1;
-    const tickerChanges = [];
-
-    stocks.forEach(s => {
-        const change = s.change_pct || 0;
-        const price = s.price || 0;
+    const tickerChanges = (stocks || []).map(s => {
         const sym = (s.symbol || s.ticker || '').replace('.IS', '');
         const curr = s.currency || (s.symbol?.endsWith('.IS') ? 'TRY' : 'USD');
-
-        if (change > 0) up++;
-        else if (change < 0) down++;
-        else flat++;
-
-        totalChange += change;
-        const fullSym = s.symbol || (curr === 'TRY' ? `${sym}.IS` : sym);
-        tickerChanges.push({ symbol: sym, name: s.name || sym, change_pct: change, price, currency: curr, fullSymbol: fullSym });
-
-        if (Math.abs(change) > maxAbs) {
-            maxAbs = Math.abs(change);
-            biggest = {
-                symbol: sym,
-                name: s.name || sym,
-                price,
-                change_pct: change,
-                currency: curr,
-                direction: change > 0 ? 'up' : (change < 0 ? 'down' : 'flat')
-            };
-        }
+        return {
+            symbol: sym,
+            name: s.name || sym,
+            change_pct: window.WolfeeFields.numberField(s, 'change_pct'),
+            price: window.WolfeeFields.numberField(s, 'price'),
+            currency: curr,
+            fullSymbol: s.symbol || (curr === 'TRY' ? `${sym}.IS` : sym)
+        };
     });
-
-    const count = stocks.length;
+    // A null change is unknown: not flat, not in the average, never the mover
+    const counts = window.WolfeeFields.summarizeChanges(tickerChanges);
     return {
-        total_count: count,
-        up_count: up,
-        down_count: down,
-        flat_count: flat,
-        avg_change_pct: count > 0 ? roundNumber(totalChange / count, 2) : 0,
-        biggest_mover: biggest,
+        total_count: tickerChanges.length,
+        ...counts,
         ticker_changes: tickerChanges,
         cache_expires_in: 60
     };
@@ -307,7 +291,7 @@ function startSummaryCountdown(initialSeconds) {
             if (secondsLeft > 0) {
                 el.textContent = `${secondsLeft}s`;
             } else {
-                el.textContent = 'Refreshing...';
+                el.textContent = 'now';
                 clearInterval(_summaryCountdownInterval);
                 loadPortfolioSummaryCard(true);
             }
@@ -317,127 +301,111 @@ function startSummaryCountdown(initialSeconds) {
     }, 1000);
 }
 
+/** Opens the detail for a summary entry (symbol and name passed encoded). */
+function summaryOpenHandler(entry) {
+    const fullSym = entry.fullSymbol || (entry.currency === 'TRY' && !String(entry.symbol).endsWith('.IS') ? `${entry.symbol}.IS` : entry.symbol);
+    const escSym = encodeHandlerArg(fullSym || entry.symbol || '');
+    const escName = encodeHandlerArg(entry.name || entry.symbol || '');
+    return `if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escSym}'), name:decodeURIComponent('${escName}')})`;
+}
+
+function summarySignInHTML(label) {
+    return window.currentUser ? '' : `<button type="button" class="link-btn" onclick="openAuthModal('login')">${esc(label)}</button>`;
+}
+
 /**
  * Render the Summary Card UI
  */
 function renderSummaryCardUI(data) {
     const summaryContainer = document.getElementById('portfolio-summary-card');
     if (!summaryContainer) return;
+    const F = window.WolfeeFields;
 
     if (!data || data.total_count === 0) {
         summaryContainer.innerHTML = `
-            <div class="summary-card-glass empty-summary">
-                <div class="summary-top-bar">
-                    <span class="summary-badge">💼 Watchlist Analytics</span>
-                    ${!window.currentUser ? '<button class="summary-login-prompt-btn" onclick="openAuthModal(\'login\')">Sign in to sync watchlist</button>' : ''}
+            <section class="panel watchlist-summary is-empty" aria-labelledby="summary-title">
+                <div class="summary-head">
+                    <h2 class="section-title" id="summary-title">Watchlist summary</h2>
+                    ${summarySignInHTML('Sign in to sync your watchlist')}
                 </div>
-                <p style="color: var(--text-secondary); margin: 0.75rem 0 0.5rem;">
-                    Add stocks to your watchlist to track daily performance metrics, biggest movers, and market distributions.
-                </p>
-            </div>
+                <p class="summary-note">Add instruments to see how many moved up or down today, the average move and the biggest move.</p>
+            </section>
         `;
         return;
     }
 
-    const avgIsUp = data.avg_change_pct >= 0;
-    const avgColor = avgIsUp ? 'var(--success-color)' : 'var(--danger-color)';
-    const avgIcon = avgIsUp ? '▲' : '▼';
+    const unknownCount = Number(data.unknown_count) || 0;
+    const total = data.total_count || 0;
+    const share = (count) => (total ? (count / total) * 100 : 0).toFixed(1);
 
-    let moverHTML = '<span style="color:var(--text-muted)">No mover data</span>';
+    let moverHTML = `<span class="not-available">${esc(F.NOT_AVAILABLE)}</span>`;
     if (data.biggest_mover) {
         const m = data.biggest_mover;
-        const mIsUp = m.change_pct >= 0;
-        const mIcon = mIsUp ? '▲' : '▼';
         const mCurr = m.currency === 'TRY' ? '₺' : '$';
-        const mFullSym = m.currency === 'TRY' && !m.symbol.endsWith('.IS') ? `${m.symbol}.IS` : m.symbol;
-        const escMoverSym = encodeHandlerArg(mFullSym);
-        const escMoverName = encodeHandlerArg(m.name || m.symbol);
         moverHTML = `
-            <div class="mover-content" style="cursor: pointer;" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escMoverSym}'), name:decodeURIComponent('${escMoverName}')})">
+            <button type="button" class="mover-btn" onclick="${summaryOpenHandler(m)}">
                 <span class="mover-symbol">${esc(m.symbol)}</span>
-                <span class="mover-badge ${mIsUp ? 'mover-up' : 'mover-down'}">
-                    ${mIcon} ${Math.abs(m.change_pct).toFixed(2)}%
-                </span>
-                <span class="mover-price">${(m.price || 0).toFixed(2)} ${mCurr}</span>
-            </div>
+                ${changeHTML(m, 'mover-change')}
+                <span class="mover-price">${esc(F.formatPrice(m, 'price', mCurr))}</span>
+            </button>
         `;
     }
 
-    // Render individual ticker pills
-    const pillsHTML = (data.ticker_changes || []).map(t => {
-        const isUp = t.change_pct >= 0;
-        const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
-        const icon = isUp ? '▲' : '▼';
-        const safeSym = esc(t.symbol);
-        const fullSym = t.fullSymbol || (t.currency === 'TRY' && !t.symbol.endsWith('.IS') ? `${t.symbol}.IS` : t.symbol);
-        const escSym = encodeHandlerArg(fullSym || t.symbol || '');
-        const escName = encodeHandlerArg(t.name || t.symbol || '');
-        return `
-            <div class="ticker-pill" onclick="if(typeof openModal === 'function') openModal({symbol:decodeURIComponent('${escSym}'), name:decodeURIComponent('${escName}')})">
-                <span class="pill-sym">${safeSym}</span>
-                <span class="pill-change" style="color:${color}">${icon} ${Math.abs(t.change_pct).toFixed(1)}%</span>
-            </div>
-        `;
-    }).join('');
+    const pillsHTML = (data.ticker_changes || []).map(t => `
+        <button type="button" class="ticker-pill" onclick="${summaryOpenHandler(t)}">
+            <span class="pill-sym">${esc(t.symbol)}</span>
+            ${changeHTML(t, 'pill-change', { digits: 1 })}
+        </button>
+    `).join('');
 
     summaryContainer.innerHTML = `
-        <div class="summary-card-glass">
-            <div class="summary-top-bar">
-                <div class="summary-badge-group">
-                    <span class="summary-badge">⚡ Watchlist Snapshot</span>
-                    <span class="cache-badge">
-                        Cached <span id="summary-cache-timer">${data.cache_expires_in || 60}s</span>
-                    </span>
-                </div>
+        <section class="panel watchlist-summary" aria-labelledby="summary-title">
+            <div class="summary-head">
+                <h2 class="section-title" id="summary-title">Watchlist summary</h2>
                 <div class="summary-actions">
-                    <button class="icon-btn refresh-summary-btn" onclick="loadPortfolioSummaryCard(true)" title="Refresh snapshot">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    <span class="summary-cache">Refreshes in <span id="summary-cache-timer">${data.cache_expires_in || 60}s</span></span>
+                    <button type="button" class="icon-btn" onclick="loadPortfolioSummaryCard(true)" aria-label="Refresh summary" title="Refresh summary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
                     </button>
-                    ${!window.currentUser ? '<button class="summary-login-prompt-btn" onclick="openAuthModal(\'login\')">Sign In to Save</button>' : ''}
+                    ${summarySignInHTML('Sign in to save')}
                 </div>
             </div>
 
-            <div class="summary-metrics-grid">
-                <!-- 1. Market Distribution: Up vs Down -->
-                <div class="summary-metric-card">
-                    <span class="sm-label">Daily Distribution</span>
+            <div class="summary-metrics">
+                <div class="summary-metric">
+                    <span class="sm-label">Instruments</span>
+                    <span class="kpi-value">${total}</span>
+                </div>
+                <div class="summary-metric">
+                    <span class="sm-label">Today</span>
                     <div class="sm-distro">
-                        <span class="sm-up-count">🟢 ${data.up_count} Up</span>
-                        <span class="sm-down-count">🔴 ${data.down_count} Down</span>
-                        ${data.flat_count > 0 ? `<span class="sm-flat-count">⚪ ${data.flat_count} Flat</span>` : ''}
+                        <span class="is-gain">${data.up_count} up</span>
+                        <span class="is-loss">${data.down_count} down</span>
+                        ${data.flat_count > 0 ? `<span>${data.flat_count} unchanged</span>` : ''}
+                        ${unknownCount > 0 ? `<span class="not-available">${unknownCount} not available</span>` : ''}
                     </div>
-                    <div class="sm-progress-bar">
-                        <div class="sm-bar-up" style="width: ${data.total_count ? (data.up_count / data.total_count * 100) : 0}%"></div>
-                        <div class="sm-bar-down" style="width: ${data.total_count ? (data.down_count / data.total_count * 100) : 0}%"></div>
+                    <div class="sm-bar" aria-hidden="true">
+                        <span class="sm-bar-up" style="width: ${share(data.up_count)}%"></span>
+                        <span class="sm-bar-down" style="width: ${share(data.down_count)}%"></span>
                     </div>
                 </div>
-
-                <!-- 2. Portfolio Average Daily Move -->
-                <div class="summary-metric-card">
-                    <span class="sm-label">Watchlist Avg Move</span>
-                    <div class="sm-value" style="color: ${avgColor}">
-                        ${avgIcon} ${Math.abs(data.avg_change_pct).toFixed(2)}%
-                    </div>
-                    <span class="sm-sub">${data.total_count} active tickers</span>
+                <div class="summary-metric">
+                    <span class="sm-label">Average move today</span>
+                    <span class="kpi-value${F.numberField(data, 'avg_change_pct') === null ? ' not-available' : ''}">${esc(F.formatChange(data, { field: 'avg_change_pct', style: 'signed' }))}</span>
                 </div>
-
-                <!-- 3. Highlighted Single Biggest Mover -->
-                <div class="summary-metric-card mover-highlight-card">
-                    <span class="sm-label">🚀 Biggest Mover</span>
+                <div class="summary-metric">
+                    <span class="sm-label">Biggest move</span>
                     ${moverHTML}
                 </div>
             </div>
 
-            <!-- Ticker Change Quick-Pills -->
             ${pillsHTML ? `
-                <div class="ticker-pills-wrapper">
-                    <div class="ticker-pills-label">Today's Moves:</div>
-                    <div class="ticker-pills-scroll">
-                        ${pillsHTML}
-                    </div>
+                <div class="ticker-pills">
+                    <span class="sm-label">Today's moves</span>
+                    <div class="ticker-pills-scroll">${pillsHTML}</div>
                 </div>
             ` : ''}
-        </div>
+        </section>
     `;
 }
 

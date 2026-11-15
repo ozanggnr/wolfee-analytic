@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="css/base.css?v=15.5">
     <link rel="stylesheet" href="css/market.css?v=15.5">
     <link rel="stylesheet" href="css/modal.css?v=15.5">
+    <link rel="stylesheet" href="css/watchlist.css?v=15.5">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -202,36 +203,39 @@
 
             <!-- Portfolio View -->
             <div id="portfolio-view" class="hidden">
-                <div class="section-header" style="margin-bottom: 1.5rem;">
-                    <div class="section-badge">
-                        <span class="section-badge-dot"></span>
-                        Portfolio & Watchlist
-                    </div>
-                    <h2 class="section-heading hero-heading">Watchlist<br>Intelligence</h2>
+                <div class="section-header">
+                    <div class="section-badge">Instruments you follow</div>
+                    <h1 class="section-heading hero-heading">Watchlist</h1>
                 </div>
 
-                <!-- 60-Second Cached Watchlist Summary Card -->
+                <!-- Summary, cached for 60 seconds -->
                 <div id="portfolio-summary-card" class="portfolio-summary-wrap"></div>
 
-                <!-- Watchlist Quick Add Toolbar -->
+                <!-- Add an instrument; export -->
                 <div class="portfolio-toolbar">
-                    <div class="portfolio-add-input-wrap">
-                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                        <input type="text" id="portfolio-add-input" maxlength="20" placeholder="Add ticker to watchlist (e.g. THYAO, NVDA, AAPL)..." oninput="this.setCustomValidity('')" onkeydown="if(event.key==='Enter') addTickerFromPortfolioInput()">
+                    <div class="field portfolio-add-field">
+                        <label for="portfolio-add-input">Add an instrument</label>
+                        <div class="portfolio-add-row">
+                            <div class="portfolio-add-input-wrap">
+                                <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                                <input type="text" id="portfolio-add-input" maxlength="20" autocomplete="off" aria-describedby="portfolio-add-hint" oninput="this.setCustomValidity('')" onkeydown="if(event.key==='Enter') addTickerFromPortfolioInput()">
+                            </div>
+                            <button type="button" class="gradient-btn" onclick="addTickerFromPortfolioInput()">Add</button>
+                        </div>
+                        <span class="field-hint" id="portfolio-add-hint">Ticker symbol, for example THYAO, NVDA or GC=F</span>
                     </div>
-                    <button class="gradient-btn" onclick="addTickerFromPortfolioInput()">+ Add Ticker</button>
-                    <button id="portfolio-export-btn" class="gradient-btn" onclick="openExportModal()" title="Export Portfolio to Excel">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export
+                    <button type="button" id="portfolio-export-btn" class="secondary-btn" onclick="openExportModal()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export to Excel
                     </button>
                 </div>
 
                 <div id="portfolio-grid" class="stock-grid-style">
-                    <!-- Portfolio cards injected here -->
+                    <!-- Watchlist cards injected here -->
                 </div>
-                <div id="portfolio-empty" class="hidden"
-                    style="text-align:center; padding: 3rem; color: var(--text-secondary);">
-                    <p style="font-size: 1.1rem;">Your watchlist is currently empty.<br>Add stocks using the input above or from the Market view!</p>
+                <div id="portfolio-empty" class="empty-state hidden">
+                    <p class="empty-title">Your watchlist is empty</p>
+                    <p>Add a ticker above, or open an instrument on the Market page and choose Add to Watchlist.</p>
                 </div>
             </div>
 
@@ -284,35 +288,28 @@
     </div>
 
     <!-- ===== EXPORT MODAL ===== -->
-    <div id="export-modal" class="modal hidden">
+    <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title">
         <div class="modal-content export-content">
-            <span class="close-modal" onclick="closeExportModal()">&times;</span>
-            <div class="modal-header-badge">📊 Export</div>
-            <h2 style="margin: 0.5rem 0 0.5rem;">Portfolio & Watchlist Export</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.9rem;">Select a time period to export your tracked stocks to Excel:</p>
+            <button type="button" class="close-modal" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+            <h2 id="export-title" class="export-title">Export watchlist</h2>
+            <p class="export-lead">Choose a period. The file is an Excel workbook of the instruments on your watchlist.</p>
             <div class="export-options">
-                <button class="export-card" onclick="triggerExport('daily')">
-                    <div class="export-icon">📅</div>
-                    <div class="export-info">
-                        <h3>Daily Report</h3>
-                        <p>Last 5 trading days analysis</p>
-                    </div>
+                <button type="button" class="export-card" onclick="triggerExport('daily')">
+                    <span class="export-name">Daily report</span>
+                    <span class="export-desc">Last 5 trading days</span>
                 </button>
-                <button class="export-card" onclick="triggerExport('weekly')">
-                    <div class="export-icon">🗓️</div>
-                    <div class="export-info">
-                        <h3>Weekly Report</h3>
-                        <p>Past week performance</p>
-                    </div>
+                <button type="button" class="export-card" onclick="triggerExport('weekly')">
+                    <span class="export-name">Weekly report</span>
+                    <span class="export-desc">Past week</span>
                 </button>
-                <button class="export-card" onclick="triggerExport('monthly')">
-                    <div class="export-icon">📆</div>
-                    <div class="export-info">
-                        <h3>Monthly Report</h3>
-                        <p>30-Day trend analysis</p>
-                    </div>
+                <button type="button" class="export-card" onclick="triggerExport('monthly')">
+                    <span class="export-name">Monthly report</span>
+                    <span class="export-desc">Past 30 days</span>
                 </button>
             </div>
+            <p id="export-status" class="export-status" role="status" hidden></p>
         </div>
     </div>
 

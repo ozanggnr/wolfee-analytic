@@ -19,6 +19,7 @@ import {
     formatPrice,
     directionClass,
     parseTimestamp,
+    summarizeChanges,
 } from '../js/core/market-fields.js';
 
 test('fieldValue returns null for null, undefined, blank strings and non-finite numbers', () => {
@@ -257,4 +258,34 @@ test('parseTimestamp returns null for anything that is not an ISO timestamp', ()
     for (const value of [null, undefined, '', 'yesterday', '2026-11-15', 42, '2026-13-45T99:00:00']) {
         assert.equal(parseTimestamp(value), null, String(value));
     }
+});
+
+test('summarizeChanges counts a null change as unknown, never as flat', () => {
+    const summary = summarizeChanges([
+        { symbol: 'A', change_pct: 2 },
+        { symbol: 'B', change_pct: -1 },
+        { symbol: 'C', change_pct: 0 },
+        { symbol: 'D', change_pct: null },
+        { symbol: 'E' },
+    ]);
+    assert.equal(summary.up_count, 1);
+    assert.equal(summary.down_count, 1);
+    assert.equal(summary.flat_count, 1);
+    assert.equal(summary.unknown_count, 2);
+    assert.equal(summary.avg_change_pct, 0.33);
+    assert.equal(summary.biggest_mover.symbol, 'A');
+});
+
+test('summarizeChanges has no average and no mover when no change is known', () => {
+    const summary = summarizeChanges([{ symbol: 'A', change_pct: null }, { symbol: 'B', change_pct: '' }]);
+    assert.equal(summary.avg_change_pct, null);
+    assert.equal(summary.biggest_mover, null);
+    assert.equal(summary.unknown_count, 2);
+    assert.deepEqual(summarizeChanges([]), { up_count: 0, down_count: 0, flat_count: 0, unknown_count: 0, avg_change_pct: null, biggest_mover: null });
+});
+
+test('summarizeChanges reads decimal strings and picks the largest absolute move', () => {
+    const summary = summarizeChanges([{ symbol: 'A', change_pct: '1.5' }, { symbol: 'B', change_pct: -3.3 }]);
+    assert.equal(summary.biggest_mover.symbol, 'B');
+    assert.equal(summary.avg_change_pct, -0.9);
 });

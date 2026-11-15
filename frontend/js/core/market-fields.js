@@ -116,6 +116,39 @@ export function formatPrice(record, field, currency, digits = 2) {
 }
 
 /**
+ * Direction counts, average and biggest move over a list of records. A
+ * record whose `change_pct` is not available counts as unknown: it is not
+ * flat, not in the average and never the biggest mover.
+ *
+ * @param {Array<Record<string, unknown>>} records
+ * @returns {{ up_count: number, down_count: number, flat_count: number,
+ *   unknown_count: number, avg_change_pct: number | null,
+ *   biggest_mover: Record<string, unknown> | null }}
+ *   `avg_change_pct` is rounded to 2 decimals, null when no change is known;
+ *   `biggest_mover` is the record itself.
+ */
+export function summarizeChanges(records) {
+    const known = [];
+    let unknownCount = 0;
+    for (const record of records || []) {
+        const value = numberField(record, 'change_pct');
+        if (value === null) unknownCount += 1;
+        else known.push({ record, value });
+    }
+
+    const total = known.reduce((sum, { value }) => sum + value, 0);
+    const biggest = known.reduce((best, item) => (best === null || Math.abs(item.value) > Math.abs(best.value) ? item : best), null);
+    return {
+        up_count: known.filter(({ value }) => value > 0).length,
+        down_count: known.filter(({ value }) => value < 0).length,
+        flat_count: known.filter(({ value }) => value === 0).length,
+        unknown_count: unknownCount,
+        avg_change_pct: known.length > 0 ? Math.round((total / known.length) * 100) / 100 : null,
+        biggest_mover: biggest === null ? null : biggest.record,
+    };
+}
+
+/**
  * @param {Record<string, unknown> | null | undefined} record
  * @returns {string | null} `indicators_as_of` when it is a real YYYY-MM-DD date
  */

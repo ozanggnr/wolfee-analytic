@@ -630,11 +630,18 @@ window.switchTab = function(tab) {
 }
 
 window.openExportModal = function() {
-    document.getElementById('export-modal').classList.remove('hidden');
+    const modal = document.getElementById('export-modal');
+    _modalReturnFocus = document.activeElement;
+    const status = document.getElementById('export-status');
+    if (status) { status.textContent = ''; status.hidden = true; }
+    modal.classList.remove('hidden');
+    document.body.classList.add('no-scroll');
+    const closeBtn = modal.querySelector('.close-modal');
+    if (closeBtn) closeBtn.focus();
 }
 
 window.closeExportModal = function() {
-    document.getElementById('export-modal').classList.add('hidden');
+    if (!document.getElementById('export-modal').classList.contains('hidden')) closeModalWithAnim();
 }
 
 window.updatePortfolioButtonUI = function(symbol) {

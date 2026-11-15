@@ -15,14 +15,16 @@ Decisions from the user: four mobile tabs (Market, Opportunities, Watchlist, Acc
 
 - [x] Page 3: Opportunities. Neutral heading and note (no "Buy" wording); cards share the market card markup; condition badges only from available inputs; reason hidden when missing or equal to the label; empty state. Fixed a crash: the page still called the removed getSignalStyle.
 
+- [x] Page 4: Watchlist and export. Summary panel without emoji (navy mono KPI figures); a null change counts as "not available", not flat, and is left out of the average and the biggest move (`summarizeChanges`, tested); `|| 0` guards on change_pct removed; add field with label above and hint below; empty state; export dialog with text states and inline errors instead of alert(); `css/watchlist.css`.
+
 ## In progress
-- Page 4: Watchlist and export.
+- Page 5: auth forms.
 
 ## Next
-- Page 5 auth forms.
 - Then: bump the asset version, WSL tests (frontend and backend), browser check of every page at 1440 and 390 px, final screenshots on the review page.
 - After phase B: REQ-32 Portfolio page on `/api/v1/portfolios`, then the Portfolio tab returns.
 
 ## Notes
+- For Agent 2: `GET /api/watchlist/summary` (`backend/watchlist_routes.py`, summary loop) still turns a null change_pct into 0.0 and counts it as flat; it also feeds the average and biggest mover. The frontend now handles a null if the backend sends one, and shows `unknown_count` when present. Related to REQ-31.
 - Until page 5 is committed, pages not yet redone show without their old styles (`style.css` is gone).
 - For Agent 3: the market insight template text contains an em-dash ("not available yet — no instrument ..."). AI text is shown as sent.
