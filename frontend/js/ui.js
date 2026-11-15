@@ -59,7 +59,7 @@ function rsiStatHTML(stock) {
         return `<span class="not-available">${esc(F.NOT_AVAILABLE)}</span>`;
     }
     const asOf = F.indicatorsAsOf(stock);
-    const asOfHTML = asOf ? `<small class="indicator-asof">as of ${esc(asOf)}</small>` : '';
+    const asOfHTML = asOf ? `<small class="indicator-asof">as of <time datetime="${esc(asOf)}">${esc(asOf)}</time></small>` : '';
     return `<span>${rsi.toFixed(1)}${asOfHTML}</span>`;
 }
 
@@ -268,67 +268,37 @@ window.renderOpportunitiesPage = function() {
     });
     
     if (!opportunities || opportunities.length === 0) {
-        grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">No clear signals at the moment.</p>';
+        grid.innerHTML = '<p class="grid-message">No instruments meet these conditions right now. The list updates with market data.</p>';
         return;
     }
-    
+
     grid.innerHTML = '';
     opportunities.forEach(stock => {
-        const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
+        const baseSym = baseSymbol(stock);
         if (grid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`)) return;
-
-        const currency = getCurrencySymbol(stock.currency);
-        const isUp = (stock.change_pct || 0) >= 0;
-        const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
-        const icon = isUp ? '▲' : '▼';
-        const sig = getSignalStyle(window.WolfeeFields.fieldValue(stock, 'prediction'));
-        
-        // Badges only from available inputs (REQ-27): no RSI, no RSI badge
-        const rsi = window.WolfeeFields.indicatorNumber(stock, 'rsi');
-        let badges = '';
-        if (rsi !== null && rsi < OVERSOLD_RSI) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
-        if (stock.change_pct > UP_TODAY_BADGE_PCT) badges += '<span class="opp-badge badge-trend">Up more than 2% today</span> ';
-        const reason = window.WolfeeFields.fieldValue(stock, 'reason');
-        
-        const card = document.createElement('div');
-        card.className = 'stock-card';
-        card.setAttribute('data-stock-symbol', baseSym);
-        card.innerHTML = `
-            <div class="stock-header">
-                <div class="symbol-group">
-                    <span class="stock-symbol">${esc((stock.symbol||'').replace('.IS', ''))}</span>
-                    <span class="stock-name" title="${esc(stock.name)}">${esc((stock.name || '').substring(0, 22))}${(stock.name || '').length > 22 ? '...' : ''}</span>
-                </div>
-                <div>
-                    <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
-                    <div class="price-change" style="color: ${priceColor}">
-                        ${icon} ${Math.abs(stock.change_pct||0).toFixed(2)}%
-                    </div>
-                </div>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <span>Volume</span>
-                    <span>${formatNumber(stock.volume)}</span>
-                </div>
-                <div class="stat-item">
-                    <span>RSI</span>
-                    ${rsiStatHTML(stock)}
-                </div>
-                <div class="stat-item">
-                    <span>Trend</span>
-                    <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
-                </div>
-            </div>
-            ${badges ? `<div style="margin: 5px 0;">${badges}</div>` : ''}
-            <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
-                ${sig.icon} ${esc(sig.label)}
-            </div>
-            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${esc(typeof reason === 'string' ? reason : window.WolfeeFields.NOT_AVAILABLE)}</div>
-        `;
-        card.onclick = () => openModal(stock);
-        grid.appendChild(card);
+        grid.appendChild(createStockCardElement(stock, stockCardInnerHTML(stock, opportunityExtraHTML(stock))));
     });
+}
+
+/**
+ * Condition badges and the backend's reason line. Badges come only from
+ * available inputs (REQ-27): no RSI, no RSI badge; a null change, no move badge.
+ * The reason is left out when missing or when it only repeats the label.
+ */
+function opportunityExtraHTML(stock) {
+    const F = window.WolfeeFields;
+    const badges = [];
+    const rsi = F.indicatorNumber(stock, 'rsi');
+    if (rsi !== null && rsi < OVERSOLD_RSI) badges.push('<span class="opp-badge">RSI below 30</span>');
+    const change = F.numberField(stock, 'change_pct');
+    if (change !== null && change > UP_TODAY_BADGE_PCT) badges.push(`<span class="opp-badge">Up more than ${UP_TODAY_BADGE_PCT}% today</span>`);
+
+    const reason = F.fieldValue(stock, 'reason');
+    const label = F.fieldValue(stock, 'prediction');
+    const showReason = typeof reason === 'string' && reason !== label;
+
+    return (badges.length ? `<div class="opp-badges">${badges.join('')}</div>` : '')
+        + (showReason ? `<p class="reason-text">${esc(reason)}</p>` : '');
 }
 
 function openModal(stock) {

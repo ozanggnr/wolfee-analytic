@@ -237,15 +237,13 @@
 
             <!-- Opportunities View (new tab page) -->
             <div id="opportunities-view" class="hidden">
-                <div class="section-header" style="margin-bottom: 1.5rem;">
-                    <div class="section-badge">
-                        <span class="section-badge-dot"></span>
-                        AI-Powered Signals
-                    </div>
-                    <h2 class="section-heading hero-heading">Buy<br>Opportunities</h2>
+                <div class="section-header">
+                    <div class="section-badge">Screened from today's market data</div>
+                    <h1 class="section-heading hero-heading">Opportunities</h1>
                 </div>
-                <div id="opportunities-grid" class="stock-grid-style">
-                    <p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">Scanning market...</p>
+                <p class="section-note">Instruments that meet simple conditions on today's data. A condition is a description, not a recommendation to buy or sell.</p>
+                <div id="opportunities-grid" class="stock-grid-style" aria-live="polite">
+                    <p class="grid-message" role="status">Loading opportunities</p>
                 </div>
             </div>
         </main>

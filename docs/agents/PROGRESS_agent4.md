@@ -13,11 +13,13 @@ Decisions from the user: four mobile tabs (Market, Opportunities, Watchlist, Acc
 - [x] Page 2: stock modal. Close is a button, dialog semantics, Escape closes, focus returns; blue line chart for every period from closes only (bars without a close skipped); null change shows "Not available"; label badge hidden when null; no inline styles.
 - [x] Page 1: shell and market page. New stylesheets replace `style.css`; navy header; mobile tab bar and Account sheet; one search and filter bar on mobile (filters as a bottom sheet); cards, gold and exchange rates null-safe for `change_pct` and prices (`formatChange`, `formatPrice`, `changeDirection`, `directionClass` in `market-fields.js`); `updated_at` without a zone read as UTC (`parseTimestamp`).
 
+- [x] Page 3: Opportunities. Neutral heading and note (no "Buy" wording); cards share the market card markup; condition badges only from available inputs; reason hidden when missing or equal to the label; empty state. Fixed a crash: the page still called the removed getSignalStyle.
+
 ## In progress
-- Page 3: Opportunities.
+- Page 4: Watchlist and export.
 
 ## Next
-- Page 4 Watchlist and export, page 5 auth forms.
+- Page 5 auth forms.
 - Then: bump the asset version, WSL tests (frontend and backend), browser check of every page at 1440 and 390 px, final screenshots on the review page.
 - After phase B: REQ-32 Portfolio page on `/api/v1/portfolios`, then the Portfolio tab returns.
 
