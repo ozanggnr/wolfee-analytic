@@ -3,112 +3,71 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Wolfee Analytics — Real-time stock market analysis, AI-powered insights, and portfolio tracking for TR and global markets.">
-    <meta name="theme-color" content="#0C0C0C">
-    <title>Wolfee Analytics — Real-Time Market Intelligence</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Wolfee Analytics: market data, indicators and watchlists for BIST and global markets.">
+    <meta name="theme-color" content="#0B2545">
+    <title>Wolfee Analytics</title>
 
-    <!-- Google Fonts: Kanit -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-
-    <link rel="stylesheet" href="style.css?v=15.5">
+    <!-- Self-hosted IBM Plex (fonts/, OFL-1.1); tokens first, then base and page styles -->
+    <link rel="stylesheet" href="css/tokens.css?v=15.5">
+    <link rel="stylesheet" href="css/base.css?v=15.5">
+    <link rel="stylesheet" href="css/market.css?v=15.5">
+    <link rel="stylesheet" href="css/modal.css?v=15.5">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
 
 <body>
-    <!-- ===== LOADER ===== -->
-    <div id="loader">
-        <div class="loader-inner">
-            <div class="spinner"></div>
-            <span class="loader-text">WOLFEE<span class="loader-dot">.</span></span>
-        </div>
-    </div>
+    <a class="skip-link" href="#main-content">Skip to content</a>
 
-    <!-- ===== FLOATING NAVBAR (NexaCore style) ===== -->
-    <div id="navbar-wrapper">
-        <nav id="main-nav">
-            <!-- Logo -->
-            <a href="./index.html" class="nav-logo" style="text-decoration: none;">
-                <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; padding: 4px; background: rgba(200,111,255,0.1); border: 1px solid rgba(200,111,255,0.3); border-radius: 50%;">
-                  <defs>
-                    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stop-color="#c86fff" />
-                      <stop offset="100%" stop-color="#1c4eff" />
-                    </linearGradient>
-                  </defs>
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+    <!-- ===== LOADER (kept for the scripts; skeleton cards show progress) ===== -->
+    <div id="loader" class="hidden" aria-hidden="true"></div>
+
+    <!-- ===== HEADER ===== -->
+    <header id="navbar-wrapper">
+        <nav id="main-nav" aria-label="Main">
+            <a href="./index.html" class="nav-logo" aria-label="Wolfee Analytics home">
+                <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
                 <span class="nav-logo-text">Wolfee<span class="nav-logo-accent">.</span></span>
                 <span class="alpha-badge">Alpha</span>
             </a>
 
-            <!-- Desktop Nav Links -->
+            <!-- Desktop navigation -->
             <div class="nav-links hidden-mobile">
-                <button class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
-                <button class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Portfolio</button>
-                <button class="nav-link tab-btn" id="tab-opportunities" onclick="switchTab('opportunities')">Opportunities</button>
+                <button type="button" class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
+                <button type="button" class="nav-link tab-btn" id="tab-opportunities" onclick="switchTab('opportunities')">Opportunities</button>
+                <button type="button" class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Watchlist</button>
             </div>
 
-            <!-- Desktop Right Controls -->
+            <!-- Desktop controls -->
             <div class="nav-right hidden-mobile">
-                <!-- Search & Filter Group -->
                 <div class="nav-search-group">
                     <div class="search-container">
-                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                        <input type="text" id="search-input" placeholder="Search stocks..." autocomplete="off">
-                        <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        <label for="search-input" class="sr-only">Search symbol or name</label>
+                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                        <input type="text" id="search-input" placeholder="Search symbol or name" autocomplete="off">
+                        <button type="button" id="filter-toggle-btn" class="icon-btn" data-filter-toggle onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters" aria-label="Filters" aria-controls="filter-popover">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                         </button>
-                        <!-- Filter Popover -->
-                        <div id="filter-popover" class="filter-popover hidden">
-                            <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--nexa-accent);">Filter Market</h3>
-                            <div class="filter-grid-layout">
-                                <div class="filter-group">
-                                    <label>Price Range (₺)</label>
-                                    <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                                        <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
-                                        <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
-                                    </div>
-                                </div>
-                                <div class="filter-group">
-                                    <label>Change % Range</label>
-                                    <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                                        <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
-                                        <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
-                                    </div>
-                                </div>
-                                <div class="filter-group">
-                                    <label>Min Volume</label>
-                                    <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
-                                </div>
-                            </div>
-                            <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
-                                <button onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply Filters</button>
-                                <button onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
-                            </div>
-                        </div>
-                        <div id="search-results" class="hidden"></div>
+                        <div id="search-results" class="search-results hidden"></div>
                     </div>
                 </div>
 
                 <div class="nav-divider"></div>
 
-                <!-- Market & Status Controls Group -->
                 <div class="nav-status-group">
-                    <!-- Region Toggle -->
-                    <div class="region-toggle-wrapper" title="Switch Market (TR / Global)">
+                    <div class="region-toggle-wrapper" title="Switch market (TR / Global)">
                         <span id="region-label" class="region-label">TR</span>
                         <label class="switch">
+                            <span class="sr-only">Show global markets</span>
                             <input type="checkbox" id="region-toggle" onchange="toggleRegion(this.checked)">
                             <span class="slider round"></span>
                         </label>
                     </div>
 
-                    <!-- Live Status -->
-                    <div id="live-status" class="live-status" title="Data Feed Live">
+                    <div id="live-status" class="live-status" title="Data feed status">
                         <span id="live-dot" class="live-dot"></span>
                         <span id="live-label">Live</span>
                     </div>
@@ -116,124 +75,128 @@
 
                 <div class="nav-divider"></div>
 
-                <!-- Auth Status / Sign In Button -->
                 <div id="nav-auth-container" class="nav-auth-wrap"></div>
             </div>
 
-            <!-- Mobile Right: quick controls & hamburger -->
+            <!-- Mobile header: logo and market switch; navigation is in the tab bar -->
             <div class="nav-mobile-right hidden-desktop">
-                <!-- Direct Mobile Region Switch -->
-                <div class="region-toggle-wrapper mobile-topbar-region" title="Switch Market">
+                <div class="region-toggle-wrapper mobile-topbar-region" title="Switch market (TR / Global)">
                     <span id="region-label-bar" class="region-label">TR</span>
                     <label class="switch">
+                        <span class="sr-only">Show global markets</span>
                         <input type="checkbox" id="region-toggle-bar" onchange="toggleRegion(this.checked)">
                         <span class="slider round"></span>
                     </label>
                 </div>
-
-                <!-- Hamburger -->
-                <button class="hamburger-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Open menu" aria-expanded="false">
-                    <span></span><span></span><span></span>
-                </button>
             </div>
         </nav>
-    </div>
+    </header>
 
-    <!-- Mobile Menu Drawer -->
-    <div id="mobile-menu" class="mobile-menu" aria-hidden="true">
-        <div class="mobile-menu-inner">
-            <div class="mobile-menu-header">
-                <div class="mobile-menu-logo">
-                    <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-m)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; padding: 4px; background: rgba(200,111,255,0.1); border: 1px solid rgba(200,111,255,0.3); border-radius: 50%;">
-                      <defs>
-                        <linearGradient id="logo-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stop-color="#c86fff" />
-                          <stop offset="100%" stop-color="#1c4eff" />
-                        </linearGradient>
-                      </defs>
-                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                    </svg>
-                    <span>Wolfee<span style="color:var(--nexa-accent)">.</span></span>
-                </div>
-                <button class="mobile-menu-close" onclick="toggleMobileMenu()" aria-label="Close menu">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-            </div>
-            <!-- Mobile Search -->
-            <div class="mobile-menu-search-wrap">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                <input type="text" id="mobile-menu-search" placeholder="Search stocks..." autocomplete="off" class="mobile-menu-search-input">
-                <div id="mobile-search-results" class="mobile-search-results hidden"></div>
-            </div>
-            <nav class="mobile-nav-links">
-                <button class="mobile-nav-link tab-btn active" id="tab-market-m" onclick="switchTab('market'); toggleMobileMenu()">📈 Market</button>
-                <button class="mobile-nav-link tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio'); toggleMobileMenu()">💼 Portfolio</button>
-                <button class="mobile-nav-link tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities'); toggleMobileMenu()">🎯 Opportunities</button>
-            </nav>
-            <div class="mobile-menu-controls">
-                <div class="mobile-controls-row">
-                    <div class="region-toggle-wrapper">
-                        <span id="region-label-m" class="region-label">TR</span>
-                        <label class="switch">
-                            <input type="checkbox" id="region-toggle-m" onchange="toggleRegion(this.checked)">
-                            <span class="slider round"></span>
-                        </label>
+    <!-- Market filters: a popover under the header on desktop, a bottom sheet on mobile -->
+    <div id="filter-popover" class="filter-popover hidden" role="dialog" aria-labelledby="filter-title">
+        <h2 id="filter-title" class="filter-title">Filter market</h2>
+        <div class="filter-grid-layout">
+            <fieldset class="filter-group">
+                <legend>Price range (₺)</legend>
+                <div class="row-inputs">
+                    <div class="field">
+                        <label for="filter-price-min">Minimum</label>
+                        <input type="number" id="filter-price-min" class="filter-input-small" inputmode="decimal">
                     </div>
-                    <div id="live-status-m" class="live-status">
-                        <span class="live-dot"></span>
-                        <span id="live-label-m">Live Feed</span>
+                    <div class="field">
+                        <label for="filter-price-max">Maximum</label>
+                        <input type="number" id="filter-price-max" class="filter-input-small" inputmode="decimal">
                     </div>
                 </div>
-                <div id="mobile-auth-container" class="mobile-auth-wrap"></div>
+            </fieldset>
+            <fieldset class="filter-group">
+                <legend>Change today (%)</legend>
+                <div class="row-inputs">
+                    <div class="field">
+                        <label for="filter-change-min">Minimum</label>
+                        <input type="number" id="filter-change-min" class="filter-input-small" step="0.1" inputmode="decimal">
+                    </div>
+                    <div class="field">
+                        <label for="filter-change-max">Maximum</label>
+                        <input type="number" id="filter-change-max" class="filter-input-small" step="0.1" inputmode="decimal">
+                    </div>
+                </div>
+            </fieldset>
+            <div class="filter-group field">
+                <label for="filter-vol-min">Minimum volume</label>
+                <input type="number" id="filter-vol-min" class="filter-input-small" inputmode="numeric">
             </div>
         </div>
+        <div class="filter-actions">
+            <button type="button" onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply filters</button>
+            <button type="button" onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
+        </div>
     </div>
-    <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" onclick="toggleMobileMenu()"></div>
 
     <!-- ===== MAIN CONTENT ===== -->
     <div class="container">
-        <main>
-            <!-- Section Label & Ticker -->
-            <div class="section-header">
-                <div class="section-badge">
-                    <span class="section-badge-dot"></span>
-                    Real-Time Intelligence
+        <main id="main-content" tabindex="-1">
+            <!-- Mobile: search and filters in one bar, sticky under the header -->
+            <div id="mobile-searchbar" class="mobile-searchbar">
+                <div class="search-field">
+                    <label for="mobile-menu-search" class="sr-only">Search symbol or name</label>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                    <input type="text" id="mobile-menu-search" placeholder="Search symbol or name" autocomplete="off">
+                    <div id="mobile-search-results" class="search-results hidden"></div>
                 </div>
-                <h2 class="section-heading hero-heading">Market<br>Intelligence</h2>
-                
-                <!-- Exchange Ticker integrated below header texts -->
+                <button type="button" class="icon-btn" data-filter-toggle onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" aria-label="Filters" aria-controls="filter-popover">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                </button>
+            </div>
+
+            <!-- Page title and exchange rates -->
+            <div class="section-header">
+                <div class="section-badge">BIST and global markets</div>
+                <h1 class="section-heading hero-heading">Market overview</h1>
                 <div id="exchange-ticker-wrapper" class="exchange-ticker-wrapper">
-                    <div id="exchange-ticker" class="exchange-ticker"></div>
+                    <div id="exchange-ticker" class="exchange-ticker" aria-label="Exchange rates"></div>
                 </div>
             </div>
 
-            <!-- AI Section -->
-            <div id="ai-section" class="ai-card hidden">
-                <div class="ai-header ai-header-toggle" onclick="toggleAICollapse()" role="button" tabindex="0" aria-expanded="true">
+            <!-- AI market insight -->
+            <section id="ai-section" class="ai-card hidden" aria-labelledby="ai-title">
+                <div class="ai-header ai-header-toggle" onclick="toggleAICollapse()" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleAICollapse(); }" role="button" tabindex="0" aria-expanded="true" aria-controls="ai-body">
                     <div class="ai-header-left">
-                        <div class="ai-icon-ring">🐺</div>
                         <div class="ai-title-group">
-                            <span class="ai-title-text">Wolfee AI Protocol</span>
-                            <span class="ai-badge">LIVE INSIGHT</span>
+                            <h2 class="ai-title-text" id="ai-title">Market insight</h2>
+                            <span class="ai-badge">AI generated</span>
                         </div>
                     </div>
                     <div class="ai-header-right">
-                        <span class="ai-chevron" id="ai-chevron">&#8964;</span>
+                        <svg class="ai-chevron" id="ai-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
                     </div>
                 </div>
                 <div id="ai-body">
                     <div class="ai-divider"></div>
-                    <div id="ai-text">Analyzing market data...</div>
+                    <div id="ai-text" aria-live="polite">
+                        <span class="sr-only">Loading market insight</span>
+                        <span class="skeleton-line w-60"></span>
+                        <span class="skeleton-line"></span>
+                        <span class="skeleton-line w-40"></span>
+                    </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Gold Section -->
+            <!-- Gold -->
             <div id="gold-section" class="gold-section"></div>
 
-            <!-- Market View -->
+            <!-- Market view -->
             <div id="market-view">
-                <div id="stock-grid">
-                    <!-- Stock cards injected here -->
+                <div id="stock-grid" aria-busy="true">
+                    <p class="sr-only">Loading market data</p>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
                 </div>
             </div>
 
@@ -286,6 +249,40 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- ===== MOBILE TAB BAR (below 768px) ===== -->
+    <nav class="tabbar" aria-label="Sections">
+        <button type="button" class="tabbar-item tab-btn active" id="tab-market-m" onclick="switchTab('market')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+            <span>Market</span>
+        </button>
+        <button type="button" class="tabbar-item tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>
+            <span>Opportunities</span>
+        </button>
+        <button type="button" class="tabbar-item tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            <span>Watchlist</span>
+        </button>
+        <button type="button" class="tabbar-item" id="tab-account-m" onclick="openAccount()" aria-haspopup="dialog">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>Account</span>
+        </button>
+    </nav>
+
+    <!-- ===== ACCOUNT SHEET (mobile, signed in) ===== -->
+    <div id="account-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="account-sheet-title">
+        <div class="sheet-backdrop" onclick="closeAccountSheet()"></div>
+        <div class="sheet-panel">
+            <div class="sheet-header">
+                <h2 id="account-sheet-title">Account</h2>
+                <button type="button" class="icon-btn" onclick="closeAccountSheet()" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div id="mobile-auth-container" class="mobile-auth-wrap"></div>
+        </div>
     </div>
 
     <!-- ===== EXPORT MODAL ===== -->
@@ -483,30 +480,6 @@
     <script src="js/portfolio.js?v=15.5"></script>
     <script src="js/main.js?v=15.5"></script>
 
-    <script>
-        // Mobile Menu Toggle
-        function toggleMobileMenu() {
-            const menu = document.getElementById('mobile-menu');
-            const btn = document.getElementById('mobile-menu-btn');
-            const backdrop = document.getElementById('mobile-menu-backdrop');
-            const isOpen = menu.classList.toggle('mobile-menu-open');
-            btn.setAttribute('aria-expanded', String(isOpen));
-            menu.setAttribute('aria-hidden', String(!isOpen));
-            backdrop.classList.toggle('active', isOpen);
-            document.body.classList.toggle('no-scroll', isOpen);
-        }
-
-
-        // Navbar scroll effect
-        window.addEventListener('scroll', () => {
-            const nav = document.getElementById('main-nav');
-            if (window.scrollY > 10) {
-                nav.classList.add('nav-scrolled');
-            } else {
-                nav.classList.remove('nav-scrolled');
-            }
-        }, { passive: true });
-    </script>
 </body>
 
 </html>

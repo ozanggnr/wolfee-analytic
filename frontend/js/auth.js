@@ -134,23 +134,34 @@
         const safeEmail = user ? escapeHTML(user.email) : '';
         const safeName = user ? escapeHTML(user.email.split('@')[0]) : '';
 
-        const loggedInHTML = user ? `
-            <div class="user-chip" id="user-profile-chip" title="${safeEmail}">
-                <span class="user-avatar">👤</span>
-                <span class="user-email-text">${safeName}</span>
-                <button class="icon-btn logout-btn" onclick="logoutUser()" title="Log out">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </button>
-            </div>
-        ` : `
-            <button class="nav-auth-btn gradient-btn" onclick="openAuthModal('login')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                Sign In
+        const signInHTML = `
+            <button type="button" class="nav-auth-btn gradient-btn" onclick="openAuthModal('login')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                Sign in
             </button>
         `;
 
-        if (desktopContainer) desktopContainer.innerHTML = loggedInHTML;
-        if (mobileContainer) mobileContainer.innerHTML = loggedInHTML;
+        // Header (desktop): name and a log-out icon button
+        const desktopHTML = user ? `
+            <div class="user-chip" id="user-profile-chip" title="${safeEmail}">
+                <span class="user-email-text">${safeName}</span>
+                <button type="button" class="icon-btn logout-btn" onclick="logoutUser()" title="Log out" aria-label="Log out">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
+        ` : signInHTML;
+
+        // Account sheet (mobile): the full email and a Log out button
+        const mobileHTML = user ? `
+            <div class="account-details">
+                <span class="account-label">Signed in as</span>
+                <span class="account-email">${safeEmail}</span>
+            </div>
+            <button type="button" class="btn-secondary account-logout" onclick="logoutUser(); if (typeof closeAccountSheet === 'function') closeAccountSheet();">Log out</button>
+        ` : signInHTML;
+
+        if (desktopContainer) desktopContainer.innerHTML = desktopHTML;
+        if (mobileContainer) mobileContainer.innerHTML = mobileHTML;
 
         // If on portfolio tab, re-render portfolio to show cloud watchlist vs session
         if (typeof renderPortfolio === 'function') {

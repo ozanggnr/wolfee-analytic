@@ -48,7 +48,7 @@ async function init() {
     } catch (error) {
         console.error('Init error:', error);
         document.getElementById('stock-grid').innerHTML =
-            '<p style="color: var(--danger-color); grid-column: 1/-1; text-align: center;">Failed to load market data. Retrying...</p>';
+            '<p class="grid-message is-error" role="alert">Market data could not be loaded. Retrying.</p>';
         _gridAwaitingData = true;
         startAutoPoll();
         scheduleEmptyGridRetry();
@@ -74,16 +74,22 @@ function startAutoPoll() {
     }, POLL_INTERVAL_MS);
 }
 
-async function pollForUpdates() {
+/** Feed status on the header dot: fetching, live or error (colours in CSS). */
+function setLiveState(state) {
     const dot = document.getElementById('live-dot');
+    if (dot) dot.dataset.state = state;
+}
+
+async function pollForUpdates() {
     const label = document.getElementById('live-label');
     try {
-        if (dot) dot.style.background = '#fbbf24'; // yellow = fetching
+        setLiveState('fetching');
         const response = await fetch(`${API_URL}/api/market-data/quick`, { cache: 'no-store' });
         if (!response.ok) throw new Error('Poll failed');
         const data = await response.json();
         const newStocks = deduplicateStocks(data.stocks || []);
-        const serverUpdatedAt = data.updated_at ? new Date(data.updated_at) : null;
+        // A zone-less updated_at is UTC (API contract), not the viewer's local time
+        const serverUpdatedAt = window.WolfeeFields.parseTimestamp(data.updated_at);
 
         // Find changed stocks and update only those cards
         let changedCount = 0;
@@ -123,11 +129,11 @@ async function pollForUpdates() {
             const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
             if (label) label.textContent = `Updated ${timeStr}`;
         }
-        if (dot) dot.style.background = '#4ade80'; // green = live
+        setLiveState('live');
     } catch (e) {
         console.warn('Poll error:', e);
-        if (dot) dot.style.background = '#f87171'; // red = error
-        if (label) label.textContent = 'Reconnecting...';
+        setLiveState('error');
+        if (label) label.textContent = 'Reconnecting';
         scheduleEmptyGridRetry();
     }
 }
@@ -148,51 +154,15 @@ function updateChangedCards(newStocks) {
         const isStockGlobal = !sym.endsWith('.IS') && newStock.market_type !== 'BIST';
         if (isGlobalMode !== isStockGlobal) return;
 
-        // Find and replace the card in the DOM
-        const cards = stockGrid.querySelectorAll('.stock-card');
-        cards.forEach(card => {
-            const symbolEl = card.querySelector('.stock-symbol');
-            if (symbolEl && symbolEl.textContent.trim() === sym.replace('.IS', '')) {
-                // Flash the card to indicate update
-                card.style.transition = 'box-shadow 0.4s ease';
-                card.style.boxShadow = newStock.change_pct >= 0
-                    ? '0 0 18px rgba(74,222,128,0.5)'
-                    : '0 0 18px rgba(248,113,113,0.5)';
-                setTimeout(() => { card.style.boxShadow = ''; }, 1200);
-
-                // Update price and change
-                const priceEl = card.querySelector('.stock-price');
-                const changeEl = card.querySelector('.price-change');
-                const sigChip = card.querySelector('.signal-chip');
-                const trendEl = card.querySelector('.stat-item:last-child span:last-child');
-                const currency = typeof getCurrencySymbol === 'function'
-                    ? getCurrencySymbol(newStock.currency)
-                    : (newStock.currency === 'USD' ? '$' : '₺');
-                const isUp = (newStock.change_pct || 0) >= 0;
-                const color = isUp ? 'var(--success-color)' : 'var(--danger-color)';
-                const icon = isUp ? '▲' : '▼';
-
-                if (priceEl) {
-                    priceEl.style.color = color;
-                    priceEl.textContent = `${(newStock.price || 0).toFixed(2)} ${currency}`;
-                }
-                if (changeEl) {
-                    changeEl.style.color = color;
-                    changeEl.textContent = `${icon} ${Math.abs(newStock.change_pct || 0).toFixed(2)}%`;
-                }
-                if (trendEl) {
-                    trendEl.style.color = color;
-                    trendEl.textContent = isUp ? 'Up today' : 'Down today';
-                }
-                if (sigChip && typeof getSignalStyle === 'function') {
-                    const sig = getSignalStyle(window.WolfeeFields.fieldValue(newStock, 'prediction'));
-                    sigChip.style.color = sig.color;
-                    sigChip.style.background = sig.bg;
-                    sigChip.style.borderColor = sig.border;
-                    sigChip.innerHTML = `${sig.icon} ${esc(sig.label)}`;
-                }
-            }
-        });
+        // Replace the card's contents in place (same template as the first
+        // render) and mark it briefly as updated
+        const baseSym = baseSymbol(newStock);
+        const card = stockGrid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`);
+        if (!card) return;
+        const replacement = createStockCardElement(newStock, stockCardInnerHTML(newStock));
+        replacement.classList.add('is-updated');
+        card.replaceWith(replacement);
+        setTimeout(() => replacement.classList.remove('is-updated'), 1200);
     });
 }
 
@@ -229,10 +199,15 @@ async function loadAIInsight() {
         if (!res.ok) throw new Error('Insight unavailable');
         const data = await res.json();
         const aiTextEl = document.getElementById('ai-text');
-        if (aiTextEl) renderAIResponse(aiTextEl, data, 'insight');
+        if (aiTextEl) {
+            renderAIResponse(aiTextEl, data, 'insight');
+            addAIShowMore(aiTextEl);
+        }
     } catch (e) {
         const aiTextEl = document.getElementById('ai-text');
-        if (aiTextEl) aiTextEl.innerText = '🐺 AI Protocol Offline.';
+        if (aiTextEl) {
+            aiTextEl.innerHTML = '<p class="inline-error" role="alert">Market insight is not available right now. It will load on the next visit.</p>';
+        }
     }
 }
 
@@ -296,7 +271,7 @@ function processData(data) {
         });
         
         if (displayStocks.length === 0) {
-            stockGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">No stocks found. Data is loading...</p>';
+            stockGrid.innerHTML = '<p class="grid-message">No stocks to show yet. Market data is still loading.</p>';
             stockGrid.classList.remove('switching');
             _gridAwaitingData = true;
             scheduleEmptyGridRetry();
@@ -350,17 +325,19 @@ function initSearch() {
                 resultsEl.classList.remove('hidden');
                 resultsEl.innerHTML = '';
                 matches.slice(0, 15).forEach(stock => {
-                    const div = document.createElement('div');
+                    const div = document.createElement('button');
+                    div.type = 'button';
                     div.className = 'search-result-item';
                     const currency = stock.currency === 'USD' ? '$' : '₺';
                     div.innerHTML = `
-                        <div>
-                            <div class="result-symbol">${esc((stock.symbol||'').replace('.IS', ''))}</div>
-                            <div class="result-name">${esc(stock.name || stock.symbol)}</div>
-                        </div>
-                        <div class="result-price" style="color:${(stock.change_pct||0) >= 0 ? '#4ade80' : '#f87171'}">
-                            ${(stock.price||0).toFixed(2)} ${currency}
-                        </div>
+                        <span class="result-main">
+                            <span class="result-symbol">${esc((stock.symbol||'').replace('.IS', ''))}</span>
+                            <span class="result-name">${esc(stock.name || stock.symbol)}</span>
+                        </span>
+                        <span class="result-quote">
+                            <span class="result-price">${esc(window.WolfeeFields.formatPrice(stock, 'price', currency))}</span>
+                            ${changeHTML(stock, 'result-change')}
+                        </span>
                     `;
                     div.onclick = () => { 
                         openModal(stock); 
@@ -373,7 +350,7 @@ function initSearch() {
                     resultsEl.appendChild(div);
                 });
             } else {
-                resultsEl.innerHTML = '<div class="search-result-item" style="color:var(--text-secondary)">No results found</div>';
+                resultsEl.innerHTML = '<div class="search-empty">No matching symbol or name</div>';
                 resultsEl.classList.remove('hidden');
             }
         });
@@ -418,16 +395,12 @@ window.toggleRegion = function(forcedChecked = null) {
     if (mobileBarToggle) mobileBarToggle.checked = isGlobal;
     if (mobileDrawerToggle) mobileDrawerToggle.checked = isGlobal;
 
-    // Synchronize all label texts and colors
+    // Synchronize all label texts (colour comes from CSS)
     const labelText = isGlobal ? 'GLOBAL' : 'TR';
-    const labelColor = isGlobal ? '#f87171' : '#38bdf8';
 
     ['region-label', 'region-label-bar', 'region-label-m'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) {
-            el.innerText = labelText;
-            el.style.color = labelColor;
-        }
+        if (el) el.innerText = labelText;
     });
 
     processData({ stocks: allStocks });

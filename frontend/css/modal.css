@@ -1,0 +1,144 @@
+/* ============================================================
+   Stock detail modal: centred dialog on desktop,
+   full-screen sheet with a sticky header below 768px.
+   ============================================================ */
+
+.modal {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: var(--space-8) var(--gutter);
+    background: var(--color-overlay);
+    overflow-y: auto;
+}
+
+.modal-content {
+    position: relative;
+    width: 100%; max-width: 920px;
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-modal);
+}
+
+.close-modal {
+    position: absolute; top: var(--space-4); right: var(--space-4);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: var(--radius-button);
+    color: var(--color-text-secondary);
+    font-size: var(--text-lg); line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+.close-modal:hover { background: var(--color-tint); color: var(--color-text); }
+.close-modal:focus-visible { box-shadow: var(--focus-ring); }
+
+.modal-header-actions {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+    padding-right: var(--space-8);
+    margin-bottom: var(--space-5);
+}
+#modal-title { font-size: var(--text-xl); font-weight: var(--weight-semibold); color: var(--color-text); }
+#modal-title span { margin-left: var(--space-2); font-family: var(--font-numeric); font-size: var(--text-sm) !important; font-weight: var(--weight-regular); color: var(--color-text-secondary) !important; }
+
+/* ---------- Key figures: label/value list, one divider style ---------- */
+.detailed-stats-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--space-6);
+    border-top: var(--border);
+}
+.ds-item {
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2);
+    padding: var(--space-2) 0;
+    border-bottom: var(--border);
+}
+.ds-label { font-size: var(--text-sm); color: var(--color-text-secondary); white-space: nowrap; }
+.ds-val { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-text); text-align: right; }
+.ds-val.not-available { font-family: var(--font-sans); font-weight: var(--weight-regular); }
+.indicator-method { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+/* Descriptive label for the instrument */
+.modal-prediction {
+    display: inline-block;
+    margin: var(--space-4) 0;
+    padding: var(--space-1) var(--space-3);
+    background: var(--color-tint);
+    border: var(--border-width) solid var(--color-accent-border);
+    border-radius: var(--radius-badge);
+    font-size: var(--text-sm);
+    color: var(--color-text) !important;
+}
+
+/* ---------- AI analysis ---------- */
+.ai-analysis-section { margin-bottom: var(--space-5); }
+.ai-analyze-btn {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    height: 36px; padding: 0 var(--space-4);
+    background: var(--color-surface); color: var(--color-accent);
+    border: var(--border-width) solid var(--color-accent); border-radius: var(--radius-button);
+    font-size: var(--text-base); font-weight: var(--weight-medium); cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.ai-analyze-btn:hover { background: var(--color-tint); }
+.ai-response {
+    padding: var(--space-4);
+    background: var(--color-tint);
+    border: var(--border-width) solid var(--color-accent-border);
+    border-radius: var(--radius-panel);
+    font-size: var(--text-base); color: var(--color-text);
+}
+
+/* ---------- Chart ---------- */
+.chart-controls {
+    display: inline-flex;
+    margin-bottom: var(--space-3);
+    border: var(--border-width) solid var(--color-accent);
+    border-radius: var(--radius-button);
+    overflow: hidden;
+}
+.chart-controls button {
+    height: 32px; padding: 0 var(--space-3);
+    background: var(--color-surface); color: var(--color-accent);
+    border: 0; border-left: var(--border-width) solid var(--color-accent);
+    font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.chart-controls button:first-child { border-left: 0; }
+.chart-controls button:hover { background: var(--color-tint); }
+.chart-controls button.active { background: var(--color-accent); color: var(--color-text-inverse); }
+.chart-controls button:focus-visible { box-shadow: inset 0 0 0 2px var(--color-surface), inset 0 0 0 4px var(--color-accent-active); }
+.chart-container {
+    height: 360px;
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--color-surface);
+    overflow: hidden;
+}
+
+/* ---------- Below 768px: full-screen sheet ---------- */
+@media (max-width: 767px) {
+    .modal { padding: 0; align-items: stretch; background: var(--color-surface); }
+    .modal-content {
+        min-height: 100dvh; max-width: none;
+        padding: 0 var(--gutter-mobile) calc(var(--space-6) + env(safe-area-inset-bottom));
+        border: 0; border-radius: 0; box-shadow: none;
+    }
+    .modal-header-actions {
+        position: sticky; top: 0; z-index: 2;
+        flex-direction: column; align-items: stretch; gap: var(--space-2);
+        margin: 0 calc(-1 * var(--gutter-mobile)) var(--space-3);
+        padding: var(--space-3) calc(var(--gutter-mobile) + var(--touch-target)) var(--space-3) var(--gutter-mobile);
+        background: var(--color-surface);
+        border-bottom: var(--border);
+    }
+    #modal-title { font-size: var(--text-lg); }
+    .modal-header-actions > div { width: 100%; }
+    .modal-header-actions .secondary-btn { width: 100%; height: var(--touch-target); }
+    .close-modal { position: fixed; top: var(--space-2); right: var(--space-2); z-index: 3; width: var(--touch-target); height: var(--touch-target); }
+    .detailed-stats-grid { grid-template-columns: 1fr 1fr; column-gap: var(--space-4); }
+    .ai-analyze-btn { width: 100%; justify-content: center; height: var(--touch-target); }
+    .chart-controls { display: flex; width: 100%; }
+    .chart-controls button { flex: 1; height: var(--touch-target); }
+    .chart-container { height: 300px; margin: 0 calc(-1 * var(--gutter-mobile)); border-left: 0; border-right: 0; border-radius: 0; }
+}

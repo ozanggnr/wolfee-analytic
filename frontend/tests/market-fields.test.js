@@ -14,6 +14,11 @@ import {
     formatTimestamp,
     aiProvenance,
     splitLabelledLines,
+    changeDirection,
+    formatChange,
+    formatPrice,
+    directionClass,
+    parseTimestamp,
 } from '../js/core/market-fields.js';
 
 test('fieldValue returns null for null, undefined, blank strings and non-finite numbers', () => {
@@ -198,4 +203,58 @@ test('splitLabelledLines collapses runs of blank lines and trims the ends', () =
         { label: null, text: '' },
         { label: null, text: 'B' },
     ]);
+});
+
+test('changeDirection reads up, down and flat, and null when change_pct is not available', () => {
+    assert.equal(changeDirection({ change_pct: 1.25 }), 'up');
+    assert.equal(changeDirection({ change_pct: -0.4 }), 'down');
+    assert.equal(changeDirection({ change_pct: 0 }), 'flat');
+    assert.equal(changeDirection({ change_pct: '0.50' }), 'up');
+    assert.equal(changeDirection({ change_pct: null }), null);
+    assert.equal(changeDirection({}), null);
+    assert.equal(changeDirection({ selling: 1, pct: -2 }, 'pct'), 'down');
+});
+
+test('formatChange shows a null change_pct as not available, never as 0.00%', () => {
+    assert.equal(formatChange({ change_pct: null }), NOT_AVAILABLE);
+    assert.equal(formatChange({}), NOT_AVAILABLE);
+    assert.equal(formatChange({ change_pct: null }, { style: 'signed' }), NOT_AVAILABLE);
+});
+
+test('formatChange writes an arrow for the direction, or a sign in the signed style', () => {
+    assert.equal(formatChange({ change_pct: 1.234 }), '▲ 1.23%');
+    assert.equal(formatChange({ change_pct: -0.5 }), '▼ 0.50%');
+    assert.equal(formatChange({ change_pct: 0 }), '0.00%');
+    assert.equal(formatChange({ change_pct: 2 }, { style: 'signed' }), '+2.00%');
+    assert.equal(formatChange({ change_pct: -2 }, { style: 'signed' }), '-2.00%');
+    assert.equal(formatChange({ change_pct: 0 }, { style: 'signed' }), '0.00%');
+    assert.equal(formatChange({ change_pct: 1.26 }, { digits: 1 }), '▲ 1.3%');
+    assert.equal(formatChange({ pct: -3 }, { field: 'pct' }), '▼ 3.00%');
+});
+
+test('formatPrice shows missing and zero prices as not available', () => {
+    assert.equal(formatPrice({ price: 12.5 }, 'price', '₺'), '12.50 ₺');
+    assert.equal(formatPrice({ price: '7.125' }, 'price', '$', 3), '7.125 $');
+    assert.equal(formatPrice({ price: 0 }, 'price', '₺'), NOT_AVAILABLE);
+    assert.equal(formatPrice({ price: null }, 'price', '₺'), NOT_AVAILABLE);
+    assert.equal(formatPrice({ price: -1 }, 'price', '₺'), NOT_AVAILABLE);
+});
+
+test('directionClass maps up to gain and down to loss; flat and unknown are neutral', () => {
+    assert.equal(directionClass('up'), 'is-gain');
+    assert.equal(directionClass('down'), 'is-loss');
+    assert.equal(directionClass('flat'), '');
+    assert.equal(directionClass(null), '');
+});
+
+test('parseTimestamp reads a timestamp without a zone as UTC', () => {
+    assert.equal(parseTimestamp('2026-11-15T17:11:00').toISOString(), '2026-11-15T17:11:00.000Z');
+    assert.equal(parseTimestamp('2026-11-15T20:11:00+03:00').toISOString(), '2026-11-15T17:11:00.000Z');
+    assert.equal(parseTimestamp('2026-11-15T17:11:00.250Z').toISOString(), '2026-11-15T17:11:00.250Z');
+});
+
+test('parseTimestamp returns null for anything that is not an ISO timestamp', () => {
+    for (const value of [null, undefined, '', 'yesterday', '2026-11-15', 42, '2026-13-45T99:00:00']) {
+        assert.equal(parseTimestamp(value), null, String(value));
+    }
 });
