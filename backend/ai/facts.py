@@ -125,7 +125,12 @@ def _percent(value: Decimal, signed: bool = False) -> str:
 # indicators_as_of. The card label (``prediction``) is never turned into a fact.
 # --------------------------------------------------------------------------
 
-NO_MARKET_DATA = Fact("Market data", "not available yet — no instrument has a price")
+NO_MARKET_DATA = Fact("Market data", "not available yet — no instrument has both a price and a daily change")
+# For the caller that knows the cache is still filling (some instruments are in, most
+# are not): a summary of that part would describe a market that was not observed.
+MARKET_DATA_LOADING = Fact(
+    "Market data", "still loading — the market summary appears after the first data refresh"
+)
 MAX_MOVERS = 3
 
 _MAX_NAME_LENGTH = 40
@@ -192,13 +197,12 @@ def stock_facts(stock: Mapping[str, object] | None) -> tuple[Fact, ...]:
 
     Indicators are included only when ``indicators_as_of`` shows they were
     computed from real price history; otherwise the facts say they are not
-    available. Fields listed in ``estimated_fields`` are left out.
+    available.
     """
     quote = _quote(stock)
     if quote is None:
         return (Fact("Price data for this instrument", "not available"),)
 
-    estimated = _estimated_fields(stock)
     facts = [
         Fact("Instrument", quote.label),
         Fact("Market", _GROUP_TITLES[quote.group]),
@@ -210,24 +214,20 @@ def stock_facts(stock: Mapping[str, object] | None) -> tuple[Fact, ...]:
     if previous_close is not None:
         facts.append(Fact("Previous close", _amount(previous_close, quote.currency)))
     low, high = _positive(stock.get("day_low")), _positive(stock.get("day_high"))
-    if low is not None and high is not None and not estimated & {"day_low", "day_high"}:
+    if low is not None and high is not None:
         facts.append(
             Fact("Lowest and highest price today", f"{_round(low):,.2f} to {_amount(high, quote.currency)}")
         )
     volume = _positive(stock.get("volume"))
     if volume is not None:
         facts.append(Fact("Volume today", f"{int(volume):,}"))
-    facts.extend(_indicator_facts(stock, quote, estimated))
+    facts.extend(_indicator_facts(stock, quote))
     return tuple(facts)
 
 
-def _indicator_facts(stock: Mapping[str, object], quote: _Quote, estimated: frozenset) -> list[Fact]:
+def _indicator_facts(stock: Mapping[str, object], quote: _Quote) -> list[Fact]:
     as_of = stock.get("indicators_as_of")
-    real = {
-        field: _positive(stock.get(field))
-        for field in ("rsi", "ma_20", "volatility_pct")
-        if field not in estimated
-    }
+    real = {field: _positive(stock.get(field)) for field in ("rsi", "ma_20", "volatility_pct")}
     if not isinstance(as_of, str) or not _ISO_DATE.fullmatch(as_of) or not any(
         value is not None for value in real.values()
     ):
@@ -253,7 +253,7 @@ def _indicator_facts(stock: Mapping[str, object], quote: _Quote, estimated: froz
 def _market_rsi_facts(rows: Iterable[object]) -> list[Fact]:
     values = []
     for row in rows:
-        if not isinstance(row, Mapping) or "rsi" in _estimated_fields(row):
+        if not isinstance(row, Mapping):
             continue
         as_of = row.get("indicators_as_of")
         value = _positive(row.get("rsi"))
@@ -303,11 +303,6 @@ def _group(row: Mapping[str, object], symbol: str) -> str:
     if symbol.endswith(".IS") or row.get("currency") == "TRY":
         return "BIST"
     return "GLOBAL"
-
-
-def _estimated_fields(row: Mapping[str, object]) -> frozenset:
-    listed = row.get("estimated_fields")
-    return frozenset(listed) if isinstance(listed, (list, tuple, set, frozenset)) else frozenset()
 
 
 def _clean(text: object) -> str:

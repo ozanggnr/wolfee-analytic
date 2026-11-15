@@ -4,7 +4,7 @@ from typing import Optional
 import httpx
 import yfinance as yf
 
-from data_sources.provided import provided_price
+from data_sources.provided import chart_row, daily_change_pct, provided_price
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,7 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
         if price == 0.0:
             return None
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         return {
             "symbol": symbol,
@@ -113,9 +111,7 @@ def fetch_global_stock_finnhub(symbol: str, api_key: str) -> Optional[dict]:
         day_low = float(data.get("l", 0))
         open_price = provided_price(data.get("o"))
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         return {
             "symbol": symbol,
@@ -176,19 +172,16 @@ def _fetch_yahoo_chart_global(symbol: str, yf_period: str, yf_interval: str):
         closes  = quote.get("close",  [])
         volumes = quote.get("volume", [])
         from datetime import datetime as _dt
+
+        def at(values, i):
+            return values[i] if i < len(values) else None
+
         rows = []
         for i, ts in enumerate(timestamps):
-            c = closes[i] if i < len(closes) else None
-            if c is None:
-                continue
-            rows.append({
-                "time":   _dt.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
-                "open":   round(float(opens[i])   if i < len(opens)   and opens[i]   else c, 4),
-                "high":   round(float(highs[i])   if i < len(highs)   and highs[i]   else c, 4),
-                "low":    round(float(lows[i])    if i < len(lows)    and lows[i]    else c, 4),
-                "close":  round(float(c), 4),
-                "volume": int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
-            })
+            row = chart_row(_dt.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
+                            at(opens, i), at(highs, i), at(lows, i), at(closes, i), at(volumes, i))
+            if row is not None:
+                rows.append(row)
         return rows if rows else None
     except Exception as e:
         logger.warning("Direct Yahoo chart API failed for %s: %s", symbol, e)
@@ -216,14 +209,10 @@ def fetch_global_history(symbol: str, period: str = "1mo") -> Optional[list]:
         results = []
         for idx, row in hist.iterrows():
             time_str = idx.strftime("%Y-%m-%d %H:%M") if hasattr(idx, "strftime") else str(idx)
-            results.append({
-                "time":   time_str,
-                "open":   round(float(row.get("Open",   0)), 4),
-                "high":   round(float(row.get("High",   0)), 4),
-                "low":    round(float(row.get("Low",    0)), 4),
-                "close":  round(float(row.get("Close",  0)), 4),
-                "volume": int(row.get("Volume", 0)),
-            })
+            bar = chart_row(time_str, row.get("Open"), row.get("High"), row.get("Low"),
+                            row.get("Close"), row.get("Volume"))
+            if bar is not None:
+                results.append(bar)
         logger.info("Fetched %d history records for %s via yfinance", len(results), symbol)
         return results
     except Exception as e:
@@ -272,9 +261,7 @@ def fetch_commodity_data(symbol: str) -> Optional[dict]:
         if price == 0.0:
             return None
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         # Commodity display names
         commodity_names = {

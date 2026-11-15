@@ -73,7 +73,7 @@ def test_fast_info_without_open_or_previous_close_gives_none(monkeypatch, module
     quote = getattr(module, function)(symbol)
 
     assert (quote["open"], quote["previous_close"]) == (None, None)
-    assert quote["price"] == 320.25 and quote["change_pct"] == 0.0
+    assert quote["price"] == 320.25 and quote["change_pct"] is None
 
 
 @pytest.mark.parametrize("module, function, symbol", FETCHERS)

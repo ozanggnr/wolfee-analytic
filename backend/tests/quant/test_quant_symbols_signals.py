@@ -287,3 +287,16 @@ def test_volatility_label_comes_from_annualised_volatility():
     assert [classify_volatility(v) for v in (None, 0.79, 24.99, 25, 49.99, 50, 120)] == [
         None, "LOW", "LOW", "MEDIUM", "MEDIUM", "HIGH", "HIGH",
     ]
+
+
+# ------------------------------------------------ daily change (data_sources.provided)
+
+def test_daily_change_is_none_without_a_previous_close():
+    from data_sources.provided import daily_change_pct
+
+    # (320.25 - 310) / 310 = 3.306...% -> 3.31
+    assert daily_change_pct(320.25, 310.0) == 3.31
+    assert daily_change_pct(310.0, 310.0) == 0.0               # a real "unchanged" stays 0.0
+    for previous_close in (None, 0, 0.0, -1.0, float("nan")):
+        assert daily_change_pct(320.25, previous_close) is None
+    assert daily_change_pct(None, 310.0) is None

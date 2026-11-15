@@ -27,47 +27,16 @@ def _raw(symbol, price, change_pct, **extra):
             "currency": "USD", **extra}
 
 
-def test_default_call_still_returns_the_legacy_estimates_until_callers_accept_none():
-    # TEMPORARY (REQ-26): watchlist_routes and the exports still round these fields.
-    with patch("data_sources.global_market.fetch_global_stock",
-               return_value=_raw("AAPL", 200.0, 1.0, currency="EUR")):
-        result = analysis.analyze_stock("AAPL")
-
-    assert result == {
-        "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0,
-        "currency": "EUR", "market_cap": 5.0, "volume": 1000,
-        "day_high": 202.0, "day_low": 198.0, "open": None, "previous_close": None,
-        "bid": 0.0, "ask": 0.0, "rsi": 53.0, "ma_20": 199.0,
-        "prediction": "Up 1.0% today", "reason": "Up 1.0% today",
-        "buy_signals": [], "is_favorable": True, "is_buyable": True,
-        "volatility": "LOW", "volatility_pct": None,
-        "indicators_as_of": None, "indicator_method": None,
-        "estimated_fields": ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable",
-                             "day_high", "day_low"],
-        "market_type": "GLOBAL",
-    }
-
-
-def test_legacy_estimates_for_a_falling_bist_stock_are_unchanged():
-    with patch("data_sources.turkish_market.fetch_bist_stock",
-               return_value=_raw("THYAO", 300.0, -6.0, currency="TRY", previous_close=319.15,
-                                 day_high=320.0, day_low=298.0, open=318.0)):
-        result = analysis.analyze_stock("THYAO.IS")
-
-    assert (result["rsi"], result["ma_20"], result["volatility"]) == (32.0, 309.0, "HIGH")
-    # No real RSI to describe, so the label states the day's change and nothing else.
-    assert result["prediction"] == result["reason"] == "Down 6.0% today"
-    assert "prediction" not in result["estimated_fields"]
-    assert (result["is_favorable"], result["is_buyable"]) == (False, False)
-    assert result["indicators_as_of"] is None
-    # The provider supplied the day range, so only the indicators and labels are estimates.
-    assert "rsi" in result["estimated_fields"] and "day_high" not in result["estimated_fields"]
+def test_the_legacy_estimate_mode_is_gone():
+    assert not hasattr(analysis, "_legacy_estimates")
+    with pytest.raises(TypeError):
+        analysis.analyze_stock("AAPL", legacy_estimates=True)
 
 
 def test_global_stock_without_history_has_no_indicators_or_labels():
     with patch("data_sources.global_market.fetch_global_stock",
                return_value=_raw("AAPL", 200.0, 1.0, currency="EUR")):
-        result = analysis.analyze_stock("AAPL", legacy_estimates=False)
+        result = analysis.analyze_stock("AAPL")
 
     assert result == {
         "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0,
@@ -77,7 +46,7 @@ def test_global_stock_without_history_has_no_indicators_or_labels():
         "prediction": None, "reason": None,
         "buy_signals": [], "is_favorable": None, "is_buyable": None,
         "volatility": None, "volatility_pct": None,
-        "indicators_as_of": None, "indicator_method": None, "estimated_fields": [],
+        "indicators_as_of": None, "indicator_method": None,
         "market_type": "GLOBAL",
     }
 
@@ -86,7 +55,7 @@ def test_bist_stock_keeps_suffix_currency_and_the_providers_day_range():
     with patch("data_sources.turkish_market.fetch_bist_stock",
                return_value=_raw("THYAO", 300.0, -6.0, currency="TRY", previous_close=319.15,
                                  day_high=320.0, day_low=298.0, open=318.0)):
-        result = analysis.analyze_stock("THYAO.IS", history=[])
+        result = analysis.analyze_stock("THYAO.IS")
 
     assert result["symbol"] == "THYAO.IS"
     assert result["currency"] == "TRY"
@@ -122,7 +91,7 @@ def test_real_history_gives_real_indicators_and_labels():
 def test_commodity_uses_the_universe_display_name():
     with patch("data_sources.global_market.fetch_commodity_data",
                return_value=_raw("GC=F", 2000.0, 2.5, name="Gold (XAU/USD)")):
-        result = analysis.analyze_stock("GC=F", is_commodity=True, legacy_estimates=False)
+        result = analysis.analyze_stock("GC=F", is_commodity=True)
 
     assert result["name"] == "Gold (USD)"
     assert result["market_type"] == "COMMODITY"
@@ -151,3 +120,28 @@ def test_open_and_previous_close_are_not_derived_from_each_other():
         result = analysis.analyze_stock("AAPL")
 
     assert (result["open"], result["previous_close"]) == (None, 198.0)
+
+
+def test_change_pct_is_none_when_the_provider_has_no_previous_close():
+    with patch("data_sources.global_market.fetch_global_stock",
+               return_value=_raw("AAPL", 200.0, None)):
+        result = analysis.analyze_stock("AAPL")
+
+    assert result["change_pct"] is None
+    assert result["price"] == 200.0
+    assert (result["is_favorable"], result["is_buyable"]) == (None, None)
+
+
+def test_opportunities_skip_and_sort_rows_without_a_daily_change():
+    cached = [
+        {"symbol": "A", "change_pct": None, "is_favorable": True},
+        {"symbol": "B", "change_pct": 3.0, "is_favorable": True},
+    ]
+
+    assert [o["symbol"] for o in analysis.get_market_opportunities(cached)] == ["B"]
+
+    quotes = {"X": _raw("X", 10.0, None), "Y": _raw("Y", 10.0, 2.0)}
+    with patch("analysis.BIST_SYMBOLS", []), patch("analysis.GLOBAL_SYMBOLS", ["X", "Y"]),          patch("data_sources.global_market.fetch_global_stock", side_effect=quotes.get):
+        fresh = analysis.get_market_opportunities()
+
+    assert [o["symbol"] for o in fresh] == ["Y", "X"]          # an unknown change sorts as 0, no crash

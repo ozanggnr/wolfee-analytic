@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Iterable, Mapping
 
 from ai.explain import Generator, explain_market, explain_stock, response_fields
-from ai.facts import NO_MARKET_DATA, market_facts, stock_facts
+from ai.facts import MARKET_DATA_LOADING, NO_MARKET_DATA, market_facts, stock_facts
 from ai.guardrails import AIResult
 from ai.provider import gemini_generate
 
@@ -25,15 +25,20 @@ def market_insight(
     now: datetime,
     inputs_as_of: datetime | None = None,
     generate: Generator | None = gemini_generate,
+    loading: bool = False,
 ) -> AIResult:
     """Description of today's market from cached quotes.
 
     ``inputs_as_of`` is the age of the oldest quote used, supplied by the
     caller. With no usable quote the result is the template saying so, and the
     model is not called.
+
+    ``loading=True`` is for a cache that is still filling: whatever
+    ``market_data`` holds is partial, so none of it is described. The result is
+    the template saying the data is still loading, and the model is not called.
     """
-    facts = market_facts(market_data)
-    if facts == (NO_MARKET_DATA,):
+    facts = (MARKET_DATA_LOADING,) if loading else market_facts(market_data)
+    if facts in ((NO_MARKET_DATA,), (MARKET_DATA_LOADING,)):
         generate = None
         inputs_as_of = None
     return explain_market(facts, now=now, inputs_as_of=inputs_as_of, generate=generate)
@@ -60,9 +65,14 @@ def market_insight_response(
     now: datetime,
     inputs_as_of: datetime | None = None,
     generate: Generator | None = gemini_generate,
+    loading: bool = False,
 ) -> dict:
-    """Body of ``GET /api/insight``: ``insight`` plus the provenance fields."""
-    result = market_insight(market_data, now=now, inputs_as_of=inputs_as_of, generate=generate)
+    """Body of ``GET /api/insight``: ``insight`` plus the provenance fields.
+
+    Pass ``loading=True`` while the cache is still filling (see ``market_insight``).
+    """
+    result = market_insight(market_data, now=now, inputs_as_of=inputs_as_of, generate=generate,
+                            loading=loading)
     return {"insight": result.text, **response_fields(result)}
 
 

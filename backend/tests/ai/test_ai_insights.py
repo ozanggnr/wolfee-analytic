@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import ai_service
 from ai.explain import response_fields
-from ai.facts import NO_MARKET_DATA, market_facts, stock_facts
+from ai.facts import MARKET_DATA_LOADING, NO_MARKET_DATA, market_facts, stock_facts
 from ai.guardrails import DISCLAIMER, Generation, find_violations
 from ai.insights import (
     market_insight,
@@ -43,14 +43,12 @@ STOCK = {
     "prediction": "RSI above 70 (overbought)", "is_buyable": False,
 }
 
-# What analyze_stock still returns in its temporary legacy mode: estimates, flagged as such.
-LEGACY_STOCK = {
+# What analyze_stock returns when there is no price history: no indicators, no day range.
+NO_HISTORY_STOCK = {
     "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0, "currency": "USD",
-    "market_type": "GLOBAL", "previous_close": 198.02, "day_high": 202.0, "day_low": 198.0,
-    "volume": 1000, "rsi": 53.0, "ma_20": 199.0, "volatility": "LOW",
-    "prediction": "Up 1.0% today", "indicators_as_of": None,
-    "estimated_fields": ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable",
-                         "day_high", "day_low"],
+    "market_type": "GLOBAL", "previous_close": 198.02, "day_high": None, "day_low": None,
+    "volume": 1000, "rsi": None, "ma_20": None, "volatility": None, "volatility_pct": None,
+    "prediction": None, "indicators_as_of": None,
 }
 
 
@@ -86,7 +84,6 @@ def test_market_rsi_is_counted_only_when_it_came_from_price_history():
         {**MARKET[0], "rsi": 25.0, "indicators_as_of": "2026-01-21"},
         {**MARKET[1], "rsi": 75.5, "indicators_as_of": "2026-01-21"},
         {**MARKET[2], "rsi": 20.0},                                            # old estimate, no date
-        {**MARKET[3], "rsi": 20.0, "indicators_as_of": "2026-01-21", "estimated_fields": ["rsi"]},
     ]
 
     facts = as_dict(market_facts(rows))
@@ -138,14 +135,14 @@ def test_stock_facts_with_real_indicators():
 
 
 def test_stock_facts_never_carry_a_buy_or_sell_label():
-    text = " ".join(f"{fact.label} {fact.value}" for fact in stock_facts(STOCK) + stock_facts(LEGACY_STOCK))
+    text = " ".join(f"{fact.label} {fact.value}" for fact in stock_facts(STOCK) + stock_facts(NO_HISTORY_STOCK))
 
     for word in ("PURCHASABLE", "TAKE PROFITS", "ACCUMULATE", "overbought", "LOW"):
         assert word not in text
 
 
-def test_estimated_figures_are_left_out_and_reported_as_unavailable():
-    facts = as_dict(stock_facts(LEGACY_STOCK))
+def test_a_stock_without_history_reports_its_indicators_as_unavailable():
+    facts = as_dict(stock_facts(NO_HISTORY_STOCK))
 
     assert facts == {
         "Instrument": "AAPL",
@@ -208,7 +205,7 @@ def test_templates_pass_their_own_guardrails():
     for facts, result in (
         (market_facts(MARKET), market_insight(MARKET, now=NOW, generate=None)),
         (stock_facts(STOCK), stock_analysis(STOCK, now=NOW, generate=None)),
-        (stock_facts(LEGACY_STOCK), stock_analysis(LEGACY_STOCK, now=NOW, generate=None)),
+        (stock_facts(NO_HISTORY_STOCK), stock_analysis(NO_HISTORY_STOCK, now=NOW, generate=None)),
     ):
         assert find_violations(result.text, facts) == ()
         assert result.disclaimer == DISCLAIMER
@@ -372,3 +369,39 @@ def test_a_row_with_a_null_price_or_change_is_skipped_not_fatal():
 def test_adviser_prompts_and_signal_labels_are_retired_from_ai_service():
     for name in ("_compute_signal", "_fallback_stock_analysis", "_fallback_insight", "_get_model"):
         assert not hasattr(ai_service, name)
+
+
+# ------------------------------------------------ still loading
+
+def test_a_cache_that_is_still_filling_is_described_as_loading_not_as_empty():
+    calls = []
+
+    def generate(prompt):
+        calls.append(prompt)
+        return Generation(text="Markets rose.", model="test-model")
+
+    result = market_insight(MARKET, now=NOW, inputs_as_of=AS_OF, generate=generate, loading=True)
+
+    assert calls == []                                   # partial data is never sent to the model
+    assert result.is_fallback and result.inputs_as_of is None
+    assert "Market data: still loading" in result.text
+    assert "no instrument has" not in result.text
+    assert "+0.50%" not in result.text                   # nothing from the partial rows is stated
+    assert find_violations(result.text, (MARKET_DATA_LOADING,)) == ()
+    assert result.disclaimer == DISCLAIMER
+
+
+def test_the_loading_response_has_the_usual_shape():
+    response = market_insight_response(None, now=NOW, generate=None, loading=True)
+
+    assert set(response) == {"insight"} | PROVENANCE
+    assert "still loading" in response["insight"]
+    assert (response["generated_by"], response["is_fallback"], response["inputs_as_of"]) == ("template", True, None)
+
+
+def test_the_no_data_fact_does_not_claim_there_are_no_prices():
+    priced_but_no_change = [{"symbol": "AAPL", "price": 200.0, "change_pct": None}]
+
+    assert market_facts(priced_but_no_change) == (NO_MARKET_DATA,)
+    assert "no instrument has a price" not in NO_MARKET_DATA.value
+    assert "both a price and a daily change" in NO_MARKET_DATA.value
