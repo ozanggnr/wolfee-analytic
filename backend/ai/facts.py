@@ -125,7 +125,12 @@ def _percent(value: Decimal, signed: bool = False) -> str:
 # indicators_as_of. The card label (``prediction``) is never turned into a fact.
 # --------------------------------------------------------------------------
 
-NO_MARKET_DATA = Fact("Market data", "not available yet — no instrument has a price")
+NO_MARKET_DATA = Fact("Market data", "not available yet — no instrument has both a price and a daily change")
+# For the caller that knows the cache is still filling (some instruments are in, most
+# are not): a summary of that part would describe a market that was not observed.
+MARKET_DATA_LOADING = Fact(
+    "Market data", "still loading — the market summary appears after the first data refresh"
+)
 MAX_MOVERS = 3
 
 _MAX_NAME_LENGTH = 40

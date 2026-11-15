@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import ai_service
 from ai.explain import response_fields
-from ai.facts import NO_MARKET_DATA, market_facts, stock_facts
+from ai.facts import MARKET_DATA_LOADING, NO_MARKET_DATA, market_facts, stock_facts
 from ai.guardrails import DISCLAIMER, Generation, find_violations
 from ai.insights import (
     market_insight,
@@ -369,3 +369,39 @@ def test_a_row_with_a_null_price_or_change_is_skipped_not_fatal():
 def test_adviser_prompts_and_signal_labels_are_retired_from_ai_service():
     for name in ("_compute_signal", "_fallback_stock_analysis", "_fallback_insight", "_get_model"):
         assert not hasattr(ai_service, name)
+
+
+# ------------------------------------------------ still loading
+
+def test_a_cache_that_is_still_filling_is_described_as_loading_not_as_empty():
+    calls = []
+
+    def generate(prompt):
+        calls.append(prompt)
+        return Generation(text="Markets rose.", model="test-model")
+
+    result = market_insight(MARKET, now=NOW, inputs_as_of=AS_OF, generate=generate, loading=True)
+
+    assert calls == []                                   # partial data is never sent to the model
+    assert result.is_fallback and result.inputs_as_of is None
+    assert "Market data: still loading" in result.text
+    assert "no instrument has" not in result.text
+    assert "+0.50%" not in result.text                   # nothing from the partial rows is stated
+    assert find_violations(result.text, (MARKET_DATA_LOADING,)) == ()
+    assert result.disclaimer == DISCLAIMER
+
+
+def test_the_loading_response_has_the_usual_shape():
+    response = market_insight_response(None, now=NOW, generate=None, loading=True)
+
+    assert set(response) == {"insight"} | PROVENANCE
+    assert "still loading" in response["insight"]
+    assert (response["generated_by"], response["is_fallback"], response["inputs_as_of"]) == ("template", True, None)
+
+
+def test_the_no_data_fact_does_not_claim_there_are_no_prices():
+    priced_but_no_change = [{"symbol": "AAPL", "price": 200.0, "change_pct": None}]
+
+    assert market_facts(priced_but_no_change) == (NO_MARKET_DATA,)
+    assert "no instrument has a price" not in NO_MARKET_DATA.value
+    assert "both a price and a daily change" in NO_MARKET_DATA.value
