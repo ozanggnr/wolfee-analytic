@@ -26,7 +26,7 @@ Status values:
 | Turkish gold prices | DONE | Bigpara HTML scrape |
 | USD, EUR, GBP against TRY | DONE | TCMB daily XML; change % from yfinance |
 | Price history for charts | DONE | Yahoo chart API, then yfinance. Fetched per request, not stored |
-| Finnhub / Alpha Vantage / Polygon failover | PARTIAL | `api_router.py` implements it but nothing imports it. README describes it as active |
+| Finnhub / Alpha Vantage / Polygon failover | REMOVED | The unused `api_router.py` was deleted (REQ-31 f, merged at `fe6d8c6`, 2026-11-15). `data_sources.global_market.fetch_global_stock_finnhub` remains but no caller passes a key |
 | Background refresh, market-hours aware | DONE | `workers.py`, in-process asyncio loop, default 30 min |
 | DB-first serving of the market grid | DONE | `/api/market-data/quick` |
 | Data freshness labelling (real-time / delayed / end-of-day) | MISSING | Only a single latest `updated_at` on `/quick` |
@@ -196,7 +196,6 @@ Status values:
 | `AUTO_VERIFY_DEV`, `REQUIRE_EMAIL_VERIFICATION` | `auth_routes.py` | false, true |
 | `APP_BASE_URL`, `EMAIL_FROM` | `auth_utils.py` | — |
 | `RESEND_API_KEY`, `SENDGRID_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | `auth_utils.py` | — |
-| `FINNHUB_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `POLYGON_API_KEY` | `api_router.py` (unused module) | — |
 
 No secrets were found hard-coded in the tracked files that were read. The Google consent cookie in `turkish_market.py` is a public bypass value, not a credential.
 
@@ -246,8 +245,8 @@ See COORDINATION §9 for the list (D1–D9). Agent 1 recommendations:
 - **No database was opened**, local or production.
 - **External providers were not called**; whether each source currently works is unknown.
 - The duplicate-row behaviour in DATABASE_CONTRACT §2.6 is inferred from code.
-- Parts of `auth_utils.py`, `api_router.py`, `frontend/js/ui.js`, `auth.js`, `filter.js`, `main.js`, `index.html` and `style.css` were searched rather than read line by line.
-- README drift noted but not corrected: it describes Finnhub failover as active, `SameSite=Strict` cookies (the code sets `Lax`), and a CAPTCHA challenge.
+- Parts of `auth_utils.py`, `frontend/js/ui.js`, `auth.js`, `filter.js`, `main.js`, `index.html` and `style.css` were searched rather than read line by line.
+- README drift noted but not corrected: `SameSite=Strict` cookies (the code sets `Lax`), and a CAPTCHA challenge.
 
 ---
 

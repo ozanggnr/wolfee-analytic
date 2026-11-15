@@ -26,11 +26,12 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 - Step 3c (2026-11-14): reviewed and merged `agent/quant-ai` `def3511` → **`da57548`** (REQ-24, REQ-25, labels, open/prev_close) and `agent/frontend` `ceecbda` → **`f0b9fc9`** (REQ-27, v=15.4). WSL: backend 281 passed, frontend 28/28. Decisions recorded (volatility bands, open/prev_close null, label table + 2 %, Up/Down today, local times, 0 = n/a, ai_insights provenance §4.4, daily_bars.py). API_CONTRACT §2.2/§2.4/§3, DATABASE_CONTRACT §2.6/§4.4, PROGRESS_agent3.md rewritten. New REQ-28 (Agent 2 routes + migration), REQ-29 (Agent 4), REQ-30 (Agent 2 open/prev_close). `bb00a11` pre-approved. PG18 cluster deleted
 - Step 3b, backend only (2026-11-15): reviewed `agent/backend` `13b8c61` (rebased onto integration; clean merge) → **`a63f25d`**. WSL: backend 564 passed, frontend 28/28, PG16 API 187 passed, migration chain clean to `e4a8c2f6b1d3`, seed CLI idempotent (361 / 0). Closed REQ-7, 8, 9, 10, 13, 15, 16, 17 (Agent 2 half), 18–21, 26, 28, 30; REQ-22/23 status corrected (done at d3f30bf). REQ-11 still open (3 failures from backend/). Contracts' status notes updated
 - Step 3d (2026-11-15): merged `agent/quant-ai` `631dc76` → **`836c3a3`** (legacy estimates and `estimated_fields` gone, `change_pct` null without previous close, chart bars without filled OHLC, loading fact). WSL: backend 583 passed, frontend 28/28. API_CONTRACT §2.2/§2.4/§5 updated. New REQ-31 (Agent 2: watchlist `round(None)` HIGH, market_placeholder loading, main.py chart fallback, stock_card, gold/FX change, delete api_router.py) and REQ-32 (Agent 4: Portfolio page after the redesign). Watchlist crash accepted on local-only integration
-- **Waiting for the user.** `agent/frontend` NOT merged: Agent 4 does the UI redesign first (with REQ-29)
+- Step 4 (2026-11-15): merged `agent/backend` `98ee277` → **`fe6d8c6`** (REQ-31 closed) and `agent/frontend` `a75332b` → **`10318c3`** (redesign, REQ-29 closed, v=16.0). The "▲ 0.00%" report was re-checked: fixed by the redesign. api_router.py doc references removed. Final WSL verification all green (598 / 41 / PG16 191 / migrations / seed / browser smoke at 1440 and 390). Readiness: DEPLOYMENT §2.1 (D1 CAPTCHA, D2 e-mail, D3 Postgres UTC, D4 app name, D5 PG16). New REQ-33 (Agent 2), REQ-34 (Agent 4), REQ-35 (Agent 3)
+- **Waiting for the user:** decisions D1 (CAPTCHA) and D2 (e-mail), then approval to start the Fly deploy sequence (DEPLOYMENT §10). Nothing pushed; `main` untouched
 
 ## Next (only after approval)
-- Merge `agent/frontend` after the redesign; check REQ-29 and the asset version
-- Merge Agent 2's REQ-31 fix next (the watchlist crash must be fixed before any deployment)
+- User decides D1 / D2 (DEPLOYMENT §2.1); then the deploy sequence (§10), each Fly command approved by the user
+- Merge the REQ-33 / REQ-34 / REQ-35 fixes and REQ-32 (Portfolio page) as they land
 
 ## Notes for whoever resumes
 - `fly.toml` release_command (`alembic upgrade head && python -m services.instrument_service`) is runnable on integration since `a63f25d`. Still no Fly resources; nothing deployed.

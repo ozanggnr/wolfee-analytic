@@ -55,7 +55,6 @@ An owner is the only agent that edits the file. Everyone may read everything.
 | `backend/analysis.py` | Symbol universes, indicators, `analyze_stock`, opportunity scan, bulk export analysis |
 | `backend/ai_service.py` | Gemini access, prompts, signal labels, fallbacks |
 | `backend/data_sources/**` | yfinance, Yahoo chart API, Google Finance scrape, Bigpara scrape, TCMB XML |
-| `backend/api_router.py` | Finnhub / Alpha Vantage / Polygon router. Not imported anywhere today |
 | `backend/tests/test_performance_and_sources.py` | Mixed content, see §4 |
 
 ### Agent 4 — Frontend Engineer

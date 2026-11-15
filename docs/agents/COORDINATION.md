@@ -169,6 +169,14 @@ Decided by the user on 2026-11-15 (Step 3d):
 - **Known watchlist crash accepted on `integration`:** `integration` is local-only, so the `round(None)` in `watchlist_routes.py:167` may stay until Agent 2's fix (REQ-31 a) lands next. It must be fixed before anything is deployed.
 - **Portfolio page** for Agent 4 after the redesign (REQ-32).
 
+Decided by the user on 2026-11-15 (Step 4, final integration):
+
+- **`agent/backend` `98ee277` merged** (`fe6d8c6`): REQ-31 (a)–(f) done, so the watchlist crash accepted in Step 3d is gone.
+- **`agent/frontend` `a75332b` merged** (`10318c3`): the UI redesign, approved by the user from screenshots; REQ-29 included; assets `v=16.0`; IBM Plex fonts self-hosted under the SIL OFL (licence files in `frontend/fonts/`).
+- **Agent 2's "▲ 0.00%" report** (`portfolio.js:342–419`, `ui.js:177–218`, pre-redesign) re-checked on `10318c3`: no longer true. `changeHTML` → `WolfeeFields.formatChange` returns "Not available" for a null change, with no arrow and no colour, on cards, gold, exchange rates, the watchlist pills and the biggest mover; the summary average uses the same rule. Nothing logged for Agent 4.
+- REQ-32 (Portfolio page) is now unblocked: the redesign is done.
+- **Final verification on `10318c3`** (TESTING.md §5): backend 598, frontend 41/41, PG16 API 191, migrations base→head→base→head clean, `alembic check` clean, seed 361/0, browser smoke test of every page at 1440 px and 390 px passed. Deployment readiness: DEPLOYMENT.md §2.1 (must-settle items D1–D5). New REQ-33 (Agent 2), REQ-34 (Agent 4), REQ-35 (Agent 3).
+
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
 ### Requests between agents
@@ -504,8 +512,9 @@ Needs:     (a) show rsi / ma_20 / volatility as values only when indicators_as_o
            Bump the asset version.
 Why:       D4 and the 2026-11-14 label decisions
 Blocking:  no
-Status:    open — to be folded into Agent 4's UI redesign (user, 2026-11-15). Since a63f25d the
-           cards no longer carry estimates, so (a) is a safeguard, not a visible bug
+Status:    DONE 2026-11-15 — 458ce2a (indicators shown only with indicators_as_of; badges use
+           RSI < 30 and "Up more than 2% today"), part of the redesign a75332b (assets v=16.0).
+           Merged at 10318c3
 
 ID:        REQ-30
 From:      Agent 1 (user decision 2026-11-14: open/previous_close null when not provided)
@@ -540,7 +549,11 @@ Needs:     (a) HIGH — watchlist_routes.py:167 `round(live_data.get("change_pct
 Why:       D4 / "never fabricate": since 836c3a3 change_pct and chart open/high/low can be null,
            and 0 would state a move that was not observed
 Blocking:  (a) blocks deployment, not the local integration branch (user, 2026-11-15)
-Status:    open
+Status:    DONE 2026-11-15 — de7b239 (a), c924427 (b), 69d20d4 (c), 1e6e91e (d), d4eb20e (e),
+           96f39e2 (f); agent/backend 98ee277, merged at fe6d8c6. Watchlist summary: a null
+           change is listed but not counted up/down/flat or averaged; avg_change_pct is null
+           when no change is known. TurkishGold / ExchangeRate change_pct lost their
+           Python-side default only (no DDL; alembic check clean)
 
 ID:        REQ-32
 From:      Agent 1 (user, 2026-11-15)
@@ -553,5 +566,50 @@ Needs:     after the UI redesign, a Portfolio page on /api/v1/portfolios (API_CO
            amount: shown as "Not available", never estimated). Bump the asset version.
 Why:       the ledger API is on integration since a63f25d and has no UI yet
 Blocking:  no — starts after the redesign
+Status:    open (unblocked 2026-11-15: redesign merged at 10318c3)
+
+ID:        REQ-33
+From:      Agent 1 (final verification, 2026-11-15)
+To:        Agent 2
+Needs:     (a) stock_data / turkish_gold / exchange_rates `updated_at` and ai_insights
+               `created_at` store the database server's local time (`timestamp without time
+               zone`, server_default now()) but are read as UTC. Make them `timestamptz` (a
+               migration: ALTER ... TYPE timestamptz USING ... AT TIME ZONE 'UTC', approved by
+               Agent 1 first, DATABASE_CONTRACT §7) or write UTC explicitly on insert and update.
+               The workers already set `datetime.utcnow()` on update, so rows mix both today.
+           (b) main.py CORS: drop the `*.up.railway.app` regex, RAILWAY_PUBLIC_DOMAIN,
+               wolfee-backend.onrender.com and the workers.dev origin; keep localhost and
+               CORS_ORIGINS. security_middleware.py comments still mention Railway HTTPS.
+Why:       (a) on a non-UTC Postgres the market insight's "data as of" is hours off (seen on
+           the WSL cluster); (b) stale credentialed origins (DEPLOYMENT §2.1 S1)
+Blocking:  (a) no, if the Fly database runs in UTC (DEPLOYMENT §2.1 D3); (b) no
+Status:    open
+
+ID:        REQ-34
+From:      Agent 1 (browser smoke test, 2026-11-15)
+To:        Agent 4
+Needs:     (a) index.html:169 "AI generated" badge shows even when the insight is the template
+               (no model call): show it only for model text, or say "Template". The
+               provenance line already shows a "template" chip.
+           (b) CAPTCHA: the forms always send `dev-captcha-pass` (index.html:399, :426;
+               auth.js:274, :324). If the user picks option (b) in DEPLOYMENT §2.1 D1, add the
+               widget with CAPTCHA_SITE_KEY (with Agent 2 for a site-key endpoint).
+           (c) auth.js showAuthAlert(data.detail): a 422 has `detail` as an array, so the
+               alert would read "[object Object]". Show the first `msg` or a generic line.
+           (d) Watchlist pills use one decimal (0.2%) next to the two-decimal biggest move
+               (0.24%) for the same instrument; consider one precision.
+Why:       the label must not claim AI wrote template text; registration must work in
+           production; readable errors
+Blocking:  (b) depends on the user's D1 decision; the rest no
+Status:    open
+
+ID:        REQ-35
+From:      Agent 1 (browser smoke test, 2026-11-15)
+To:        Agent 3
+Needs:     ai/guardrails.py disclaimer says "figures calculated ... from your recorded
+           transactions and from market data" also under the market summary, which uses no
+           transactions. Use a market-only wording for market and stock insights.
+Why:       the disclaimer should describe the inputs actually used
+Blocking:  no
 Status:    open
 ```

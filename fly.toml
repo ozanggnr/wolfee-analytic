@@ -25,7 +25,7 @@ primary_region = "fra"
   # (`fly postgres create ... --image-ref flyio/postgres-flex:16`, DEPLOYMENT.md §5).
   # Tests run on PostgreSQL 16 as well (TESTING.md §3). This file cannot set the version.
   # Secrets (set with `fly secrets set`, never here): DATABASE_URL (via `fly postgres attach`),
-  # GEMINI_API_KEY, CAPTCHA_SECRET_KEY, one e-mail provider key, optional data-source keys.
+  # GEMINI_API_KEY, CAPTCHA_SECRET_KEY, one e-mail provider key. (No data-source keys: none are read.)
   # Must never be set in production: ALLOW_DEV_CAPTCHA_BYPASS, AUTO_VERIFY_DEV.
 
 [http_service]

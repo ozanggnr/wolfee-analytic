@@ -75,8 +75,8 @@ Allow-list of fixed origins plus `RAILWAY_PUBLIC_DOMAIN`, `CORS_ORIGINS` (comma 
 | GET | `/api/market-data/quick` | no | yes | `{"stocks": [Stock], "updated_at": iso\|null}`. Empty DB: `{"stocks": [], "status": "loading", "message"}` and a background refresh starts. On error: 200 `{"stocks": [], "error": "<exception text>"}` |
 | GET | `/api/market-data/full` | no | no | `{"stocks": [Stock]}`. On error: 200 `{"stocks": []}` |
 | GET | `/api/market-data` | no | no | Alias of `/quick` |
-| GET | `/api/turkish-gold` | no | yes | `{"gold": [{"gold_type", "display_name", "buying_price", "selling_price", "change_pct", "updated_at"}]}`. On error: 200 with `[]` |
-| GET | `/api/exchange-rates` | no | yes | `{"rates": [{"pair", "display_name", "buying", "selling", "change_pct", "updated_at"}]}`. On error: 200 with `[]` |
+| GET | `/api/turkish-gold` | no | yes | `{"gold": [{"gold_type", "display_name", "buying_price", "selling_price", "change_pct", "updated_at"}]}`; `change_pct` is null when the source shows none. On error: 200 with `[]` |
+| GET | `/api/exchange-rates` | no | yes | `{"rates": [{"pair", "display_name", "buying", "selling", "change_pct", "updated_at"}]}`; `change_pct` is null without a previous close. On error: 200 with `[]` |
 
 `/quick` and `/full` currently return the same rows: all of `stock_data`, de-duplicated by symbol with `.IS` stripped, excluding rows with price ≤ 0.
 
@@ -133,7 +133,7 @@ Presentation rules (Agent 4, decided 2026-11-14): a null value (including a null
 - **Market cards** (`/api/market-data/*`, `/api/opportunities`): the workers now enrich every quote with `enrich_quote` and the daily closes stored in `price_history` (REQ-10, REQ-26; `7fa5856`). `workers._enrich_stock_data` is gone. An instrument with too little stored history gets null indicators and labels, shown as "Not available". The `StockData` Python-side defaults are removed, so a null stays null in the cache. `open` / `previous_close` are null when the provider gives none (REQ-30, `5881616`). On a fresh database the cards stay "Not available" until the daily-close job has stored enough closes (15 for RSI, 20 for the average, 21 for volatility).
 - `/api/opportunities` needs a real `is_favorable`, so it is empty for instruments without history.
 - **Legacy mode is gone** (`agent/quant-ai` `631dc76`, merged at `836c3a3`, 2026-11-15): `analysis.analyze_stock` estimates nothing and no longer returns `estimated_fields`. `/api/analyze` and `/api/live-price` return null indicators and labels when no history is passed, and null `day_high` / `day_low` when the provider gives none.
-- `change_pct` is null when the provider gives no previous close (`daily_change_pct`). Chart bars (`data_sources` history) have a null `open` / `high` / `low` when the provider gave none, instead of the close repeated. **Known gaps, Agent 2 (REQ-31):** the watchlist still calls `round()` on `change_pct` and fails on a null; `market_display.stock_card` still sends `estimated_fields: []` and turns a null `change_pct` into 0; the direct Yahoo chart fallback in `main.py` still fills open/high/low with the close; gold and exchange-rate rows still return 0.0 for a missing change.
+- `change_pct` is null when the provider gives no previous close (`daily_change_pct`). Chart bars (`data_sources` history) have a null `open` / `high` / `low` when the provider gave none, instead of the close repeated. Since `fe6d8c6` (REQ-31) the same holds everywhere: the cards (`stock_card`, no `estimated_fields` any more), the watchlist, gold and exchange rates keep a null `change_pct` null, and the last-resort chart fallback in `main.py` uses `chart_row`.
 - The frontend (`ceecbda`) still shows any non-null indicator without checking `indicators_as_of` (REQ-29 a). With the workers on `enrich_quote` this no longer exposes estimates on the cards, but the check stays required.
 - No field states yet whether a price on `/api/analyze` and `/api/live-price` is real-time, delayed or end-of-day.
 
@@ -164,7 +164,7 @@ Accepted `period` values: `1d, 5d, 1wk, 1mo, 3mo, 6mo, 1y, 5y, max`. The data-so
 
 The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template; `generated_by` and `is_fallback` say which.
 
-**Decision D5 (user, 2026-11-12), extended 2026-11-14.** `/api/insight` and `/api/ai/analyze/{symbol}` use the guarded AI layer (§5.4.1): facts computed by deterministic code go in (`ai.facts.market_facts` / `stock_facts`), the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No model call is made when there is no market data. No buy recommendations, entry points, targets or predictions. An indicator reaches the model only when `indicators_as_of` is a real date. While the market cache is still filling, `market_insight(..., loading=True)` returns the "still loading" template without calling the model (`631dc76`; the route does not pass it yet, REQ-31).
+**Decision D5 (user, 2026-11-12), extended 2026-11-14.** `/api/insight` and `/api/ai/analyze/{symbol}` use the guarded AI layer (§5.4.1): facts computed by deterministic code go in (`ai.facts.market_facts` / `stock_facts`), the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No model call is made when there is no market data. No buy recommendations, entry points, targets or predictions. An indicator reaches the model only when `indicators_as_of` is a real date. While the market cache is still filling, `market_insight(..., loading=True)` returns the "still loading" template without calling the model (`631dc76`); `/api/insight` passes it while the cache is below the readiness threshold (`fe6d8c6`).
 
 Response shape (the existing fields stay; provenance fields added alongside):
 
@@ -232,11 +232,11 @@ Password policy: minimum 10 characters plus a common-password blocklist. Lockout
 | DELETE | `/{ticker}` | | 200 `{"message", "ticker"}` | 401, 403, 404 |
 | GET | `/summary?force_refresh=false` | | `WatchlistSummary` | 401 |
 
-`WatchlistItem`: `id, ticker, market, added_at, name, price, change_pct, volume, day_high, day_low, rsi, currency, prediction, market_type`. `ticker` is stored without `.IS` for `BIST100`.
+`WatchlistItem`: `id, ticker, market, added_at, name, price, change_pct (null without a previous close), volume, day_high, day_low, rsi, currency, prediction, market_type`. `ticker` is stored without `.IS` for `BIST100`.
 
 `WatchlistSummary`: `total_count, up_count, down_count, flat_count, avg_change_pct, biggest_mover {symbol, name, price, change_pct, currency, direction, market} | null, ticker_changes [{symbol, name, price, change_pct, currency, market}], last_updated, from_cache, cache_expires_in`. Cached 60 s per user in process memory.
 
-`avg_change_pct` is the unweighted mean of daily percentage changes. It is a watchlist statistic, not a portfolio return.
+`avg_change_pct` is the unweighted mean of the known daily percentage changes, null when none is known. A null change is listed in `ticker_changes` but not counted in `up_count` / `down_count` / `flat_count` or used for `biggest_mover`. It is a watchlist statistic, not a portfolio return.
 
 ---
 

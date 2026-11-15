@@ -26,8 +26,8 @@ Audience: the user and a few friends. Sizing is the smallest that works, with ma
 | F1 | **`alembic/env.py` picks a driver that is not installed** | Agent 2 | `env.py` rewrites the URL to `postgresql://`. With SQLAlchemy 2.1 (what `sqlalchemy[asyncio]>=2.0.0` installs today: 2.1.8) that means **psycopg 3**, which is not in `requirements.txt`. `alembic upgrade head` fails with `ModuleNotFoundError: No module named 'psycopg'` on any Postgres. Present on `main`, not introduced by `agent/backend`. Fix: replace with `postgresql+psycopg2://` (psycopg2-binary is already required). REQ-12 — **CLOSED**: fixed on `agent/backend` `6170686`, arrives with Step 2 |
 | F2 | `start.sh` hides migration failures | Agent 1 | **DONE** `5afdb26` (§7) |
 | F3 | Cookies are only `Secure` when Railway env vars exist | config | Set `COOKIE_SECURE=true` on Fly (§4). Without it, session cookies are sent without `Secure` |
-| F4 | `init_db()` `create_all` still creates `stock_data`, `turkish_gold`, `exchange_rates`, `ai_insights` (no migration covers them, DATABASE_CONTRACT §5 P3) | Agent 2 | Works on an empty database because Alembic runs first. Clean-up: a migration for those four tables, then limit `create_all` to SQLite. Not blocking a first deploy |
-| F5 | Instruments not seeded (REQ-7) | Agent 2 | Only matters once `agent/backend` is deployed. Add the seed step to the release command when it exists |
+| F4 | `init_db()` `create_all` still creates `stock_data`, `turkish_gold`, `exchange_rates`, `ai_insights` (no migration covers them, DATABASE_CONTRACT §5 P3) | Agent 2 | **DONE**: migrations cover all 13 model tables (`alembic check` clean on PG16, 2026-11-15) and `init_db` creates tables only on SQLite (`a63f25d`) |
+| F5 | Instruments not seeded (REQ-7) | Agent 2 | **DONE**: `python -m services.instrument_service` is in the release command; idempotent (361 / 0 on two runs, 2026-11-15) |
 | F6 | Unpinned dependencies | Agent 1 | **DONE** `5afdb26`: exact pins in `backend/requirements.txt`; hash-pinned `backend/requirements.lock` (Linux, py3.11) installed by the Dockerfile |
 | F7 | `Dockerfile`, `.dockerignore`, `fly.toml` | Agent 1 | **DONE** `4885064`, plus `.gitattributes` for LF endings `97a5ac1`. The release command needs `services.instrument_service`, which arrives with `agent/backend` (Step 2) |
 
@@ -123,7 +123,7 @@ Set secrets with `fly secrets set NAME=…`. **No values are recorded here.**
 | `CAPTCHA_VERIFY_URL` | env | no | |
 | `RESEND_API_KEY` **or** `SENDGRID_API_KEY` **or** `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` | secret | for e-mail verification | Pick one provider |
 | `EMAIL_FROM` | env | for e-mail | |
-| `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `POLYGON_API_KEY` | secret | no | Optional data sources |
+| `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `POLYGON_API_KEY` | — | no | **Not read by any code** since `api_router.py` was deleted (`fe6d8c6`). Do not set them |
 | `COOKIE_SECURE` | env | **yes** | `true` (F3) |
 | `APP_BASE_URL` | env | yes | Used in e-mail links; Fly has no `RAILWAY_PUBLIC_DOMAIN` |
 | `CORS_ORIGINS` | env | yes | The Fly URL (plus any proxy origin, §6) |
@@ -250,6 +250,30 @@ List prices from fly.io/pricing as of 2026-11-11: shared-cpu-1x 256 MB **$2.19/m
 With Managed Postgres instead: ≈ $42+/month. A dedicated IPv4 would add $2/month and is not needed.
 
 Do not count on a free allowance; check the Fly billing page after the first month. Set a spending alert in the Fly dashboard.
+
+### 2.1 Readiness review on `integration` @ `10318c3` (2026-11-15)
+
+Everything on `integration` passes in WSL (TESTING.md §5) and the browser smoke test (TESTING.md §3.4). No Fly resource exists yet.
+
+**Must be settled before the first `fly deploy`:**
+
+| # | Item | Owner | Detail |
+|---|------|-------|--------|
+| D1 | **CAPTCHA is not wired in the frontend** | user decision, then Agent 4 + Agent 2 | The register and login forms always send the token `dev-captcha-pass`; no widget exists. With `CAPTCHA_SECRET_KEY` set (as §4 and `fly.toml` say), hCaptcha rejects that token, so **nobody can register**. Without the key, `verify_captcha` accepts every request (no bot protection). Choose: (a) launch without CAPTCHA (do not set the key; the IP rate limits stay) or (b) Agent 4 adds the hCaptcha / Turnstile widget with `CAPTCHA_SITE_KEY` before launch. REQ-34 (b) |
+| D2 | **E-mail provider for verification** | user | `REQUIRE_EMAIL_VERIFICATION=true` in `fly.toml`: without one of `RESEND_API_KEY` / `SENDGRID_API_KEY` / SMTP plus `EMAIL_FROM`, new accounts can never be verified. Either set a provider secret or set `REQUIRE_EMAIL_VERIFICATION=false` for the first deploy. Never set `AUTO_VERIFY_DEV` |
+| D3 | **Postgres time zone must be UTC** | Agent 1 at deploy; Agent 2 for the fix | `stock_data`, `turkish_gold`, `exchange_rates` `updated_at` and `ai_insights.created_at` are `timestamp without time zone` with `server_default=now()`: they store the database server's local time, and the code reads them as UTC. On the WSL cluster (Europe/Istanbul) the market insight showed "data as of" 3 h after "generated". Run `show timezone` on the Fly cluster right after `fly postgres create`; if it is not UTC, `ALTER DATABASE … SET timezone TO 'UTC'` before the first deploy. Permanent fix: REQ-33 (a) |
+| D4 | `app` name and domain | user | `fly.toml` uses `wolfee-analytics` and `https://wolfee-analytics.fly.dev` in `APP_BASE_URL` / `CORS_ORIGINS`. If the name is taken, change all three together |
+| D5 | Fly Postgres major version | user runs | `--image-ref flyio/postgres-flex:16` (§5); tests run on 16.16 |
+
+**Should be fixed soon after; not blocking:**
+
+| # | Item | Owner | Detail |
+|---|------|-------|--------|
+| S1 | Stale CORS origins | Agent 2 (REQ-33 b) | `main.py` still allows `*.up.railway.app` (regex), `RAILWAY_PUBLIC_DOMAIN`, `wolfee-backend.onrender.com` and `solitary-scene-04bc…workers.dev`, all with credentials. Not exploitable today because the session cookie is `SameSite=Lax`, but the list should hold only the Fly origin and localhost |
+| S2 | Old deploy configs | user decision | `railway.json` (Railway is dropped) and `wrangler.jsonc` (Cloudflare Pages build of `frontend/`). Remove once the user confirms nothing deploys from them (step 6 below) |
+| S3 | Indicators start empty | none | On a fresh database every card shows "Not available" for RSI / average / volatility and `/api/opportunities` is empty until the daily-close job has stored 15 / 20 / 21 closes. With `auto_stop_machines = "stop"` the job runs only while the machine is awake. Expected (D4); tell users at launch |
+| S4 | UI and AI wording | Agent 4 (REQ-34 a, c, d), Agent 3 (REQ-35) | "AI generated" badge on template text; a 422 would show "[object Object]"; the market disclaimer mentions "your recorded transactions" |
+| S5 | Portfolio page | Agent 4 (REQ-32) | The ledger API is live but has no UI yet |
 
 ---
 

@@ -34,7 +34,7 @@ Wolfee Analytics runs on a modern, high-performance architecture designed for sp
 
 ### Backend Core (Python & FastAPI)
 The backbone of the system is a robust **FastAPI** application that serves as the central data aggregator.
--   **Multi-Source Data Router**: A resilient scraping engine that fetches data from multiple financial providers, automatically failing over between sources (e.g., Yahoo Finance, Google Finance, Finnhub) to ensure data continuity.
+-   **Multi-Source Data Router**: A resilient scraping engine that fetches data from multiple financial providers, automatically falling back between sources (Yahoo Finance, yfinance, Google Finance) to ensure data continuity.
 -   **Background Task Processing**: Utilizes asynchronous background workers to fetch and process heavy datasets without freezing the user interface.
 -   **Smart Caching**: Implements time-based caching (TTL) to instantly serve frequent requests while keeping data fresh.
 

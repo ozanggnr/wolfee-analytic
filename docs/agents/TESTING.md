@@ -136,6 +136,26 @@ done
     -Atc "select count(*), count(distinct provider_symbol) from instruments"
 ```
 
+### 3.4 Browser smoke test against the real backend
+
+Start the app in WSL on port **8000**: the frontend's `js/config.js` calls the API on `:8000` unless the page is served from port 8000 or from a URL without a port. Use its own migrated and seeded database, real providers and no model key:
+
+```bash
+B=/usr/lib/postgresql/16/bin
+$B/dropdb -h 127.0.0.1 -p 55432 -U postgres --if-exists wolfee_smoke
+$B/createdb -h 127.0.0.1 -p 55432 -U postgres wolfee_smoke
+cd /mnt/c/Users/ozang/Desktop/Projects/wolfee-integration/backend
+DATABASE_URL=postgresql://postgres@127.0.0.1:55432/wolfee_smoke ~/venvs/wolfee/bin/alembic upgrade head
+env -u GEMINI_API_KEY DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/wolfee_smoke \
+    ~/venvs/wolfee/bin/python -m services.instrument_service
+env -u GEMINI_API_KEY -u CAPTCHA_SECRET_KEY PYTHONDONTWRITEBYTECODE=1 \
+    DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/wolfee_smoke \
+    AUTO_VERIFY_DEV=true COOKIE_SECURE=false \
+    ~/venvs/wolfee/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+Then drive it from Windows with headless Chrome (Playwright, own throwaway profile) at **1440×900** and **390×844** (mobile, touch). Cover Market, the stock detail modal (add to watchlist), Opportunities, Watchlist, the account dialog (register and sign in with an `example.com` address; the server rejects reserved names such as `.test`), the signed-in Watchlist and, on mobile, the account sheet. On each page check: no horizontal scroll, no element past the viewport, no "NaN" / "undefined" / "[object Object]" / "▲ 0.00%" text, console errors and HTTP ≥ 400. `AUTO_VERIFY_DEV` is for this local run only.
+
 ## 4. What counts as evidence
 
 A report of "tests pass" names the worktree, its commit (from Windows `git log -1`), the command from this file, and the last pytest / `node --test` summary line. Postgres results also give `select version()`.
@@ -164,5 +184,14 @@ A report of "tests pass" names the worktree, its commit (from Windows `git log -
 | 2026-11-15 | `wolfee-integration` @ `836c3a3` | §2 frontend | **28 tests, 28 pass, 0 fail** |
 
 The temporary PostgreSQL 18 cluster (`~/wolfee-test/pg18` and `pg18.log`) was deleted on 2026-11-14.
+
+| 2026-11-15 | `wolfee-integration` @ `10318c3` (after merging `agent/backend` `98ee277` and `agent/frontend` `a75332b`) | §2 backend (repo root) | **598 passed**, 3 warnings (159 s) |
+| 2026-11-15 | `wolfee-integration` @ `10318c3` | §2 frontend | **41 tests, 41 pass, 0 fail** |
+| 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.1 on **PostgreSQL 16.16**, fresh `wolfee_tests` | **191 passed** (31 s) |
+| 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.2 on **PostgreSQL 16.16**, empty `wolfee_migrations`: upgrade → downgrade base → upgrade → downgrade base → upgrade | all exit 0; single head `e4a8c2f6b1d3`; `alembic check`: "No new upgrade operations detected"; 14 tables |
+| 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.3 seed twice | "361 inserted, 0 updated", then "0 inserted, 0 updated"; 361 / 361 distinct |
+| 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.4 browser smoke, real providers (355 quotes cached), headless Chrome, 1440 px and 390 px | all 7 views at each width: no horizontal scroll, no overflow, no bad text; register 200, sign-in 200; the only HTTP error is the expected `401 /api/auth/me` before sign-in. Found: insight "data as of" 3 h ahead (cluster time zone, REQ-33 a); "AI generated" badge on template text (REQ-34 a) |
+
+Note (2026-11-15): the PG16 test cluster runs in `Europe/Istanbul` (WSL's zone). Production must be UTC (DEPLOYMENT §2.1 D3); until REQ-33 (a) is fixed, local "as of" times read 3 h ahead.
 
 Note (2026-11-15): after a WSL restart the PG16 cluster is stopped and the §3 commands fail with "Connection refused". Run the §3 start command first.
