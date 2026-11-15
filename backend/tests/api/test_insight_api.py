@@ -112,7 +112,7 @@ def test_without_enough_data_the_template_is_served_and_nothing_stored(user, mod
 
     _assert_provenance(body)
     assert (body["generated_by"], body["is_fallback"], body["inputs_as_of"]) == ("template", True, None)
-    assert "not available yet" in body["insight"]
+    assert "still loading" in body["insight"] and "no instrument has a price" not in body["insight"]
     assert model.calls == 0 and _stored() == []
 
 

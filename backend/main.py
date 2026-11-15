@@ -529,7 +529,7 @@ async def get_insight():
                 stocks = (await session.execute(select(StockData))).scalars().all()
             counts = insight_readiness.coverage((s.market_type, s.symbol) for s in stocks)
             if not insight_readiness.is_ready(counts):
-                return ai_insight_service.market_placeholder()
+                return ai_insight_service.market_placeholder(loading=True)
 
             response = await ai_insight_service.market_response(
                 [_stock_to_dict(s) for s in stocks], ai_insight_service.oldest_quote_time(stocks))
