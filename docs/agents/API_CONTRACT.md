@@ -128,12 +128,13 @@ Only in the temporary legacy mode (below) the label states the day's move instea
 
 Presentation rules (Agent 4, decided 2026-11-14): a null value, a field listed in `estimated_fields`, and a price of 0 all display as "Not available". The day's direction reads "Up today" / "Down today", never "Bullish" / "Bearish". Every timestamp is shown in the viewer's local time zone; a timestamp without a zone is read as UTC.
 
-**Implementation status on `integration` (2026-11-14):**
+**Implementation status on `integration` (updated 2026-11-15, after the `agent/backend` merge `a63f25d`):**
 
 - `quant.signals.enrich_quote` and `quant.indicators.daily_indicators` implement all of the above (merge `da57548`). They estimate nothing.
-- `analysis.analyze_stock` (`/api/analyze`, `/api/live-price`) takes real history but has no history source yet. Until Agent 2 supplies it, it runs in a **temporary legacy mode** (`legacy_estimates=True`): `rsi`, `ma_20`, `volatility`, `is_favorable`, `is_buyable` and a missing day range are still the old single-day estimates, and **each one is named in `estimated_fields`**. `open` / `previous_close` are already null when not supplied.
-- The market cards (`/api/market-data/*`, `/api/opportunities`) still come from `workers._enrich_stock_data`, the old copy, until Agent 2 switches it to `enrich_quote` with `price_history` (REQ-10, REQ-26). Those rows carry no `estimated_fields` and no `indicators_as_of`. The AI layer ignores any indicator without a real `indicators_as_of` date, so it never states them. **The cards still display them**, because the frontend shows any non-null value not listed in `estimated_fields` (REQ-29 asks Agent 4 to also require `indicators_as_of`). D4 is therefore not yet visible on the market cards.
-- Legacy mode and `estimated_fields` disappear once every consumer accepts null (Agent 2's `bb00a11`, pending merge) and history is wired in.
+- **Market cards** (`/api/market-data/*`, `/api/opportunities`): the workers now enrich every quote with `enrich_quote` and the daily closes stored in `price_history` (REQ-10, REQ-26; `7fa5856`). `workers._enrich_stock_data` is gone. An instrument with too little stored history gets null indicators and labels, shown as "Not available". The `StockData` Python-side defaults are removed, so a null stays null in the cache. `open` / `previous_close` are null when the provider gives none (REQ-30, `5881616`). On a fresh database the cards stay "Not available" until the daily-close job has stored enough closes (15 for RSI, 20 for the average, 21 for volatility).
+- `/api/opportunities` needs a real `is_favorable`, so it is empty for instruments without history.
+- `/api/analyze` and `/api/live-price` still call `analysis.analyze_stock` in its **temporary legacy mode**: the single-day estimates remain in those two responses, **each one named in `estimated_fields`**. The card-cache write that `/api/live-price` queues is re-enriched from stored history, so the estimates do not reach the cards. Removing legacy mode is Agent 3's next item.
+- The frontend (`ceecbda`) still shows any non-null indicator without checking `indicators_as_of` (REQ-29 a). With the workers on `enrich_quote` this no longer exposes estimates on the cards, but the check stays required.
 - No field states yet whether a price is real-time, delayed or end-of-day on these legacy endpoints.
 
 ### 2.3 Analysis, prices and history
@@ -157,11 +158,11 @@ Accepted `period` values: `1d, 5d, 1wk, 1mo, 3mo, 6mo, 1y, 5y, max`. The data-so
 |--------|------|------|------------------|----------|
 | GET | `/api/opportunities` | no | yes | `{"opportunities": [Stock]}` — up to 15 rows where `is_favorable` and `change_pct > 0.5`, BIST first. On error: 200 with `[]` |
 | GET | `/opportunities` | no | no caller once `agent/frontend` merges (REQ-6) — was legacy `api.js` | Alias |
-| GET | `/api/insight` | no | yes | `{"insight": string}` — latest `ai_insights` row of type `daily`, or generated on the fly. Never fails; returns a placeholder string on error |
+| GET | `/api/insight` | no | yes | D5 shape below — newest `daily` row **with provenance**, else generated now (only once both markets are cached, REQ-20) and stored. Never fails; returns the guarded template on error |
 | GET | `/insight` | no | no caller once `agent/frontend` merges (REQ-6) — was legacy `api.js` | Alias |
-| GET | `/api/ai/analyze/{symbol}` | no | yes (stock modal) | `{"symbol", "analysis": string}`. `404` if the stock is unknown. On other errors: 200 with a placeholder string |
+| GET | `/api/ai/analyze/{symbol}` | no | yes (stock modal) | D5 shape below. `404` if the stock is unknown. On other errors: 200 with the guarded template |
 
-The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template. Once REQ-28 is done, `generated_by` and `is_fallback` say which.
+The AI text comes from Gemini when `GEMINI_API_KEY` is set, otherwise from a template; `generated_by` and `is_fallback` say which.
 
 **Decision D5 (user, 2026-11-12), extended 2026-11-14.** `/api/insight` and `/api/ai/analyze/{symbol}` use the guarded AI layer (§5.4.1): facts computed by deterministic code go in (`ai.facts.market_facts` / `stock_facts`), the model writes descriptive text only, `find_violations` checks it, a disclaimer is attached, and the template is used on any violation or provider error. No model call is made when there is no market data. No buy recommendations, entry points, targets or predictions. An indicator reaches the model only when `indicators_as_of` is a real date and the field is not in `estimated_fields`.
 
@@ -179,11 +180,11 @@ GET /api/insight, /insight        GET /api/ai/analyze/{symbol}
 
 `violations` is never returned. Text is plain, may contain `\n`, and is rendered only through `aiTextToHTML()` (§7), with the disclaimer always visible and the timestamps in the viewer's local time.
 
-**Implementation status on `integration` (2026-11-14):**
+**Implementation status on `integration` (updated 2026-11-15, merge `a63f25d`):**
 
-- The guarded builders exist: `ai.insights.market_insight_response(…)` and `stock_analysis_response(symbol, …)` return exactly the bodies above (merge `da57548`). `ai_service.get_market_insight` / `get_stock_analysis` now return the guarded **text**; the adviser prompts and the advisory signal are removed.
-- The **routes are not wired yet** (`main.py`, Agent 2, REQ-28). They still return only `{"insight"}` / `{"symbol", "analysis"}`, so the frontend shows its default disclaimer.
-- `/api/insight` first serves the newest stored `ai_insights` row. Rows written before D5 may hold adviser wording. Under the approved migration (DATABASE_CONTRACT §4.4), rows without provenance are ignored and regenerated.
+- The guarded builders `ai.insights.market_insight_response(…)` / `stock_analysis_response(symbol, …)` (merge `da57548`) are wired into `/api/insight`, `/insight` and `/api/ai/analyze/{symbol}` through `services/ai_insight_service.py` (REQ-28, `f972bb9`). The model call runs in `asyncio.to_thread`; concurrent first requests generate once.
+- `/api/insight` serves only rows whose `generated_by` and `generated_at` are set (migration `e4a8c2f6b1d3`, DATABASE_CONTRACT §4.4). Pre-D5 rows are never served; a new row is generated and stored with all four provenance values.
+- `inputs_as_of` is the `updated_at` of the oldest cached quote used (market insight), the cached quote's `updated_at`, or the fetch time when `/api/ai/analyze` had to fetch the quote.
 
 ### 2.5 Refresh
 
@@ -204,7 +205,7 @@ Columns: Symbol, Currency, Name, Report Period, Analysis Date, Trend, Current Pr
 
 In the two portfolio exports, `period` only changes a label: the figures are single-day values, "Period High/Low" are the day's high/low (or price ±1 % when missing) and "RSI (14)" is the estimate from §2.2. Only `/api/export/{period}` computes real period statistics.
 
-D4 status (2026-11-14): `/api/export/{period}` leaves a figure it cannot compute empty and writes RSI Status `Not available` / `Oversold` / `Overbought` / `Neutral` (merged, `da57548`). The two portfolio exports switch to "Not available" instead of price ±1 %, RSI 50 or `MEDIUM` with Agent 2's `bb00a11` (pending the `agent/backend` merge).
+D4 status (2026-11-14): `/api/export/{period}` leaves a figure it cannot compute empty and writes RSI Status `Not available` / `Oversold` / `Overbought` / `Neutral` (merged, `da57548`). The two portfolio exports now write "Not available" instead of price ±1 %, RSI 50 or `MEDIUM` (`services/market_display.portfolio_export_row`, merged at `a63f25d`); the "±1 %" and "RSI estimate" sentence above describes the old behaviour.
 
 ### 2.7 Authentication — prefix `/api/auth`
 

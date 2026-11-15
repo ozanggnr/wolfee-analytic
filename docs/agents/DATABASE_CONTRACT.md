@@ -103,7 +103,7 @@ No job deletes expired rows.
 | `id` | Integer | PK |
 | `symbol` | String(20) | NOT NULL, indexed, **not unique** |
 | `name` | String(200) | Providers return the ticker itself as the name |
-| `price`, `change_pct`, `volume`, `open_price`, `previous_close`, `bid`, `ask`, `market_cap` | Float | Python-side default 0. `bid` and `ask` are always 0 from current providers. A 0 price is displayed as "Not available". `open_price` / `previous_close` should be NULL when the provider gives none (decision 2026-11-14), but the data sources still write 0.0 and the model still defaults to 0 (REQ-30) |
+| `price`, `change_pct`, `volume`, `open_price`, `previous_close`, `bid`, `ask`, `market_cap` | Float | Python-side default 0. `bid` and `ask` are always 0 from current providers. A 0 price is displayed as "Not available". `open_price` / `previous_close` have **no default** and are NULL when the provider gives none (decision 2026-11-14, REQ-30, `5881616`, merged `a63f25d`) |
 | `day_high`, `day_low` | Float NULL | Provider value or NULL; never price ±1 % (D4) |
 | `rsi` | Float NULL | NULL unless computed from real daily closes (RSI 14, Wilder) (D4). No default |
 | `ma_20` | Float NULL | NULL unless computed from real daily closes (SMA 20) (D4). No default |
@@ -113,7 +113,7 @@ No job deletes expired rows.
 | `prediction`, `reason` | String(500) NULL | Descriptive label (API_CONTRACT §2.2 "Card labels"); both hold the same string; NULL without a real RSI |
 | `is_favorable`, `is_buyable` | Boolean NULL | NULL without a real RSI. No default |
 
-No DDL is involved: in the migrations every column above is nullable with no server default (`c3f5a7e91d20`). The old Python-side defaults (`rsi` 50, `ma_20` 0, `volatility` `LOW`, `day_high`/`day_low` 0, `is_favorable`/`is_buyable` False) are removed by Agent 2's `bb00a11` (pre-reviewed and approved by Agent 1 on 2026-11-14; arrives with the `agent/backend` merge). **Until then the rows written by `workers._enrich_stock_data` still hold the single-day estimates** (REQ-10, REQ-26).
+No DDL is involved: in the migrations every column above is nullable with no server default (`c3f5a7e91d20`). The old Python-side defaults (`rsi` 50, `ma_20` 0, `volatility` `LOW`, `day_high`/`day_low` 0, `is_favorable`/`is_buyable` False) were removed by Agent 2 (pre-reviewed as `bb00a11`, approved 2026-11-14; rebased into `agent/backend` `13b8c61` and merged into `integration` at `a63f25d` on 2026-11-15). The workers now write these columns from `quant.signals.enrich_quote` with stored daily closes (REQ-10, REQ-26), so a NULL means "not enough real history".
 | `extra_data` | JSON | Never written |
 | `updated_at` | DateTime (**naive**) | server default now, on update now |
 
@@ -335,9 +335,9 @@ Rules:
 - Tested by Agent 2 on PostgreSQL 16 and SQLite: `upgrade head` → `downgrade base` → `upgrade head`, then `alembic check` with no differences, as for §4.2.
 - History client: stays in Agent 2's `services/daily_bars.py` (user, 2026-11-14). It fetches from the same provider `/api/chart` uses, and hands `quant.types.DailyClose` values to `quant.indicators.daily_indicators` / `quant.signals.enrich_quote`. No quant code fetches data.
 
-## 4.4 Approved: AI provenance columns on `ai_insights` (APPROVED by the user 2026-11-14 — Agent 2 to write, REQ-28)
+## 4.4 Approved: AI provenance columns on `ai_insights` (APPROVED by the user 2026-11-14 — IMPLEMENTED, REQ-28)
 
-One new Alembic revision by Agent 2, after the §4.3 revision (`d7b2e6f4a913` on `agent/backend`). Additive only. Model and migration land in the same change, and `alembic check` stays clean.
+Implemented as revision **`e4a8c2f6b1d3`** (revises `d7b2e6f4a913`; Agent 2, `f972bb9`; merged into `integration` at `a63f25d`, 2026-11-15). Additive only. Model and migration landed in the same change. Verified on PostgreSQL 16.16: upgrade → downgrade base → upgrade clean, single head `e4a8c2f6b1d3`, `alembic check` clean, all four columns nullable with no default (TESTING.md §5). Not applied to any production database.
 
 | Column | Type | Notes |
 |--------|------|-------|

@@ -24,11 +24,14 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 - WSL test environment (2026-11-14): TESTING.md, backend/requirements-test.txt (`d7dd9d3`); in WSL 224 backend + 9 frontend pass; 179 API tests on a temporary PG 18 cluster
 - PG 16.16 test cluster up (~/wolfee-test/pg16, 127.0.0.1:55432, left running). On it, `agent/backend` @ `771368f`: API tests 179 passed; migration chain up/down/up clean to `d7b2e6f4a913`, `alembic check` clean. Fly Postgres pinned to major 16 (`--image-ref flyio/postgres-flex:16`, DEPLOYMENT §5; comment in fly.toml)
 - Step 3c (2026-11-14): reviewed and merged `agent/quant-ai` `def3511` → **`da57548`** (REQ-24, REQ-25, labels, open/prev_close) and `agent/frontend` `ceecbda` → **`f0b9fc9`** (REQ-27, v=15.4). WSL: backend 281 passed, frontend 28/28. Decisions recorded (volatility bands, open/prev_close null, label table + 2 %, Up/Down today, local times, 0 = n/a, ai_insights provenance §4.4, daily_bars.py). API_CONTRACT §2.2/§2.4/§3, DATABASE_CONTRACT §2.6/§4.4, PROGRESS_agent3.md rewritten. New REQ-28 (Agent 2 routes + migration), REQ-29 (Agent 4), REQ-30 (Agent 2 open/prev_close). `bb00a11` pre-approved. PG18 cluster deleted
-- **Waiting for the user.** `agent/backend` NOT merged (Step 3b)
+- Step 3b, backend only (2026-11-15): reviewed `agent/backend` `13b8c61` (rebased onto integration; clean merge) → **`a63f25d`**. WSL: backend 564 passed, frontend 28/28, PG16 API 187 passed, migration chain clean to `e4a8c2f6b1d3`, seed CLI idempotent (361 / 0). Closed REQ-7, 8, 9, 10, 13, 15, 16, 17 (Agent 2 half), 18–21, 26, 28, 30; REQ-22/23 status corrected (done at d3f30bf). REQ-11 still open (3 failures from backend/). Contracts' status notes updated
+- **Waiting for the user.** `agent/frontend` NOT merged: Agent 4 does the UI redesign first (with REQ-29)
 
 ## Next (only after approval)
-- Step 3b: review and merge `agent/backend` (head `e30f1db` on 2026-11-12: REQ-13 `5e464a7`, REQ-15 `a4ce4e7`, REQ-16 `7c484e9`, REQ-9 `6a168a5`). Verify REQ-7 seed CLI. Expect overlap with quant changes (analytics_service vs REQ-17).
+- Merge `agent/frontend` after the redesign; check REQ-29 and the asset version
+- Agent 3: drop `legacy_estimates` from `analysis.analyze_stock` (`/api/analyze`, `/api/live-price` still flag estimates)
 
 ## Notes for whoever resumes
-- `fly.toml` release_command needs `services.instrument_service`, which exists only after `agent/backend` merges.
+- `fly.toml` release_command (`alembic upgrade head && python -m services.instrument_service`) is runnable on integration since `a63f25d`. Still no Fly resources; nothing deployed.
+- WSL restart stops the PG16 cluster; start it first (TESTING.md §3).
 - Tests run in WSL only; exact commands in docs/agents/TESTING.md (venv ~/venvs/wolfee, Node ~/.local/opt/node, PG test cluster port 55432). Git stays on Windows.

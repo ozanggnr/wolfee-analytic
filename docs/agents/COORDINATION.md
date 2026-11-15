@@ -156,7 +156,12 @@ Decided by the user on 2026-11-14 (Step 3c):
 - **Descriptive labels (extends D5):** Agent 3's label table (API_CONTRACT §2.2 "Card labels") with a **2 %** "near the 20-day average" threshold; "Up today" / "Down today" instead of "Bullish" / "Bearish"; every timestamp shown in the viewer's local time zone; a price of 0 is "not available".
 - **`ai_insights` provenance:** a migration by Agent 2 adds `generated_by`, `generated_at`, `inputs_as_of`, `is_fallback`; old rows (no provenance) are ignored (DATABASE_CONTRACT §4.4, REQ-28).
 - **History client** stays in Agent 2's `services/daily_bars.py` (DATABASE_CONTRACT §4.3).
-- Agent 2's `bb00a11` (seven `StockData` Python-side defaults removed) is **pre-approved by Agent 1**. It merges with `agent/backend` in Step 3b, which is not started.
+- Agent 2's `bb00a11` (seven `StockData` Python-side defaults removed) is **pre-approved by Agent 1**. It was rebased into `agent/backend` and merged in Step 3b.
+
+Decided by the user on 2026-11-15 (Step 3b):
+
+- **`agent/backend` merged alone:** reviewed and merged at `13b8c61` into `integration` (`a63f25d`).
+- **`agent/frontend` waits:** it is not merged in this step. Agent 4 does a UI redesign first; REQ-29 belongs in that work. Until then `integration` serves the frontend from `f0b9fc9` (`ceecbda`, assets `v=15.4`). It is compatible with the merged backend: it reads `insight` / `analysis` plus the provenance fields, which the routes now return.
 
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
@@ -183,7 +188,10 @@ Needs:     a single, idempotent way to run sync_instruments(db, instrument_seed(
            on a freshly migrated database
 Why:       instruments is empty after migration, so every instrument transaction returns 422
 Blocking:  yes, for the ledger being usable
-Status:    open
+Status:    DONE 2026-11-15 — `python -m services.instrument_service` (3b9dcfe), merged at a63f25d.
+           Verified by Agent 1 on PG 16.16 after `alembic upgrade head`: run 1 "361 inserted",
+           run 2 "0 inserted, 0 updated" (idempotent). Tests: test_fresh_database.py
+           (BUY of THYAO succeeds after sync, rejected before). fly.toml release_command now works
 
 ID:        REQ-8
 From:      Agent 1
@@ -192,7 +200,7 @@ Needs:     new tables must not appear in production through init_db() create_all
            migration path is approved (DATABASE_CONTRACT §5 P1). Proposal for Agent 1 review.
 Why:       merging agent/backend would otherwise create tables in production on the next deploy
 Blocking:  yes, for merging agent/backend to main
-Status:    open
+Status:    CLOSED — superseded by REQ-16 (done 2026-11-15)
 
 ID:        REQ-9
 From:      Agent 1
@@ -201,7 +209,9 @@ Needs:     run backend/tests and alembic upgrade/downgrade against a disposable 
            report results (DATABASE_CONTRACT §5 P4)
 Why:       every test so far ran on SQLite
 Blocking:  yes, for production; no, for integration
-Status:    open
+Status:    DONE 2026-11-15 — opt-in WOLFEE_TEST_POSTGRES_URL run (7677dec), merged at a63f25d.
+           On integration @ a63f25d, PG 16.16: 187 API tests passed; migration chain clean
+           (TESTING.md §5)
 
 ID:        REQ-10
 From:      Agent 1
@@ -211,7 +221,9 @@ Needs:     replace workers._enrich_stock_data (and main.py's import of it) with
            (TEAM_STRUCTURE H1)
 Why:       there are still two copies of the enrichment logic
 Blocking:  no
-Status:    open — after agent/quant-ai is merged
+Status:    DONE 2026-11-15 — 7fa5856: workers enrich with quant.signals.enrich_quote and stored
+           daily closes; _enrich_stock_data removed (main.py's import too); tests in
+           test_card_enrichment.py. Merged at a63f25d
 
 ID:        REQ-11
 From:      Agent 1
@@ -222,7 +234,10 @@ Needs:     make backend tests independent of the working directory. Run from bac
            `python -m pytest backend/tests` from the repository root.
 Why:       explains Agent 2's "3 pre-existing failures"
 Blocking:  no
-Status:    open (test file owner: Agent 2)
+Status:    open (test file owner: Agent 2). Re-checked 2026-11-15 on integration @ a63f25d in
+           WSL: from the repo root 564 passed; from backend/ the same 3 tests in
+           test_performance_and_sources.py fail (ModuleNotFoundError: No module named 'backend').
+           Not a regression; the official command (TESTING.md §2) runs from the root
 
 ID:        REQ-12
 From:      Agent 1
@@ -243,7 +258,7 @@ Needs:     analytics_service.DEFAULT_COST_BASIS_METHOD = WEIGHTED_AVERAGE (curre
            responses keep reporting cost_basis_method; tests updated
 Why:       D2
 Blocking:  yes, for the holdings/performance defaults
-Status:    implemented on agent/backend 5e464a7 (not yet merged or reviewed by Agent 1)
+Status:    DONE 2026-11-15 — reviewed and merged at a63f25d (rebased as 2e8f964)
 
 ID:        REQ-14
 From:      Agent 1 (decision D3)
@@ -269,8 +284,8 @@ Needs:     supply FxRate values to value_positions from the exchange_rates table
            "no automatic rates until D3" note from analytics_service.
 Why:       D3
 Blocking:  yes, for foreign positions in holdings
-Status:    implemented on agent/backend a4ce4e7 (not yet merged or reviewed by Agent 1); selling
-           rate. Has no data until REQ-18 (empty exchange_rates) is fixed. The DB constraint that
+Status:    DONE 2026-11-15 — reviewed and merged at a63f25d (rebased as d7e7c6f); selling
+           rate. Data source fixed by REQ-18 (de61ad8). The DB constraint that
            allows USD stays; the API enforces TRY only (user, 2026-11-12).
 ```
 
@@ -284,7 +299,8 @@ Needs:     the migration in DATABASE_CONTRACT §4.2 (stock_data, turkish_gold, e
            a clean `alembic check` on PostgreSQL 16 and SQLite
 Why:       migrations become the only way tables are created in production; closes REQ-8
 Blocking:  yes, before the first Fly deploy
-Status:    implemented on agent/backend 7c484e9 (not yet merged or reviewed by Agent 1)
+Status:    DONE 2026-11-15 — merged at a63f25d (rebased as 2c36d99): migration c3f5a7e91d20,
+           init_db creates nothing on Postgres. Evidence on PG 16.16 in TESTING.md §5
 ```
 
 REQ-8 is superseded by REQ-16.
@@ -300,8 +316,9 @@ Needs:     a pure quant function that sums realised P/L per currency and into th
 Why:       all portfolio arithmetic belongs in quant; the service copy is temporary
 Blocking:  no
 Status:    Agent 3 half DONE 2026-11-12 — quant.positions.sum_realized / realized_summary in
-           agent/quant-ai ba52666, merged into integration at d489b68. Agent 2 half open: replace
-           the analytics_service summing with them.
+           agent/quant-ai ba52666, merged into integration at d489b68. Agent 2 half DONE 2026-11-15:
+           analytics_service uses quant.sum_realized (86e625d) and value_positions (63959bd),
+           merged at a63f25d.
 ```
 
 From Agent 4's browser smoke test (agent/frontend ad6cf21, merged into integration cc488f0, 2026-11-12):
@@ -317,7 +334,8 @@ Needs:     /api/exchange-rates returned an empty list for the whole run. Find ou
            If the source is unreachable, log it loudly; never fill in rates.
 Why:       REQ-15 (TRY conversion from exchange_rates, decision D3) has no data without it
 Blocking:  yes, blocks REQ-15
-Status:    open
+Status:    DONE 2026-11-15 — de61ad8 (writes lost to SQLite write-lock collisions; recorded TCMB
+           fixture test), merged at a63f25d
 
 ID:        REQ-19
 From:      Agent 4 (smoke test), logged by Agent 1
@@ -327,7 +345,8 @@ Needs:     adding THYAO to the watchlist stores market "US" instead of BIST. Res
            guess, and add a test for THYAO, THYAO.IS, AAPL and GC=F
 Why:       wrong market means wrong currency and quote lookups for BIST tickers
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-15 — 64772cf (server resolves the market; client value is a hint),
+           merged at a63f25d
 
 ID:        REQ-20
 From:      Agent 4 (smoke test), logged by Agent 1
@@ -338,7 +357,8 @@ Needs:     the daily AI insight is generated before the first data refresh finis
            "data not loaded yet" placeholder without storing it
 Why:       the app presents an insight built on no data as if it were real
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-15 — f6022a3 (services/insight_readiness: no insight until both markets
+           are cached; the template is returned and not stored), merged at a63f25d
 
 ID:        REQ-21
 From:      Agent 4 (smoke test), logged by Agent 1
@@ -347,7 +367,7 @@ Needs:     invalidate the watchlist summary cache for the user when a ticker is 
            removed; test that the summary changes immediately after POST/DELETE
 Why:       the summary card shows stale content after a watchlist change
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-15 — b9ed2ca (summary is never browser-cached), merged at a63f25d
 
 ID:        REQ-22
 From:      Agent 4 (smoke test), logged by Agent 1
@@ -357,7 +377,8 @@ Needs:     the market grid is empty on a fresh server start, before the first re
            an empty grid. Coordinate with REQ-20 (backend side of the same start-up gap)
 Why:       first visit after a deploy or a scale-to-zero wake looks broken
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-12 — agent/frontend b5f8c6d (polling), merged at d3f30bf (status corrected
+           2026-11-15)
 
 ID:        REQ-23
 From:      Agent 4 (smoke test), logged by Agent 1
@@ -366,10 +387,10 @@ Needs:     frontend/js/chart.js:19 builds `${API_URL}/api/chart/${symbol}/${peri
            encoding. Wrap both in encodeURIComponent (API_CONTRACT §7)
 Why:       symbols such as GC=F or a malformed symbol break or redirect the request
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-12 — agent/frontend b5f8c6d, merged at d3f30bf (status corrected 2026-11-15)
 ```
 
-REQ-7 (instrument seed): Agent 2 added `python -m services.instrument_service` in `agent/backend` `6170686`. `fly.toml` already calls it. It will be verified at the `agent/backend` merge (Step 3b) before the request is closed.
+REQ-7 (instrument seed): `python -m services.instrument_service` arrived with the `agent/backend` merge (`a63f25d`) and was verified on PG 16.16 (see REQ-7). `fly.toml`'s release_command can now run.
 
 REQ-22 and REQ-23: done by Agent 4 in `agent/frontend` `b5f8c6d` (empty-grid polling, chart URL encoding, assets v=15.2), reviewed and merged into `integration` at `d3f30bf` on 2026-11-12.
 
@@ -425,11 +446,9 @@ Needs:     fetch and cache daily price history for the market-card symbols from 
 Why:       D4 — real indicators need real history; Fly stops idle machines, so an in-memory
            cache would refetch every instrument's history on each cold start
 Blocking:  no
-Status:    in progress on agent/backend — 771368f (price_history table d7b2e6f4a913 and
-           daily-close fetch job; migration chain verified on PG 16.16, TESTING.md §5).
-           History client stays in services/daily_bars.py (user, 2026-11-14). Not yet
-           reviewed or merged. Still needed: workers use quant.signals.enrich_quote with
-           this history (REQ-10), so the cards stop showing estimates
+Status:    DONE 2026-11-15 — 2c6682b (price_history d7b2e6f4a913, daily-close job,
+           services/daily_bars.py) and 7fa5856 (cards enriched from it, REQ-10); merged at
+           a63f25d. Cards show indicators only after enough closes are stored
 
 ID:        REQ-27
 From:      Agent 1 (decisions D4 and D5)
@@ -462,7 +481,8 @@ Needs:     (a) the ai_insights migration of DATABASE_CONTRACT §4.4 (generated_b
            (c) tests: old row ignored, new row carries provenance, violations never in a response.
 Why:       D5 — today the routes return text only, and /api/insight may serve pre-D5 adviser text
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-15 — f972bb9: migration e4a8c2f6b1d3, services/ai_insight_service.py,
+           routes wired via asyncio.to_thread; tests in test_insight_api.py. Merged at a63f25d
 
 ID:        REQ-29
 From:      Agent 1 (Step 3c review)
@@ -478,7 +498,8 @@ Needs:     (a) show rsi / ma_20 / volatility as values only when indicators_as_o
            Bump the asset version.
 Why:       D4 and the 2026-11-14 label decisions
 Blocking:  no
-Status:    open
+Status:    open — to be folded into Agent 4's UI redesign (user, 2026-11-15). Since a63f25d the
+           cards no longer carry estimates, so (a) is a safeguard, not a visible bug
 
 ID:        REQ-30
 From:      Agent 1 (user decision 2026-11-14: open/previous_close null when not provided)
@@ -490,5 +511,6 @@ Needs:     data_sources (global_market.py and the BIST source) return None inste
 Why:       analysis.analyze_stock already returns None, but the cache and the market cards still
            store and show 0
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-15 — 5881616 (data_sources return None; no model default; tests in
+           test_provider_open_close.py). Merged at a63f25d
 ```

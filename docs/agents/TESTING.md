@@ -105,7 +105,7 @@ env -u GEMINI_API_KEY WOLFEE_TEST_POSTGRES_URL=postgresql://postgres@127.0.0.1:5
     ~/venvs/wolfee/bin/python -m pytest backend/tests/api -q -p no:cacheprovider -W ignore
 ```
 
-`WOLFEE_TEST_POSTGRES_URL` and `backend/tests/api` come from `agent/backend` (`6a168a5`). On `integration` they exist only after `agent/backend` is merged (Step 3b). Until then, run this from the `Wolfee-backend` worktree. When running against another agent's worktree, prefix with `PYTHONDONTWRITEBYTECODE=1` so nothing is written into it.
+`WOLFEE_TEST_POSTGRES_URL` and `backend/tests/api` came from `agent/backend` and are on `integration` since `a63f25d` (2026-11-15). When running against another agent's worktree, prefix with `PYTHONDONTWRITEBYTECODE=1` so nothing is written into it.
 
 ### 3.2 Migration chain on an empty Postgres
 
@@ -120,6 +120,20 @@ export DATABASE_URL=postgresql://postgres@127.0.0.1:55432/wolfee_migrations
 ~/venvs/wolfee/bin/alembic upgrade head
 ~/venvs/wolfee/bin/alembic check          # must report no differences (DATABASE_CONTRACT §4.2, §4.3)
 unset DATABASE_URL
+```
+
+### 3.3 Instrument seed (REQ-7) on the migrated database
+
+Run after §3.2, with the database still at head. A second run must insert and update nothing.
+
+```bash
+cd /mnt/c/Users/ozang/Desktop/Projects/wolfee-integration/backend
+for i in 1 2; do
+  env -u GEMINI_API_KEY DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/wolfee_migrations \
+      ~/venvs/wolfee/bin/python -m services.instrument_service
+done
+/usr/lib/postgresql/16/bin/psql -h 127.0.0.1 -p 55432 -U postgres -d wolfee_migrations \
+    -Atc "select count(*), count(distinct provider_symbol) from instruments"
 ```
 
 ## 4. What counts as evidence
@@ -139,4 +153,13 @@ A report of "tests pass" names the worktree, its commit (from Windows `git log -
 | 2026-11-14 | `wolfee-integration` @ `f0b9fc9` (after merging `agent/quant-ai` `def3511` and `agent/frontend` `ceecbda`) | §2 backend | **281 passed**, 1 warning (67 s) |
 | 2026-11-14 | `wolfee-integration` @ `f0b9fc9` | §2 frontend | **28 tests, 28 pass, 0 fail** |
 
+| 2026-11-15 | `wolfee-integration` @ `a63f25d` (after merging `agent/backend` `13b8c61`; frontend still `ceecbda`) | §2 backend (repo root) | **564 passed**, 3 warnings (94 s) |
+| 2026-11-15 | `wolfee-integration` @ `a63f25d` | §2 frontend | **28 tests, 28 pass, 0 fail** |
+| 2026-11-15 | `wolfee-integration` @ `a63f25d` | §3.1 on **PostgreSQL 16.16**, fresh `wolfee_tests` | **187 passed** (47 s) |
+| 2026-11-15 | `wolfee-integration` @ `a63f25d` | §3.2 on **PostgreSQL 16.16**, empty `wolfee_migrations` | upgrade head → downgrade base → upgrade head all exit 0; single head **`e4a8c2f6b1d3`**; `alembic check`: "No new upgrade operations detected"; 14 tables; `ai_insights.generated_by/generated_at/inputs_as_of/is_fallback` nullable, no default |
+| 2026-11-15 | `wolfee-integration` @ `a63f25d` | §3.3 seed on the migrated `wolfee_migrations` | run 1 "361 inserted, 0 updated"; run 2 "0 inserted, 0 updated"; 361 distinct `provider_symbol` |
+| 2026-11-15 | `wolfee-integration` @ `a63f25d` | §2 backend run from `backend/` (REQ-11 check) | 3 failed, 561 passed: the known `test_performance_and_sources.py` failures (`No module named 'backend'`); not evidence, use the repo root |
+
 The temporary PostgreSQL 18 cluster (`~/wolfee-test/pg18` and `pg18.log`) was deleted on 2026-11-14.
+
+Note (2026-11-15): after a WSL restart the PG16 cluster is stopped and the §3 commands fail with "Connection refused". Run the §3 start command first.
