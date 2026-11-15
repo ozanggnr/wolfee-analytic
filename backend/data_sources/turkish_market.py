@@ -6,7 +6,7 @@ import httpx
 import yfinance as yf
 from bs4 import BeautifulSoup
 
-from data_sources.provided import provided_price
+from data_sources.provided import daily_change_pct, provided_price
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +77,7 @@ def fetch_bist_stock(symbol: str) -> Optional[dict]:
         if not price or price <= 0:
             return None
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         name = ticker_symbol.replace(".IS", "")
 
@@ -134,8 +132,8 @@ def fetch_bist_stock_fallback(symbol: str) -> Optional[dict]:
             except ValueError:
                 pass
 
-        # Change percentage
-        change_pct = 0.0
+        # Change percentage: None unless the page states it or a previous close gives it
+        change_pct = None
         change_el = soup.find("div", class_="JwB6zf")
         if change_el:
             pct_text = change_el.get_text(strip=True)
@@ -183,8 +181,9 @@ def fetch_bist_stock_fallback(symbol: str) -> Optional[dict]:
             elif "low" in label or "düşük" in label:
                 day_low = val
 
-        if prev_close and price > 0 and change_pct == 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        if not change_pct:
+            computed = daily_change_pct(price, prev_close)
+            change_pct = computed if computed is not None else change_pct
 
         return {
             "symbol": clean_symbol,

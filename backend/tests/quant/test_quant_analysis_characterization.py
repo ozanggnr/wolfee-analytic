@@ -120,3 +120,28 @@ def test_open_and_previous_close_are_not_derived_from_each_other():
         result = analysis.analyze_stock("AAPL")
 
     assert (result["open"], result["previous_close"]) == (None, 198.0)
+
+
+def test_change_pct_is_none_when_the_provider_has_no_previous_close():
+    with patch("data_sources.global_market.fetch_global_stock",
+               return_value=_raw("AAPL", 200.0, None)):
+        result = analysis.analyze_stock("AAPL")
+
+    assert result["change_pct"] is None
+    assert result["price"] == 200.0
+    assert (result["is_favorable"], result["is_buyable"]) == (None, None)
+
+
+def test_opportunities_skip_and_sort_rows_without_a_daily_change():
+    cached = [
+        {"symbol": "A", "change_pct": None, "is_favorable": True},
+        {"symbol": "B", "change_pct": 3.0, "is_favorable": True},
+    ]
+
+    assert [o["symbol"] for o in analysis.get_market_opportunities(cached)] == ["B"]
+
+    quotes = {"X": _raw("X", 10.0, None), "Y": _raw("Y", 10.0, 2.0)}
+    with patch("analysis.BIST_SYMBOLS", []), patch("analysis.GLOBAL_SYMBOLS", ["X", "Y"]),          patch("data_sources.global_market.fetch_global_stock", side_effect=quotes.get):
+        fresh = analysis.get_market_opportunities()
+
+    assert [o["symbol"] for o in fresh] == ["Y", "X"]          # an unknown change sorts as 0, no crash

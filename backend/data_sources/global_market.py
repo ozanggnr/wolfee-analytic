@@ -4,7 +4,7 @@ from typing import Optional
 import httpx
 import yfinance as yf
 
-from data_sources.provided import provided_price
+from data_sources.provided import daily_change_pct, provided_price
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,7 @@ def fetch_global_stock(symbol: str) -> Optional[dict]:
         if price == 0.0:
             return None
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         return {
             "symbol": symbol,
@@ -113,9 +111,7 @@ def fetch_global_stock_finnhub(symbol: str, api_key: str) -> Optional[dict]:
         day_low = float(data.get("l", 0))
         open_price = provided_price(data.get("o"))
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         return {
             "symbol": symbol,
@@ -272,9 +268,7 @@ def fetch_commodity_data(symbol: str) -> Optional[dict]:
         if price == 0.0:
             return None
 
-        change_pct = 0.0
-        if prev_close and prev_close > 0:
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        change_pct = daily_change_pct(price, prev_close)
 
         # Commodity display names
         commodity_names = {

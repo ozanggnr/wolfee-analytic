@@ -79,7 +79,7 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None)
 
         # Enrich with analysis
         price = data.get('price', 0)
-        change_pct = data.get('change_pct', 0)
+        change_pct = data.get('change_pct')  # None when there is no previous close
         prev_close = data.get('previous_close', 0)
 
         # Currency — use actual currency from data source (yfinance reports EUR for European stocks, etc.)
@@ -112,7 +112,7 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None)
             "symbol": symbol,
             "name": data.get('name', symbol.replace('.IS', '')),
             "price": round(price, 2) if price else 0,
-            "change_pct": round(change_pct, 2),
+            "change_pct": None if change_pct is None else round(change_pct, 2),
             "currency": currency,
             "market_cap": data.get('market_cap', 0),
             "volume": int(volume) if volume else 0,
@@ -169,14 +169,14 @@ def get_market_opportunities(cached_data=None):
     else:
         for stock in cached_data:
             if isinstance(stock, dict):
-                if stock.get('is_favorable', False) and stock.get('change_pct', 0) > 0.5:
+                if stock.get('is_favorable', False) and (stock.get('change_pct') or 0) > 0.5:
                     if not stock.get('reason'):
                         stock['reason'] = stock.get('prediction', 'Positive Trend')
                     opportunities.append(stock)
 
     opportunities.sort(key=lambda x: (
         x.get('currency', '') == 'TRY' or x.get('market_type', '') == 'BIST' or str(x.get('symbol', '')).endswith('.IS'),
-        x.get('change_pct', 0)
+        x.get('change_pct') or 0
     ), reverse=True)
     return opportunities[:15]
 
