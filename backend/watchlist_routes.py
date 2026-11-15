@@ -84,7 +84,7 @@ class WatchlistItemResponse(BaseModel):
     added_at: str
     name: Optional[str] = None
     price: float = 0.0
-    change_pct: float = 0.0
+    change_pct: Optional[float] = None  # null without a previous close: no move was observed
     volume: float = 0.0
     day_high: Optional[float] = None  # null until computed from real history (D4)
     day_low: Optional[float] = None
@@ -138,7 +138,7 @@ async def _enrich_watchlist_tickers(
                 "added_at": item.added_at.isoformat() if item.added_at else "",
                 "name": stock_record.name or sym,
                 "price": round(stock_record.price or 0.0, 2),
-                "change_pct": round(stock_record.change_pct or 0.0, 2),
+                "change_pct": rounded(stock_record.change_pct, 2),
                 "volume": stock_record.volume or 0.0,
                 "day_high": price_level(stock_record.day_high),
                 "day_low": price_level(stock_record.day_low),
@@ -164,7 +164,7 @@ async def _enrich_watchlist_tickers(
                     "added_at": item.added_at.isoformat() if item.added_at else "",
                     "name": live_data.get("name", sym),
                     "price": round(live_data.get("price", 0.0), 2),
-                    "change_pct": round(live_data.get("change_pct", 0.0), 2),
+                    "change_pct": rounded(live_data.get("change_pct"), 2),
                     "volume": live_data.get("volume", 0.0),
                     "day_high": price_level(live_data.get("day_high")),
                     "day_low": price_level(live_data.get("day_low")),
@@ -182,7 +182,7 @@ async def _enrich_watchlist_tickers(
                     "added_at": item.added_at.isoformat() if item.added_at else "",
                     "name": sym,
                     "price": 0.0,
-                    "change_pct": 0.0,
+                    "change_pct": None,
                     "volume": 0.0,
                     "day_high": None,
                     "day_low": None,
@@ -378,20 +378,10 @@ async def get_watchlist_summary(
     max_abs_move = -1.0
 
     for s in enriched_stocks:
-        change_pct = s.get("change_pct", 0.0) or 0.0
+        change_pct = s.get("change_pct")
         price = s.get("price", 0.0) or 0.0
         sym = s.get("ticker", "")
         currency = s.get("currency", "TRY" if s.get("market") == "BIST100" else "USD")
-
-        if change_pct > 0.0:
-            up_count += 1
-        elif change_pct < 0.0:
-            down_count += 1
-        else:
-            flat_count += 1
-
-        total_change += change_pct
-        valid_stocks_count += 1
 
         ticker_changes.append({
             "symbol": sym,
@@ -401,6 +391,19 @@ async def get_watchlist_summary(
             "currency": currency,
             "market": s.get("market", "BIST100")
         })
+
+        # A null change (no previous close) is no observed move: it is listed but not
+        # counted as up, down or flat, and not averaged.
+        if change_pct is None:
+            continue
+        if change_pct > 0.0:
+            up_count += 1
+        elif change_pct < 0.0:
+            down_count += 1
+        else:
+            flat_count += 1
+        total_change += change_pct
+        valid_stocks_count += 1
 
         # Track single biggest mover (positive or negative)
         abs_move = abs(change_pct)
@@ -416,7 +419,7 @@ async def get_watchlist_summary(
                 "market": s.get("market", "BIST100")
             }
 
-    avg_change = round(total_change / valid_stocks_count, 2) if valid_stocks_count > 0 else 0.0
+    avg_change = round(total_change / valid_stocks_count, 2) if valid_stocks_count > 0 else None
 
     summary_data = {
         "total_count": len(enriched_stocks),
