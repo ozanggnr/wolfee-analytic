@@ -43,14 +43,12 @@ STOCK = {
     "prediction": "RSI above 70 (overbought)", "is_buyable": False,
 }
 
-# What analyze_stock still returns in its temporary legacy mode: estimates, flagged as such.
-LEGACY_STOCK = {
+# What analyze_stock returns when there is no price history: no indicators, no day range.
+NO_HISTORY_STOCK = {
     "symbol": "AAPL", "name": "AAPL", "price": 200.0, "change_pct": 1.0, "currency": "USD",
-    "market_type": "GLOBAL", "previous_close": 198.02, "day_high": 202.0, "day_low": 198.0,
-    "volume": 1000, "rsi": 53.0, "ma_20": 199.0, "volatility": "LOW",
-    "prediction": "Up 1.0% today", "indicators_as_of": None,
-    "estimated_fields": ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable",
-                         "day_high", "day_low"],
+    "market_type": "GLOBAL", "previous_close": 198.02, "day_high": None, "day_low": None,
+    "volume": 1000, "rsi": None, "ma_20": None, "volatility": None, "volatility_pct": None,
+    "prediction": None, "indicators_as_of": None,
 }
 
 
@@ -86,7 +84,6 @@ def test_market_rsi_is_counted_only_when_it_came_from_price_history():
         {**MARKET[0], "rsi": 25.0, "indicators_as_of": "2026-01-21"},
         {**MARKET[1], "rsi": 75.5, "indicators_as_of": "2026-01-21"},
         {**MARKET[2], "rsi": 20.0},                                            # old estimate, no date
-        {**MARKET[3], "rsi": 20.0, "indicators_as_of": "2026-01-21", "estimated_fields": ["rsi"]},
     ]
 
     facts = as_dict(market_facts(rows))
@@ -138,14 +135,14 @@ def test_stock_facts_with_real_indicators():
 
 
 def test_stock_facts_never_carry_a_buy_or_sell_label():
-    text = " ".join(f"{fact.label} {fact.value}" for fact in stock_facts(STOCK) + stock_facts(LEGACY_STOCK))
+    text = " ".join(f"{fact.label} {fact.value}" for fact in stock_facts(STOCK) + stock_facts(NO_HISTORY_STOCK))
 
     for word in ("PURCHASABLE", "TAKE PROFITS", "ACCUMULATE", "overbought", "LOW"):
         assert word not in text
 
 
-def test_estimated_figures_are_left_out_and_reported_as_unavailable():
-    facts = as_dict(stock_facts(LEGACY_STOCK))
+def test_a_stock_without_history_reports_its_indicators_as_unavailable():
+    facts = as_dict(stock_facts(NO_HISTORY_STOCK))
 
     assert facts == {
         "Instrument": "AAPL",
@@ -208,7 +205,7 @@ def test_templates_pass_their_own_guardrails():
     for facts, result in (
         (market_facts(MARKET), market_insight(MARKET, now=NOW, generate=None)),
         (stock_facts(STOCK), stock_analysis(STOCK, now=NOW, generate=None)),
-        (stock_facts(LEGACY_STOCK), stock_analysis(LEGACY_STOCK, now=NOW, generate=None)),
+        (stock_facts(NO_HISTORY_STOCK), stock_analysis(NO_HISTORY_STOCK, now=NOW, generate=None)),
     ):
         assert find_violations(result.text, facts) == ()
         assert result.disclaimer == DISCLAIMER

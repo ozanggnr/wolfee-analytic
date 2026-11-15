@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from quant.signals import enrich_quote, is_buyable
+from quant.signals import enrich_quote
 # The symbol lists now live in quant.universe; re-exported for existing importers.
 from quant.universe import BIST_SYMBOLS, COMMODITIES_SYMBOLS, GLOBAL_SYMBOLS  # noqa: F401
 
@@ -44,61 +44,16 @@ def calculate_indicators(df: pd.DataFrame):
     return df
 
 
-def _day_change_label(change_pct):
-    """The day's move in words: the only label that needs no indicator."""
-    if change_pct > 0:
-        return f"Up {change_pct:.1f}% today"
-    if change_pct < 0:
-        return f"Down {abs(change_pct):.1f}% today"
-    return "Unchanged today"
-
-
-def _legacy_estimates(price, change_pct, day_high, day_low):
-    """TEMPORARY — the single-day estimates decision D4 removes.
-
-    Kept only so the callers that still do arithmetic on these fields
-    (``watchlist_routes._enrich_watchlist_tickers``, the exports in ``main``)
-    keep working until Agent 2 makes them accept None (REQ-26). These are not a
-    14-period RSI, a 20-day average or a volatility measure. Delete this
-    function and the ``legacy_estimates`` flag once those callers are changed.
-
-    ``prediction`` / ``reason`` are not estimates: with no real RSI to describe
-    they state the day's change, which the provider supplied.
-    """
-    rsi = max(5, min(95, 50 + (change_pct * 3)))
-    ma_20 = price * (1 - change_pct / 200) if price else 0
-    prediction = _day_change_label(change_pct)
-    estimated = ["rsi", "ma_20", "volatility", "is_favorable", "is_buyable"]
-    estimated += [field for field, value in (("day_high", day_high), ("day_low", day_low)) if not value]
-    return {
-        "estimated_fields": estimated,
-        "day_high": day_high or (round(price * 1.01, 2) if price else 0),
-        "day_low": day_low or (round(price * 0.99, 2) if price else 0),
-        "rsi": round(rsi, 2),
-        "ma_20": round(ma_20, 2) if ma_20 else 0,
-        "volatility": 'HIGH' if abs(change_pct) > 5 else 'MEDIUM' if abs(change_pct) > 2 else 'LOW',
-        "prediction": prediction,
-        "reason": prediction,
-        "is_favorable": change_pct > 0,
-        "is_buyable": is_buyable(change_pct, rsi),
-    }
-
-
-def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None, legacy_estimates=True):
+def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None):
     """
     Fetch and analyze stock data using data_sources.
 
     ``history`` is the instrument's real daily closes
-    (``Sequence[quant.types.DailyClose]``, an empty one included). When it is
-    given, rsi, ma_20, volatility and the labels built on them come from it, or
-    are None where it is too short, and a day high or low the provider did not
-    supply is None (decision D4). ``indicators_as_of`` is set only when the
-    indicators are real.
-
-    With no ``history`` argument the result depends on ``legacy_estimates``:
-    False gives the D4 result (all of the above None); True, the temporary
-    default, still returns the old single-day estimates — see
-    ``_legacy_estimates``.
+    (``Sequence[quant.types.DailyClose]``). rsi, ma_20, volatility and the
+    labels built on them come from it, and are None where it is missing or too
+    short. A day high or low the provider did not supply is None. Nothing is
+    estimated (decision D4). ``indicators_as_of`` is set only when at least one
+    indicator could be computed.
     """
     try:
         data = None
@@ -148,8 +103,6 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
             currency,
             history,
         )
-        if legacy_estimates and history is None:
-            enriched.update(_legacy_estimates(price, change_pct, enriched["day_high"], enriched["day_low"]))
         day_high = enriched["day_high"]
         day_low = enriched["day_low"]
         open_price = data.get('open', 0) or data.get('open_price', 0)
@@ -163,8 +116,8 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
             "currency": currency,
             "market_cap": data.get('market_cap', 0),
             "volume": int(volume) if volume else 0,
-            "day_high": round(day_high, 2) if day_high else (0 if legacy_estimates and history is None else None),
-            "day_low": round(day_low, 2) if day_low else (0 if legacy_estimates and history is None else None),
+            "day_high": round(day_high, 2) if day_high else None,
+            "day_low": round(day_low, 2) if day_low else None,
             # None when the provider gave none: they are never derived from each other
             # or from the day's change.
             "open": round(open_price, 2) if open_price else None,
@@ -182,9 +135,6 @@ def analyze_stock(symbol: str, is_commodity=False, detailed=False, history=None,
             "volatility_pct": enriched["volatility_pct"],
             "indicators_as_of": enriched["indicators_as_of"],
             "indicator_method": enriched["indicator_method"],
-            # Names of the fields above that are single-day estimates, not measurements
-            # (only in the temporary legacy mode). The AI layer never states them.
-            "estimated_fields": enriched.get("estimated_fields", []),
             "market_type": market_type,
         }
 
