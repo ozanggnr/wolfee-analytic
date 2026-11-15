@@ -16,12 +16,13 @@ function toggleFilterPopover() {
 }
 
 // Close popover when clicking outside
+// (The desktop and the mobile filter buttons both carry data-filter-toggle.)
 document.addEventListener('click', (e) => {
     const popover = document.getElementById('filter-popover');
-    const btn = document.getElementById('filter-toggle-btn');
-    if (!popover || !btn) return;
+    if (!popover) return;
 
-    if (!popover.contains(e.target) && !btn.contains(e.target) && !popover.classList.contains('hidden')) {
+    const onToggle = e.target instanceof Element && e.target.closest('[data-filter-toggle]');
+    if (!popover.contains(e.target) && !onToggle && !popover.classList.contains('hidden')) {
         popover.classList.add('hidden');
     }
 });
@@ -53,7 +54,10 @@ window.getFilteredStocks = function(baseStocks, query = '') {
 
         if (stock.price < priceMin || stock.price > priceMax) return false;
 
-        if (stock.change_pct < changeMin || stock.change_pct > changeMax) return false;
+        // A null change_pct is unknown: it cannot meet a change filter that is set
+        const change = window.WolfeeFields.numberField(stock, 'change_pct');
+        const changeFilterSet = changeMin !== -Infinity || changeMax !== Infinity;
+        if (change === null ? changeFilterSet : (change < changeMin || change > changeMax)) return false;
         if (stock.volume < volMin) return false;
 
         if (query) {
@@ -71,9 +75,9 @@ window.getFilteredStocks = function(baseStocks, query = '') {
             const reasonMatch = textOf('reason').includes(lowerQuery);
 
             const priceStr = (stock.price || 0).toFixed(2);
-            const changeStr = (stock.change_pct || 0).toFixed(2);
+            const changeStr = change === null ? '' : change.toFixed(2);
             const volStr = (stock.volume || 0).toString();
-            const rsi = F.numberField(stock, 'rsi');
+            const rsi = F.indicatorNumber(stock, 'rsi');
             const rsiStr = rsi === null ? '' : rsi.toFixed(2);
             
             const numMatch = priceStr.includes(lowerQuery) || 
@@ -117,7 +121,7 @@ function applyFilters() {
     }
 
     if (filtered.length === 0) {
-        stockGrid.innerHTML = '<p style="color:var(--text-secondary); text-align:center; grid-column:1/-1;">No stocks match your filters.</p>';
+        stockGrid.innerHTML = '<p class="grid-message">No stocks match these filters. Change or clear the filters to see more.</p>';
         return;
     }
 
@@ -147,30 +151,7 @@ function clearFilters() {
     applyFilters();
 }
 
-// Toggle Region (Exported for HTML onclick)
-window.toggleRegion = function () {
-    const toggle = document.getElementById('region-toggle');
-    const label = document.getElementById('region-label');
-
-    if (toggle.checked) {
-        label.textContent = "GLOBAL";
-        label.style.color = "#f472b6"; // Pinkish
-    } else {
-        label.textContent = "TR";
-        label.style.color = "#38bdf8"; // Blue
-    }
-
-    const stockGrid = document.getElementById('stock-grid');
-    if (stockGrid) stockGrid.classList.add('switching');
-    setTimeout(() => applyFilters(), 150);
-
-    // Reset search
-    const searchInput = document.getElementById('search-input');
-    if (searchInput) {
-        searchInput.value = '';
-        searchInput.dispatchEvent(new Event('input'));
-    }
-};
+// toggleRegion lives in main.js (loaded after this file).
 
 // Expose to window for onclick
 window.toggleFilterPopover = toggleFilterPopover;

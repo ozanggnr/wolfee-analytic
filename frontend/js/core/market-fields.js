@@ -59,6 +59,96 @@ export function formatNumberField(record, field, digits, suffix = '') {
 }
 
 /**
+ * The day's direction. A null `change_pct` (no previous close) is unknown,
+ * not unchanged, so it has no direction.
+ *
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} [field]
+ * @returns {'up' | 'down' | 'flat' | null}
+ */
+export function changeDirection(record, field = 'change_pct') {
+    const value = numberField(record, field);
+    if (value === null) return null;
+    if (value > 0) return 'up';
+    return value < 0 ? 'down' : 'flat';
+}
+
+/**
+ * @param {'up' | 'down' | 'flat' | null} direction from changeDirection
+ * @returns {string} the CSS class for that direction; flat and unknown are neutral
+ */
+export function directionClass(direction) {
+    if (direction === 'up') return 'is-gain';
+    return direction === 'down' ? 'is-loss' : '';
+}
+
+/**
+ * A percentage change as display text: "▲ 1.25%" (arrow style) or "+1.25%"
+ * (signed style). A missing value is NOT_AVAILABLE, never "0.00%".
+ *
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {{ field?: string, digits?: number, style?: 'arrow' | 'signed' }} [options]
+ * @returns {string}
+ */
+export function formatChange(record, options = {}) {
+    const { field = 'change_pct', digits = 2, style = 'arrow' } = options;
+    const value = numberField(record, field);
+    if (value === null) return NOT_AVAILABLE;
+
+    if (style === 'signed') return `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`;
+    const arrow = value > 0 ? '▲ ' : value < 0 ? '▼ ' : '';
+    return `${arrow}${Math.abs(value).toFixed(digits)}%`;
+}
+
+/**
+ * A price as display text. Missing, zero and negative prices are not
+ * available (providers send 0 for values they do not have).
+ *
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @param {string} currency symbol appended after the number
+ * @param {number} [digits]
+ * @returns {string}
+ */
+export function formatPrice(record, field, currency, digits = 2) {
+    const value = numberField(record, field);
+    return value !== null && value > 0 ? `${value.toFixed(digits)} ${currency}` : NOT_AVAILABLE;
+}
+
+/**
+ * Direction counts, average and biggest move over a list of records. A
+ * record whose `change_pct` is not available counts as unknown: it is not
+ * flat, not in the average and never the biggest mover.
+ *
+ * @param {Array<Record<string, unknown>>} records
+ * @returns {{ up_count: number, down_count: number, flat_count: number,
+ *   unknown_count: number, avg_change_pct: number | null,
+ *   biggest_mover: Record<string, unknown> | null }}
+ *   `avg_change_pct` is rounded to 2 decimals, null when no change is known;
+ *   `biggest_mover` is the record itself.
+ */
+export function summarizeChanges(records) {
+    const known = [];
+    let unknownCount = 0;
+    for (const record of records || []) {
+        const value = numberField(record, 'change_pct');
+        if (value === null) unknownCount += 1;
+        else known.push({ record, value });
+    }
+
+    const total = known.reduce((sum, { value }) => sum + value, 0);
+    const biggest = known.reduce((best, item) => (best === null || Math.abs(item.value) > Math.abs(best.value) ? item : best), null);
+    return {
+        up_count: known.filter(({ value }) => value > 0).length,
+        down_count: known.filter(({ value }) => value < 0).length,
+        flat_count: known.filter(({ value }) => value === 0).length,
+        unknown_count: unknownCount,
+        avg_change_pct: known.length > 0 ? Math.round((total / known.length) * 100) / 100 : null,
+        biggest_mover: biggest === null ? null : biggest.record,
+    };
+}
+
+/**
  * @param {Record<string, unknown> | null | undefined} record
  * @returns {string | null} `indicators_as_of` when it is a real YYYY-MM-DD date
  */
@@ -78,6 +168,58 @@ export function indicatorsAsOf(record) {
 }
 
 /**
+ * An indicator (rsi, ma_20, volatility, volatility_pct) counts only when the
+ * record says when it was computed: values without a real `indicators_as_of`
+ * are the workers' single-day estimates and are not available (REQ-29).
+ *
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @returns {unknown}
+ */
+export function indicatorField(record, field) {
+    return indicatorsAsOf(record) === null ? null : fieldValue(record, field);
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @returns {number | null}
+ */
+export function indicatorNumber(record, field) {
+    return indicatorsAsOf(record) === null ? null : numberField(record, field);
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} record
+ * @param {string} field
+ * @param {number} digits
+ * @param {string} [suffix]
+ * @returns {string}
+ */
+export function formatIndicatorField(record, field, digits, suffix = '') {
+    const value = indicatorNumber(record, field);
+    return value === null ? NOT_AVAILABLE : `${value.toFixed(digits)}${suffix}`;
+}
+
+/**
+ * Parses an ISO 8601 timestamp. A timestamp without a zone is read as UTC
+ * (Python's naive utcnow()), never as the viewer's local time.
+ *
+ * @param {unknown} value
+ * @returns {Date | null}
+ */
+export function parseTimestamp(value) {
+    if (typeof value !== 'string') return null;
+
+    const trimmed = value.trim();
+    const match = ISO_DATETIME.exec(trimmed);
+    if (!match) return null;
+
+    const date = new Date(match[1] ? trimmed : `${trimmed}Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
  * Formats a timestamp in the viewer's time zone, or in `timeZone` when given.
  * A timestamp without a zone is read as UTC (Python's naive utcnow()).
  *
@@ -86,14 +228,8 @@ export function indicatorsAsOf(record) {
  * @returns {string | null} "YYYY-MM-DD HH:MM <zone>", e.g. "2026-11-14 09:05 GMT+3"
  */
 export function formatTimestamp(value, options = {}) {
-    if (typeof value !== 'string') return null;
-
-    const trimmed = value.trim();
-    const match = ISO_DATETIME.exec(trimmed);
-    if (!match) return null;
-
-    const date = new Date(match[1] ? trimmed : `${trimmed}Z`);
-    if (Number.isNaN(date.getTime())) return null;
+    const date = parseTimestamp(value);
+    if (date === null) return null;
 
     const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
         timeZone: options.timeZone,

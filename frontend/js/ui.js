@@ -14,113 +14,71 @@ function getCurrencySymbol(code) {
     return map[code] || code || '$';
 }
 
-function getSignalStyle(prediction) {
-    const p = (prediction || '').toUpperCase();
-    if (p.includes('PURCHASABLE')) {
-        return {
-            color: '#10f5a8',
-            bg: 'rgba(16,245,168,0.1)',
-            border: 'rgba(16,245,168,0.25)',
-            icon: '🟢',
-            label: prediction
-        };
-    }
-    if (p.includes('ACCUMULATE')) {
-        return {
-            color: '#43e6fc',
-            bg: 'rgba(67,230,252,0.09)',
-            border: 'rgba(67,230,252,0.22)',
-            icon: '🔵',
-            label: prediction
-        };
-    }
-    if (p.includes('WATCH TO BUY')) {
-        return {
-            color: '#fbbf24',
-            bg: 'rgba(251,191,36,0.09)',
-            border: 'rgba(251,191,36,0.22)',
-            icon: '🟡',
-            label: prediction
-        };
-    }
-    if (p.includes('TAKE PROFITS')) {
-        return {
-            color: '#c86fff',
-            bg: 'rgba(200,111,255,0.1)',
-            border: 'rgba(200,111,255,0.25)',
-            icon: '🟣',
-            label: prediction
-        };
-    }
-    if (p.includes('AVOID')) {
-        return {
-            color: '#ff4f6e',
-            bg: 'rgba(255,79,110,0.09)',
-            border: 'rgba(255,79,110,0.22)',
-            icon: '🔴',
-            label: prediction
-        };
-    }
-    // Any other label (including the descriptive wording from REQ-24) is shown
-    // as sent, in a neutral style; a missing label is shown as not available.
-    const hasLabel = typeof prediction === 'string' && prediction.trim() !== '';
-    return {
-        color: hasLabel ? 'var(--text-primary)' : 'var(--text-muted)',
-        bg: 'rgba(148,163,184,0.08)',
-        border: 'rgba(148,163,184,0.22)',
-        icon: '',
-        label: hasLabel ? prediction : window.WolfeeFields.NOT_AVAILABLE
-    };
+// Opportunity badges (REQ-29): the oversold threshold follows the card label
+// table (RSI < 30); the daily-move badge describes today only.
+const OVERSOLD_RSI = 30;
+const UP_TODAY_BADGE_PCT = 2;
+
+const TREND_TEXT = { up: 'Up today', down: 'Down today', flat: 'Unchanged today' };
+
+/** Base symbol without the BIST suffix, as used for card keys. */
+function baseSymbol(stock) {
+    return ((stock && stock.symbol) || '').replace('.IS', '').trim().toUpperCase();
+}
+
+/**
+ * The day's change as a span: green or red only for a real move, neutral and
+ * "Not available" when change_pct is null (unknown, not 0).
+ */
+function changeHTML(record, className, options = {}) {
+    const F = window.WolfeeFields;
+    const direction = F.changeDirection(record, options.field);
+    const classes = [className, F.directionClass(direction), direction === null ? 'not-available' : '']
+        .filter(Boolean).join(' ');
+    return `<span class="${classes}">${esc(F.formatChange(record, options))}</span>`;
+}
+
+function trendHTML(stock) {
+    const F = window.WolfeeFields;
+    const direction = F.changeDirection(stock);
+    if (direction === null) return `<span class="not-available">${esc(F.NOT_AVAILABLE)}</span>`;
+    return `<span class="${F.directionClass(direction)}">${TREND_TEXT[direction]}</span>`;
+}
+
+/** The descriptive label chip; no chip at all when there is no label. */
+function signalChipHTML(stock) {
+    const label = window.WolfeeFields.fieldValue(stock, 'prediction');
+    return typeof label === 'string' ? `<div class="signal-chip">${esc(label)}</div>` : '';
 }
 
 /** RSI value for a card stat cell, with its as-of date when there is one. */
 function rsiStatHTML(stock) {
     const F = window.WolfeeFields;
-    const rsi = F.numberField(stock, 'rsi');
+    const rsi = F.indicatorNumber(stock, 'rsi');
     if (rsi === null) {
         return `<span class="not-available">${esc(F.NOT_AVAILABLE)}</span>`;
     }
     const asOf = F.indicatorsAsOf(stock);
-    const asOfHTML = asOf ? `<small class="indicator-asof">as of ${esc(asOf)}</small>` : '';
-    return `<span style="color: ${getRsiColor(rsi)}">${rsi.toFixed(1)}${asOfHTML}</span>`;
+    const asOfHTML = asOf ? `<small class="indicator-asof">as of <time datetime="${esc(asOf)}">${esc(asOf)}</time></small>` : '';
+    return `<span>${rsi.toFixed(1)}${asOfHTML}</span>`;
 }
 
-function renderStockCard(stock) {
-    const grid = document.getElementById(stock.inPortfolio ? 'portfolio-grid' : 'stock-grid');
-    if (!grid || !stock) return;
-
-    const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
-    if (!baseSym) return;
-
-    // Strict DOM guard: NEVER render duplicate card for the same symbol
-    if (grid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`)) {
-        return;
-    }
-
-    const currency = getCurrencySymbol(stock.currency);
-    const isUp = (stock.change_pct || 0) >= 0;
-    const icon = isUp ? '▲' : '▼';
-    const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
-    const sig = getSignalStyle(window.WolfeeFields.fieldValue(stock, 'prediction'));
-
-    const card = document.createElement('div');
-    card.className = 'stock-card skeleton';
-    card.setAttribute('data-stock-symbol', baseSym);
-
-    // Remove skeleton class once data is loaded
-    setTimeout(() => card.classList.remove('skeleton'), 100);
-
-    card.innerHTML = `
+/**
+ * Inner markup of a stock card. Shared by the first render and the in-place
+ * update after a poll, so both show the same fields the same way.
+ */
+function stockCardInnerHTML(stock, extraHTML = '') {
+    const F = window.WolfeeFields;
+    const name = stock.name || '';
+    return `
         <div class="stock-header">
             <div class="symbol-group">
-                <span class="stock-symbol">${esc(baseSym)}</span>
-                <span class="stock-name" title="${esc(stock.name)}">${esc((stock.name || '').substring(0, 22))}${(stock.name || '').length > 22 ? '...' : ''}</span>
+                <span class="stock-symbol">${esc(baseSymbol(stock))}</span>
+                <span class="stock-name" title="${esc(name)}">${esc(name)}</span>
             </div>
             <div>
-                <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
-                <div class="price-change" style="color: ${priceColor}">
-                    ${icon} ${Math.abs(stock.change_pct||0).toFixed(2)}%
-                </div>
+                <div class="stock-price">${esc(F.formatPrice(stock, 'price', getCurrencySymbol(stock.currency)))}</div>
+                ${changeHTML(stock, 'price-change')}
             </div>
         </div>
         <div class="stats-grid">
@@ -134,16 +92,45 @@ function renderStockCard(stock) {
             </div>
             <div class="stat-item">
                 <span>Trend</span>
-                <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
+                ${trendHTML(stock)}
             </div>
         </div>
-        <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
-            ${sig.icon} ${esc(sig.label)}
-        </div>
+        ${extraHTML}
+        ${signalChipHTML(stock)}
     `;
+}
 
+/** A card element that opens the stock detail on click, Enter or Space. */
+function createStockCardElement(stock, innerHTML) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.setAttribute('data-stock-symbol', baseSymbol(stock));
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.innerHTML = innerHTML;
     card.onclick = () => openModal(stock);
-    grid.appendChild(card);
+    card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openModal(stock);
+    });
+    return card;
+}
+
+function renderStockCard(stock) {
+    const grid = document.getElementById(stock.inPortfolio ? 'portfolio-grid' : 'stock-grid');
+    if (!grid || !stock) return;
+
+    const baseSym = baseSymbol(stock);
+    if (!baseSym) return;
+
+    // Strict DOM guard: NEVER render duplicate card for the same symbol
+    if (grid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`)) {
+        return;
+    }
+
+    grid.removeAttribute('aria-busy');
+    grid.appendChild(createStockCardElement(stock, stockCardInnerHTML(stock)));
 }
 
 function renderGoldCards(goldData) {
@@ -166,17 +153,16 @@ function renderGoldCards(goldData) {
         return;
     }
     
-    let html = `<h2>🥇 Turkish Gold (TRY)</h2><div class="gold-grid">`;
+    const F = window.WolfeeFields;
+    let html = `<h2 class="section-title">Turkish gold (TRY)</h2><div class="gold-grid">`;
     goldData.forEach(g => {
         html += `
             <div class="gold-card">
                 <div class="gold-name">${esc(g.display_name)}</div>
-                <div class="gold-price">${(g.selling_price || 0).toFixed(2)} ₺</div>
+                <div class="gold-price">${esc(F.formatPrice(g, 'selling_price', '₺'))}</div>
                 <div class="gold-detail">
-                    Buy: ${(g.buying_price || 0).toFixed(2)} ₺ 
-                    <span style="color:${(g.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}; float:right;">
-                        ${(g.change_pct||0) >= 0 ? '▲' : '▼'} ${Math.abs(g.change_pct||0).toFixed(2)}%
-                    </span>
+                    <span>Buy ${esc(F.formatPrice(g, 'buying_price', '₺'))}</span>
+                    ${changeHTML(g, 'gold-change')}
                 </div>
             </div>
         `;
@@ -212,19 +198,19 @@ function renderExchangeRates(rates) {
     }
     
     ticker.style.display = '';
+    const F = window.WolfeeFields;
     ticker.innerHTML = '';
     rates.forEach(r => {
-        const color = (r.change_pct || 0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-        const icon = (r.change_pct || 0) >= 0 ? '▲' : '▼';
-        const item = document.createElement('div');
+        const rate = F.numberField(r, 'selling');
+        const item = document.createElement('button');
+        item.type = 'button';
         item.className = 'exchange-item';
-        item.style.cursor = 'pointer';
         item.innerHTML = `
             <span class="pair">${esc(r.pair)}</span>
-            <span class="rate">${(r.selling || 0).toFixed(4)}</span>
-            <span style="color:${color}; font-size:0.75rem;">${icon} ${Math.abs(r.change_pct||0).toFixed(2)}%</span>
+            <span class="rate${rate !== null && rate > 0 ? '' : ' not-available'}">${esc(rate !== null && rate > 0 ? rate.toFixed(4) : F.NOT_AVAILABLE)}</span>
+            ${changeHTML(r, 'exchange-change')}
         `;
-        item.addEventListener('click', () => openExchangeModal(r.pair, r.selling || 0, r.change_pct || 0));
+        item.addEventListener('click', () => openExchangeModal(r.pair, rate, F.numberField(r, 'change_pct')));
         ticker.appendChild(item);
     });
 }
@@ -282,67 +268,37 @@ window.renderOpportunitiesPage = function() {
     });
     
     if (!opportunities || opportunities.length === 0) {
-        grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">No clear signals at the moment.</p>';
+        grid.innerHTML = '<p class="grid-message">No instruments meet these conditions right now. The list updates with market data.</p>';
         return;
     }
-    
+
     grid.innerHTML = '';
     opportunities.forEach(stock => {
-        const baseSym = (stock.symbol || '').replace('.IS', '').trim().toUpperCase();
+        const baseSym = baseSymbol(stock);
         if (grid.querySelector(`[data-stock-symbol="${CSS.escape(baseSym)}"]`)) return;
-
-        const currency = getCurrencySymbol(stock.currency);
-        const isUp = (stock.change_pct || 0) >= 0;
-        const priceColor = isUp ? 'var(--success-color)' : 'var(--danger-color)';
-        const icon = isUp ? '▲' : '▼';
-        const sig = getSignalStyle(window.WolfeeFields.fieldValue(stock, 'prediction'));
-        
-        // Badges only from available inputs (REQ-27): no RSI, no RSI badge
-        const rsi = window.WolfeeFields.numberField(stock, 'rsi');
-        let badges = '';
-        if (rsi !== null && rsi < 35) badges += '<span class="opp-badge badge-oversold">Oversold</span> ';
-        if (stock.change_pct > 2) badges += '<span class="opp-badge badge-trend">Uptrend</span> ';
-        const reason = window.WolfeeFields.fieldValue(stock, 'reason');
-        
-        const card = document.createElement('div');
-        card.className = 'stock-card';
-        card.setAttribute('data-stock-symbol', baseSym);
-        card.innerHTML = `
-            <div class="stock-header">
-                <div class="symbol-group">
-                    <span class="stock-symbol">${esc((stock.symbol||'').replace('.IS', ''))}</span>
-                    <span class="stock-name" title="${esc(stock.name)}">${esc((stock.name || '').substring(0, 22))}${(stock.name || '').length > 22 ? '...' : ''}</span>
-                </div>
-                <div>
-                    <div class="stock-price" style="color: ${priceColor}">${(stock.price||0).toFixed(2)} ${currency}</div>
-                    <div class="price-change" style="color: ${priceColor}">
-                        ${icon} ${Math.abs(stock.change_pct||0).toFixed(2)}%
-                    </div>
-                </div>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <span>Volume</span>
-                    <span>${formatNumber(stock.volume)}</span>
-                </div>
-                <div class="stat-item">
-                    <span>RSI</span>
-                    ${rsiStatHTML(stock)}
-                </div>
-                <div class="stat-item">
-                    <span>Trend</span>
-                    <span style="color: ${priceColor}">${isUp ? 'Up today' : 'Down today'}</span>
-                </div>
-            </div>
-            ${badges ? `<div style="margin: 5px 0;">${badges}</div>` : ''}
-            <div class="signal-chip" style="color:${sig.color}; background:${sig.bg}; border-color:${sig.border};">
-                ${sig.icon} ${esc(sig.label)}
-            </div>
-            <div class="reason-text" style="color:var(--text-secondary); margin-top: 0.5rem; font-size: 0.82rem;">${esc(typeof reason === 'string' ? reason : window.WolfeeFields.NOT_AVAILABLE)}</div>
-        `;
-        card.onclick = () => openModal(stock);
-        grid.appendChild(card);
+        grid.appendChild(createStockCardElement(stock, stockCardInnerHTML(stock, opportunityExtraHTML(stock))));
     });
+}
+
+/**
+ * Condition badges and the backend's reason line. Badges come only from
+ * available inputs (REQ-27): no RSI, no RSI badge; a null change, no move badge.
+ * The reason is left out when missing or when it only repeats the label.
+ */
+function opportunityExtraHTML(stock) {
+    const F = window.WolfeeFields;
+    const badges = [];
+    const rsi = F.indicatorNumber(stock, 'rsi');
+    if (rsi !== null && rsi < OVERSOLD_RSI) badges.push('<span class="opp-badge">RSI below 30</span>');
+    const change = F.numberField(stock, 'change_pct');
+    if (change !== null && change > UP_TODAY_BADGE_PCT) badges.push(`<span class="opp-badge">Up more than ${UP_TODAY_BADGE_PCT}% today</span>`);
+
+    const reason = F.fieldValue(stock, 'reason');
+    const label = F.fieldValue(stock, 'prediction');
+    const showReason = typeof reason === 'string' && reason !== label;
+
+    return (badges.length ? `<div class="opp-badges">${badges.join('')}</div>` : '')
+        + (showReason ? `<p class="reason-text">${esc(reason)}</p>` : '');
 }
 
 function openModal(stock) {
@@ -350,9 +306,12 @@ function openModal(stock) {
     window.currentModalStock = stock;
     const modal = document.getElementById('stock-modal');
     
-    // Add AI button to header
+    // Remember what had focus, to return to it when the dialog closes
+    _modalReturnFocus = document.activeElement;
+    markSelectedCard(stock.symbol);
+
     const title = document.getElementById('modal-title');
-    title.innerHTML = `${esc(stock.name || stock.symbol)} <span style="font-size:0.8rem;color:var(--text-secondary)">${esc(stock.symbol)}</span>`;
+    title.innerHTML = `${esc(stock.name || stock.symbol)} <span class="modal-symbol">${esc(stock.symbol)}</span>`;
     
     const currency = getCurrencySymbol(stock.currency);
     
@@ -370,12 +329,15 @@ function openModal(stock) {
             chartControls.parentNode.insertBefore(aiSection, chartControls);
         }
     }
-    aiSection.innerHTML = '<button class="ai-analyze-btn">🐺 Ask Wolfee AI for Deep Analysis</button>';
+    aiSection.innerHTML = '<button type="button" class="ai-analyze-btn">Ask Wolfee AI for analysis</button>';
     aiSection.querySelector('.ai-analyze-btn').addEventListener('click', () => askWolfeeAI(stock.symbol));
 
     updatePortfolioButtonUI(stock.symbol);
     modal.classList.remove('hidden');
+    modal.scrollTop = 0;
     document.body.classList.add('no-scroll');
+    const closeBtn = modal.querySelector('.close-modal');
+    if (closeBtn) closeBtn.focus();
 
     // Default to 1Y chart
     if (typeof loadChart === 'function') loadChart(stock.symbol, '1y');
@@ -385,26 +347,38 @@ function openModal(stock) {
     _fetchLivePriceForModal(stock.symbol);
 }
 
+let _modalReturnFocus = null;
+
+/** Highlights the card whose detail is open (tint and accent border). */
+function markSelectedCard(symbol) {
+    document.querySelectorAll('.stock-card[aria-current="true"]').forEach(card => card.removeAttribute('aria-current'));
+    if (!symbol) return;
+    const key = baseSymbol({ symbol });
+    document.querySelectorAll(`.stock-card[data-stock-symbol="${CSS.escape(key)}"]`)
+        .forEach(card => card.setAttribute('aria-current', 'true'));
+}
+
 /**
  * A price field as display text. Missing, estimated or zero values (the
  * providers send 0 for bid/ask they do not have) are not available; nothing
  * is derived from the last price.
  */
 function _modalPriceText(stock, field, currency) {
-    const F = window.WolfeeFields;
-    const value = F.numberField(stock, field);
-    return value !== null && value > 0 ? `${value.toFixed(2)} ${currency}` : F.NOT_AVAILABLE;
+    return window.WolfeeFields.formatPrice(stock, field, currency);
 }
 
+/** Sets a key figure; "Not available" is set in the text face, not mono. */
 function _setModalText(id, text) {
     const el = document.getElementById(id);
-    if (el) el.textContent = text;
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('not-available', text === window.WolfeeFields.NOT_AVAILABLE);
 }
 
 function _volatilityText(stock) {
     const F = window.WolfeeFields;
-    const level = F.fieldValue(stock, 'volatility');
-    const pct = F.numberField(stock, 'volatility_pct');
+    const level = F.indicatorField(stock, 'volatility');
+    const pct = F.indicatorNumber(stock, 'volatility_pct');
     const parts = [];
     if (typeof level === 'string') parts.push(level);
     if (pct !== null) parts.push(`${pct.toFixed(1)}%`);
@@ -413,12 +387,12 @@ function _volatilityText(stock) {
 
 function _applyIndicatorsToModal(stock, currency) {
     const F = window.WolfeeFields;
-    _setModalText('stat-rsi', F.formatNumberField(stock, 'rsi', 1));
-    _setModalText('stat-ma20', F.formatNumberField(stock, 'ma_20', 2, ` ${currency}`));
+    _setModalText('stat-rsi', F.formatIndicatorField(stock, 'rsi', 1));
+    _setModalText('stat-ma20', F.formatIndicatorField(stock, 'ma_20', 2, ` ${currency}`));
     _setModalText('stat-volatility', _volatilityText(stock));
     _setModalText('stat-ind-asof', F.indicatorsAsOf(stock) || F.NOT_AVAILABLE);
 
-    const method = F.fieldValue(stock, 'indicator_method');
+    const method = F.indicatorField(stock, 'indicator_method');
     const methodEl = document.getElementById('stat-ind-method');
     if (methodEl) {
         methodEl.textContent = typeof method === 'string' ? `Method: ${method}` : '';
@@ -429,27 +403,26 @@ function _applyIndicatorsToModal(stock, currency) {
 function _applyStockToModal(stock, currency, isLive) {
     if (!currency) currency = getCurrencySymbol(stock.currency);
     const F = window.WolfeeFields;
-    const price = stock.price || 0;
 
+    _setModalText('stat-last', F.formatPrice(stock, 'price', currency));
     const lastEl = document.getElementById('stat-last');
-    if (lastEl) {
-        lastEl.textContent = `${price.toFixed(2)} ${currency}`;
-        if (isLive) {
-            // Flash green to indicate live price just arrived
-            lastEl.style.transition = 'color 0.3s';
-            lastEl.style.color = 'var(--success-color)';
-            setTimeout(() => { lastEl.style.color = ''; }, 1500);
-        }
+    if (lastEl && isLive) {
+        // Brief tint: the live price just arrived
+        lastEl.classList.add('is-flash');
+        setTimeout(() => lastEl.classList.remove('is-flash'), 1500);
     }
 
     document.getElementById('stat-symbol').textContent = (stock.symbol||'').replace('.IS', '');
     _setModalText('stat-bid', _modalPriceText(stock, 'bid', currency));
     _setModalText('stat-ask', _modalPriceText(stock, 'ask', currency));
 
+    // A null change_pct (no previous close) is not available, never +0.00%
+    _setModalText('stat-change', F.formatChange(stock, { style: 'signed' }));
     const changeEl = document.getElementById('stat-change');
     if (changeEl) {
-        changeEl.textContent = `${(stock.change_pct||0) >= 0 ? '+' : ''}${(stock.change_pct||0).toFixed(2)}%`;
-        changeEl.style.color = (stock.change_pct||0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const direction = F.changeDirection(stock);
+        changeEl.classList.toggle('is-gain', direction === 'up');
+        changeEl.classList.toggle('is-loss', direction === 'down');
     }
 
     _setModalText('stat-low', _modalPriceText(stock, 'day_low', currency));
@@ -460,12 +433,13 @@ function _applyStockToModal(stock, currency, isLive) {
     _setModalText('stat-vol-lot', formatNumber(stock.volume || 0));
     _applyIndicatorsToModal(stock, currency);
 
+    // Descriptive label: shown when there is one, no badge otherwise
     const predEl = document.getElementById('modal-prediction');
     if (predEl) {
         const prediction = F.fieldValue(stock, 'prediction');
         const hasLabel = typeof prediction === 'string';
-        predEl.textContent = hasLabel ? prediction : F.NOT_AVAILABLE;
-        predEl.style.color = hasLabel ? 'var(--text-primary)' : 'var(--text-muted)';
+        predEl.textContent = hasLabel ? prediction : '';
+        predEl.classList.toggle('hidden', !hasLabel);
     }
 }
 
@@ -549,7 +523,7 @@ window.askWolfeeAI = async function(symbol) {
     const aiSection = document.getElementById('ai-analysis-section');
     if (!aiSection) return;
     
-    aiSection.innerHTML = `<div class="ai-response"><div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;vertical-align:middle;"></div> <span style="vertical-align:middle;margin-left:10px;">Wolfee AI is analyzing ${esc(symbol.replace('.IS',''))}...</span></div>`;
+    aiSection.innerHTML = `<div class="ai-response is-loading" role="status"><span class="spinner" aria-hidden="true"></span><span>Wolfee AI is analysing ${esc(symbol.replace('.IS',''))}</span></div>`;
     
     try {
         const res = await fetch(`${API_URL}/api/ai/analyze/${encodeURIComponent(symbol)}`);
@@ -560,15 +534,8 @@ window.askWolfeeAI = async function(symbol) {
         renderAIResponse(response, data, 'analysis', AI_ANALYSIS_LABELS);
         aiSection.replaceChildren(response);
     } catch(e) {
-        aiSection.innerHTML = `<div class="ai-response" style="color:var(--danger-color)">Wolfee AI is temporarily offline. Please try again in a moment.</div>`;
+        aiSection.innerHTML = `<div class="inline-error" role="alert">Wolfee AI could not answer just now. Close this panel and try again in a moment.</div>`;
     }
-}
-
-function getRsiColor(rsi) {
-    if (!rsi) return 'var(--text-secondary)';
-    if (rsi < 30) return 'var(--success-color)';
-    if (rsi > 70) return 'var(--danger-color)';
-    return '#fbbf24';
 }
 
 function formatNumber(num) {
@@ -628,6 +595,8 @@ window.switchTab = function(tab) {
     const goldSection = document.getElementById('gold-section');
     const sectionHeader = document.querySelector('.section-header');
     const filterBtn = document.getElementById('filter-toggle-btn');
+    const mobileSearchbar = document.getElementById('mobile-searchbar');
+    const filterPopover = document.getElementById('filter-popover');
 
     hideEl(marketView);
     hideEl(portfolioView);
@@ -635,14 +604,18 @@ window.switchTab = function(tab) {
     hideEl(aiSection);
     hideEl(goldSection);
     hideEl(sectionHeader, true);
+    hideEl(mobileSearchbar);
+    if (filterPopover) filterPopover.classList.add('hidden');
     if (filterBtn) filterBtn.style.display = 'none';
 
     if (tab === 'market') {
+        showWithAnim(mobileSearchbar, null, 0);
         showWithAnim(sectionHeader, '', 0);
-        showWithAnim(aiSection, null, 50);
-        showWithAnim(goldSection, null, 100);
-        showWithAnim(marketView, null, 150);
-        if (filterBtn) filterBtn.style.display = 'block';
+        showWithAnim(aiSection, null, 0);
+        showWithAnim(goldSection, null, 0);
+        showWithAnim(marketView, null, 0);
+        if (filterBtn) filterBtn.style.display = '';
+        updateAIShowMore();
     } else if (tab === 'portfolio') {
         showWithAnim(portfolioView, null, 0);
         if (typeof loadPortfolio === 'function') {
@@ -657,11 +630,18 @@ window.switchTab = function(tab) {
 }
 
 window.openExportModal = function() {
-    document.getElementById('export-modal').classList.remove('hidden');
+    const modal = document.getElementById('export-modal');
+    _modalReturnFocus = document.activeElement;
+    const status = document.getElementById('export-status');
+    if (status) { status.textContent = ''; status.hidden = true; }
+    modal.classList.remove('hidden');
+    document.body.classList.add('no-scroll');
+    const closeBtn = modal.querySelector('.close-modal');
+    if (closeBtn) closeBtn.focus();
 }
 
 window.closeExportModal = function() {
-    document.getElementById('export-modal').classList.add('hidden');
+    if (!document.getElementById('export-modal').classList.contains('hidden')) closeModalWithAnim();
 }
 
 window.updatePortfolioButtonUI = function(symbol) {
@@ -672,35 +652,32 @@ window.updatePortfolioButtonUI = function(symbol) {
     const portfolio = typeof getPortfolio === 'function' ? getPortfolio() : [];
     const inPortfolio = portfolio.some(s => (s.symbol || s.ticker || '').toUpperCase().replace('.IS', '').trim() === cleanSym);
     
-    if (inPortfolio) {
-        btn.textContent = '− Remove from Watchlist';
-        btn.style.color = 'var(--danger-color)';
-        btn.style.borderColor = 'var(--danger-color)';
-    } else {
-        btn.textContent = '+ Add to Watchlist';
-        btn.style.color = 'var(--accent-color)';
-        btn.style.borderColor = 'var(--accent-color)';
-    }
+    btn.textContent = inPortfolio ? '− Remove from Watchlist' : '+ Add to Watchlist';
+    btn.classList.toggle('is-remove', inPortfolio);
 }
+
+const MODAL_CLOSE_MS = 150;
 
 function closeModalWithAnim() {
     const activeModals = document.querySelectorAll('.modal:not(.hidden)');
-    activeModals.forEach(m => {
-        const content = m.querySelector('.modal-content');
-        if (content) {
-            content.style.animation = 'slideUp 0.25s ease-in forwards';
-        }
-    });
-    
+    if (activeModals.length === 0) return;
+    activeModals.forEach(m => m.classList.add('is-closing'));
+
     setTimeout(() => {
         activeModals.forEach(m => {
             m.classList.add('hidden');
-            const content = m.querySelector('.modal-content');
-            if (content) content.style.animation = '';
+            m.classList.remove('is-closing');
         });
         document.body.classList.remove('no-scroll');
-    }, 240);
+        markSelectedCard(null);
+        if (_modalReturnFocus && document.contains(_modalReturnFocus)) _modalReturnFocus.focus();
+        _modalReturnFocus = null;
+    }, MODAL_CLOSE_MS);
 }
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.querySelector('.modal:not(.hidden)')) closeModalWithAnim();
+});
 
 document.querySelectorAll('.close-modal').forEach(btn => {
     btn.onclick = () => closeModalWithAnim();
@@ -724,4 +701,73 @@ window.toggleAICollapse = function() {
     const isCollapsed = body.classList.toggle('collapsed');
     if (chevron) chevron.classList.toggle('rotated', isCollapsed);
     if (header) header.setAttribute('aria-expanded', String(!isCollapsed));
+    updateAIShowMore();
 };
+
+// ---------- Market insight on small screens ----------
+// Below 768px the insight text starts clamped to two lines (CSS) with a
+// "Show more" button; the provenance line and the disclaimer stay visible.
+const MOBILE_QUERY = window.matchMedia('(max-width: 767px)');
+
+function updateAIShowMore() {
+    const card = document.getElementById('ai-section');
+    const text = document.querySelector('#ai-text .ai-response-text');
+    const btn = document.getElementById('ai-more-btn');
+    if (!card || !text || !btn) return;
+    const expanded = card.classList.contains('is-expanded');
+    const clipped = text.scrollHeight > text.clientHeight + 1;
+    btn.hidden = !MOBILE_QUERY.matches || (!expanded && !clipped);
+    btn.textContent = expanded ? 'Show less' : 'Show more';
+    btn.setAttribute('aria-expanded', String(expanded));
+}
+
+window.toggleAIMore = function() {
+    const card = document.getElementById('ai-section');
+    if (!card) return;
+    card.classList.toggle('is-expanded');
+    updateAIShowMore();
+};
+
+/** Adds the "Show more" button under the insight text rendered in `container`. */
+function addAIShowMore(container) {
+    const body = container.querySelector('.ai-response-text');
+    if (!body) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'ai-more-btn';
+    btn.className = 'link-btn ai-more-btn';
+    btn.setAttribute('aria-controls', 'ai-text');
+    btn.addEventListener('click', window.toggleAIMore);
+    body.after(btn);
+    updateAIShowMore();
+}
+
+MOBILE_QUERY.addEventListener('change', updateAIShowMore);
+
+// ---------- Account (mobile tab bar) ----------
+// Signed out: the sign-in dialog. Signed in: a sheet with the email and Log out.
+window.openAccount = function() {
+    if (!window.currentUser) {
+        if (typeof openAuthModal === 'function') openAuthModal('login');
+        return;
+    }
+    const sheet = document.getElementById('account-sheet');
+    if (!sheet) return;
+    sheet.classList.remove('hidden');
+    document.body.classList.add('no-scroll');
+    const firstButton = sheet.querySelector('.sheet-panel button');
+    if (firstButton) firstButton.focus();
+};
+
+window.closeAccountSheet = function() {
+    const sheet = document.getElementById('account-sheet');
+    if (!sheet || sheet.classList.contains('hidden')) return;
+    sheet.classList.add('hidden');
+    document.body.classList.remove('no-scroll');
+    const tab = document.getElementById('tab-account-m');
+    if (tab) tab.focus();
+};
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') window.closeAccountSheet();
+});

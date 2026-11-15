@@ -134,23 +134,34 @@
         const safeEmail = user ? escapeHTML(user.email) : '';
         const safeName = user ? escapeHTML(user.email.split('@')[0]) : '';
 
-        const loggedInHTML = user ? `
-            <div class="user-chip" id="user-profile-chip" title="${safeEmail}">
-                <span class="user-avatar">👤</span>
-                <span class="user-email-text">${safeName}</span>
-                <button class="icon-btn logout-btn" onclick="logoutUser()" title="Log out">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </button>
-            </div>
-        ` : `
-            <button class="nav-auth-btn gradient-btn" onclick="openAuthModal('login')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                Sign In
+        const signInHTML = `
+            <button type="button" class="nav-auth-btn gradient-btn" onclick="openAuthModal('login')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                Sign in
             </button>
         `;
 
-        if (desktopContainer) desktopContainer.innerHTML = loggedInHTML;
-        if (mobileContainer) mobileContainer.innerHTML = loggedInHTML;
+        // Header (desktop): name and a log-out icon button
+        const desktopHTML = user ? `
+            <div class="user-chip" id="user-profile-chip" title="${safeEmail}">
+                <span class="user-email-text">${safeName}</span>
+                <button type="button" class="icon-btn logout-btn" onclick="logoutUser()" title="Log out" aria-label="Log out">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
+        ` : signInHTML;
+
+        // Account sheet (mobile): the full email and a Log out button
+        const mobileHTML = user ? `
+            <div class="account-details">
+                <span class="account-label">Signed in as</span>
+                <span class="account-email">${safeEmail}</span>
+            </div>
+            <button type="button" class="btn-secondary account-logout" onclick="logoutUser(); if (typeof closeAccountSheet === 'function') closeAccountSheet();">Log out</button>
+        ` : signInHTML;
+
+        if (desktopContainer) desktopContainer.innerHTML = desktopHTML;
+        if (mobileContainer) mobileContainer.innerHTML = mobileHTML;
 
         // If on portfolio tab, re-render portfolio to show cloud watchlist vs session
         if (typeof renderPortfolio === 'function') {
@@ -164,13 +175,21 @@
     window.openAuthModal = function (tab = 'login') {
         const modal = document.getElementById('auth-modal');
         if (!modal) return;
+        if (modal.classList.contains('hidden') && typeof _modalReturnFocus !== 'undefined') {
+            _modalReturnFocus = document.activeElement;
+        }
         modal.classList.remove('hidden');
+        document.body.classList.add('no-scroll');
         switchAuthTab(tab);
+        // Focus the first field of the open form
+        const firstField = modal.querySelector('.auth-form-view:not(.hidden) input:not([type="hidden"])');
+        if (firstField) firstField.focus();
     };
 
     window.closeAuthModal = function () {
         const modal = document.getElementById('auth-modal');
-        if (modal) modal.classList.add('hidden');
+        if (modal && !modal.classList.contains('hidden') && typeof closeModalWithAnim === 'function') closeModalWithAnim();
+        else if (modal) modal.classList.add('hidden');
         clearAuthAlerts();
     };
 
@@ -181,6 +200,7 @@
         const targetBtn = document.getElementById(`auth-tab-${tab}`);
         const targetView = document.getElementById(`${tab}-form`) || document.getElementById(`auth-view-${tab}`);
 
+        document.querySelectorAll('.auth-tab-btn').forEach(btn => btn.setAttribute('aria-pressed', String(btn === targetBtn)));
         if (targetBtn) targetBtn.classList.add('active');
         if (targetView) targetView.classList.remove('hidden');
 
@@ -188,20 +208,20 @@
         const subEl = document.getElementById('auth-modal-subtitle');
         if (titleEl && subEl) {
             if (tab === 'login') {
-                titleEl.textContent = 'Welcome Back';
-                subEl.textContent = 'Sign in to access your cloud watchlist and live analytics.';
+                titleEl.textContent = 'Sign in';
+                subEl.textContent = 'Sign in to sync your watchlist across devices.';
             } else if (tab === 'register') {
-                titleEl.textContent = 'Create Account';
-                subEl.textContent = 'Create a secure Wolfee account to sync your portfolio anywhere.';
+                titleEl.textContent = 'Create an account';
+                subEl.textContent = 'An account keeps your watchlist on every device you sign in on.';
             } else if (tab === 'forgot') {
-                titleEl.textContent = 'Reset Password';
-                subEl.textContent = 'Enter your account email to receive secure recovery instructions.';
+                titleEl.textContent = 'Reset your password';
+                subEl.textContent = 'Enter the email address of your account.';
             } else if (tab === 'resend') {
-                titleEl.textContent = 'Resend Verification';
-                subEl.textContent = 'Enter your email to request a new account activation link.';
+                titleEl.textContent = 'Resend verification email';
+                subEl.textContent = 'We send a new activation link to this address.';
             } else if (tab === 'reset') {
-                titleEl.textContent = 'New Password';
-                subEl.textContent = 'Create a strong, secure password for your Wolfee account.';
+                titleEl.textContent = 'Set a new password';
+                subEl.textContent = 'Choose a password of at least 10 characters.';
             }
         }
 
@@ -213,6 +233,7 @@
         if (!alertEl) return;
         alertEl.textContent = message;
         alertEl.className = 'auth-alert ' + (isSuccess ? 'auth-alert-success' : 'auth-alert-error');
+        alertEl.setAttribute('role', isSuccess ? 'status' : 'alert');
         alertEl.classList.remove('hidden');
     }
 

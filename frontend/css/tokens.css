@@ -1,0 +1,206 @@
+/* ============================================================
+   Wolfee design tokens
+   ------------------------------------------------------------
+   The single source of colour, type, spacing, radius, shadow
+   and motion values. No other file declares a colour literal:
+   everything else uses var(--...).
+
+   Contrast (WCAG 2.2 relative luminance; AA = 4.5:1 text,
+   3:1 large text and UI parts):
+     on --color-surface #FDFEFF
+       text            #0F1B2D  17.1:1
+       text-secondary  #5B6B7F   5.4:1  (also placeholders; 5.1:1 on --color-bg)
+       accent          #1F4FD8   6.6:1  (links, outline buttons)
+       kpi navy        #0B2545  15.2:1
+       gain            #137A4B   5.3:1
+       loss / error    #B42318   6.5:1
+       border-strong   #8592A3   3.1:1  (input outlines, 1.4.11)
+     badges
+       gain on gain-subtle 4.8:1, loss on loss-subtle 5.7:1,
+       accent on accent-subtle 5.7:1, text-secondary on sunken 4.8:1
+     on --color-accent #1F4FD8
+       text-inverse    #FDFEFF   6.6:1  (primary buttons; 8.2:1 on hover)
+     on --color-tint #EEF3FF (AI panel, table headers, hover, selected)
+       text            #0F1B2D  15.6:1
+       text-secondary  #5B6B7F   4.9:1
+       accent          #1F4FD8   6.0:1
+       gain / loss               4.8:1 / 5.9:1
+     on --color-header-bg #0B2545 (navy header)
+       header-text     #FFFFFF  15.4:1
+       header-muted    #B8C7E0   9.0:1  (inactive nav items)
+       header-accent   #5B8DEF   4.8:1  (active underline, toggle on)
+       border-strong   #8592A3   4.9:1  (toggle off)
+   Breakpoints (media queries cannot read custom properties, so
+   the values live here as documentation): single column below
+   768px; designed mobile layout checked at 360, 390 and 430px.
+   ============================================================ */
+
+/* ---------- Fonts: IBM Plex, self-hosted, SIL OFL 1.1 (fonts/OFL.txt) ---------- */
+/* latin-ext carries Turkish (ğ ş İ) and ₺ (U+20BA); ı (U+0131) is in latin */
+
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400; font-display: swap;
+    src: url('../fonts/ibm-plex-sans-latin-ext-400-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400; font-display: swap;
+    src: url('../fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 500; font-display: swap;
+    src: url('../fonts/ibm-plex-sans-latin-ext-500-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 500; font-display: swap;
+    src: url('../fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 600; font-display: swap;
+    src: url('../fonts/ibm-plex-sans-latin-ext-600-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 600; font-display: swap;
+    src: url('../fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap;
+    src: url('../fonts/ibm-plex-mono-latin-ext-400-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap;
+    src: url('../fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap;
+    src: url('../fonts/ibm-plex-mono-latin-ext-500-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap;
+    src: url('../fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root {
+    /* ---------- Colour: neutrals ---------- */
+    --color-bg:               #F5F7FA;  /* page background */
+    --color-surface:          #FDFEFF;  /* panels, cards, header, modals */
+    --color-surface-sunken:   #EEF2F6;  /* table header rows, skeleton blocks, hover on rows */
+    --color-surface-raised:   #FFFFFF;  /* inputs, popovers */
+    --color-border:           #DDE3EA;  /* 1px panel and row dividers */
+    --color-border-strong:    #8592A3;  /* input outlines (3:1 non-text contrast) */
+    --color-text:             #0F1B2D;  /* body and headings */
+    --color-text-secondary:   #5B6B7F;  /* labels, captions, placeholders */
+    --color-text-inverse:     #FDFEFF;  /* text on accent fills */
+
+    /* ---------- Colour: the one accent ---------- */
+    --color-accent:           #1F4FD8;  /* primary buttons, links, active nav, focus */
+    --color-accent-hover:     #1A43B8;
+    --color-accent-active:    #153896;
+    --color-accent-subtle:    #E8EEFC;  /* info badges */
+    --color-accent-border:    #B9C9F3;  /* selected card outline, hover border */
+    --color-tint:             #EEF3FF;  /* AI panel, selected card, table headers, row/card hover */
+
+    /* ---------- Colour: navy header and summary figures ---------- */
+    --color-header-bg:        #0B2545;
+    --color-header-text:      #FFFFFF;
+    --color-header-muted:     #B8C7E0;  /* inactive nav items on navy */
+    --color-header-accent:    #5B8DEF;  /* active underline / toggle on navy (4.8:1) */
+    --color-header-divider:   rgba(184, 199, 224, 0.24);
+    --color-header-error:     #FCA5A5;  /* feed error dot on navy; the label also says "Reconnecting" */
+    --color-kpi:              #0B2545;  /* portfolio value, total P/L */
+
+    /* ---------- Colour: charts (blue scale) ---------- */
+    --chart-line:             #1F4FD8;
+    --chart-area:             rgba(31, 79, 216, 0.10);
+    --chart-grid:             #DDE3EA;
+    --chart-axis:             #5B6B7F;
+
+    /* ---------- Colour: gains and losses only ---------- */
+    --color-gain:             #137A4B;
+    --color-gain-subtle:      #E7F4EE;
+    --color-loss:             #B42318;
+    --color-loss-subtle:      #FCEBEA;
+
+    /* ---------- Colour: form validation (not decoration) ---------- */
+    --color-error:            #B42318;
+    --color-error-subtle:     #FCEBEA;
+
+    /* ---------- Colour: overlays and shadows (blue-grey, never black) ---------- */
+    --color-overlay:          rgba(15, 27, 45, 0.48);  /* modal backdrop */
+    --color-shadow:           rgba(15, 27, 45, 0.08);
+    --color-skeleton-shine:   rgba(253, 254, 255, 0.6);
+
+    /* ---------- Typography ---------- */
+    --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+    --font-numeric: var(--font-mono);   /* prices, percentages, RSI: always tabular */
+
+    --text-2xs:  0.6875rem;  /* 11px  tab bar labels on screens under 380px only */
+    --text-xs:   0.75rem;    /* 12px  badges, captions */
+    --text-sm:   0.8125rem;  /* 13px  labels, table cells */
+    --text-base: 0.875rem;   /* 14px  body */
+    --text-md:   1rem;       /* 16px  card titles, prices */
+    --text-lg:   1.25rem;    /* 20px  section titles */
+    --text-xl:   1.5rem;     /* 24px  page titles */
+    --text-kpi:  1.75rem;    /* 28px  summary figures (Plex Mono) */
+    --text-input-mobile: 1rem; /* 16px  inputs on touch screens (no iOS zoom) */
+
+    --weight-regular:  400;
+    --weight-medium:   500;
+    --weight-semibold: 600;
+
+    --leading-tight:  1.25;
+    --leading-normal: 1.5;
+    --tracking-caps:  0.04em;  /* uppercase labels only */
+
+    /* ---------- Spacing (4px grid) ---------- */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 32px;
+    --space-8: 48px;
+
+    /* ---------- Shape lock ---------- */
+    --radius-panel:  8px;   /* panels, cards, modals */
+    --radius-input:  6px;
+    --radius-button: 6px;
+    --radius-badge:  4px;
+    --radius-round:  999px; /* toggles and status dots only */
+
+    --border-width: 1px;
+    --border: var(--border-width) solid var(--color-border);
+    --border-strong: var(--border-width) solid var(--color-border-strong);
+
+    /* ---------- Elevation: borders first, shadows subtle ---------- */
+    --shadow-none:    none;
+    --shadow-popover: 0 4px 12px var(--color-shadow);   /* menus, popovers */
+    --shadow-modal:   0 12px 32px var(--color-shadow);  /* dialogs */
+    --focus-ring:     0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent);
+    --focus-ring-on-navy: 0 0 0 2px var(--color-header-bg), 0 0 0 4px var(--color-header-accent);
+    --section-bar:    3px;  /* blue accent bar left of section titles */
+
+    /* ---------- Layout ---------- */
+    --header-height:   64px;
+    --header-height-mobile: 56px;
+    --tabbar-height:   56px;  /* mobile bottom tab bar, plus safe-area inset */
+    --touch-target:    44px;
+    --content-max:     1360px;
+    --gutter:          var(--space-6);
+    --gutter-mobile:   var(--space-4);
+    --card-min-width:  260px;
+
+    /* ---------- Motion: hover / active / focus only ---------- */
+    --duration-fast: 150ms;
+    --duration-base: 200ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0.38, 0.9);  /* Carbon productive */
+
+    /* ---------- Legacy names still read by JS and inline HTML ----------
+       Kept so the current scripts render correctly; removed page by page
+       in phase B once the markup uses classes instead. */
+    --text-primary:   var(--color-text);
+    --text-secondary: var(--color-text-secondary);
+    --text-muted:     var(--color-text-secondary);
+    --success-color:  var(--color-gain);
+    --danger-color:   var(--color-loss);
+    --accent-color:   var(--color-accent);
+    --nexa-accent:    var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --duration-fast: 0ms;
+        --duration-base: 0ms;
+    }
+}

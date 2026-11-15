@@ -8,9 +8,18 @@ import {
     numberField,
     formatNumberField,
     indicatorsAsOf,
+    indicatorField,
+    indicatorNumber,
+    formatIndicatorField,
     formatTimestamp,
     aiProvenance,
     splitLabelledLines,
+    changeDirection,
+    formatChange,
+    formatPrice,
+    directionClass,
+    parseTimestamp,
+    summarizeChanges,
 } from '../js/core/market-fields.js';
 
 test('fieldValue returns null for null, undefined, blank strings and non-finite numbers', () => {
@@ -70,6 +79,39 @@ test('indicatorsAsOf accepts only a real YYYY-MM-DD date', () => {
     for (const value of ['2026-11-13T10:00:00Z', '2026-13-01', '2026-02-30', '13.11.2026', '<b>x</b>', 20261113, null]) {
         assert.equal(indicatorsAsOf({ indicators_as_of: value }), null, String(value));
     }
+});
+
+test('indicator values are shown only when indicators_as_of is a real date (REQ-29)', () => {
+    // The workers' single-day estimates carry no indicators_as_of
+    const estimate = { rsi: 53.3, ma_20: 16.5, volatility: 'LOW', volatility_pct: 12.5 };
+    const computed = { ...estimate, indicators_as_of: '2026-11-13' };
+    const badDate = { ...estimate, indicators_as_of: '2026-02-30' };
+
+    for (const field of ['rsi', 'ma_20', 'volatility_pct']) {
+        assert.equal(indicatorNumber(estimate, field), null, field);
+        assert.equal(indicatorNumber(badDate, field), null, field);
+    }
+    assert.equal(indicatorField(estimate, 'volatility'), null);
+
+    assert.equal(indicatorNumber(computed, 'rsi'), 53.3);
+    assert.equal(indicatorNumber(computed, 'ma_20'), 16.5);
+    assert.equal(indicatorNumber(computed, 'volatility_pct'), 12.5);
+    assert.equal(indicatorField(computed, 'volatility'), 'LOW');
+});
+
+test('indicator values still respect null and estimated_fields when dated', () => {
+    const stock = { rsi: null, ma_20: 16.5, indicators_as_of: '2026-11-13', estimated_fields: ['ma_20'] };
+
+    assert.equal(indicatorNumber(stock, 'rsi'), null);
+    assert.equal(indicatorNumber(stock, 'ma_20'), null);
+});
+
+test('formatIndicatorField shows Not available without indicators_as_of', () => {
+    const stock = { rsi: 41.27, ma_20: 18.234 };
+
+    assert.equal(formatIndicatorField(stock, 'rsi', 1), NOT_AVAILABLE);
+    assert.equal(formatIndicatorField({ ...stock, indicators_as_of: '2026-11-13' }, 'rsi', 1), '41.3');
+    assert.equal(formatIndicatorField({ ...stock, indicators_as_of: '2026-11-13' }, 'ma_20', 2, ' ₺'), '18.23 ₺');
 });
 
 test('formatTimestamp shows the instant in the requested time zone', () => {
@@ -162,4 +204,88 @@ test('splitLabelledLines collapses runs of blank lines and trims the ends', () =
         { label: null, text: '' },
         { label: null, text: 'B' },
     ]);
+});
+
+test('changeDirection reads up, down and flat, and null when change_pct is not available', () => {
+    assert.equal(changeDirection({ change_pct: 1.25 }), 'up');
+    assert.equal(changeDirection({ change_pct: -0.4 }), 'down');
+    assert.equal(changeDirection({ change_pct: 0 }), 'flat');
+    assert.equal(changeDirection({ change_pct: '0.50' }), 'up');
+    assert.equal(changeDirection({ change_pct: null }), null);
+    assert.equal(changeDirection({}), null);
+    assert.equal(changeDirection({ selling: 1, pct: -2 }, 'pct'), 'down');
+});
+
+test('formatChange shows a null change_pct as not available, never as 0.00%', () => {
+    assert.equal(formatChange({ change_pct: null }), NOT_AVAILABLE);
+    assert.equal(formatChange({}), NOT_AVAILABLE);
+    assert.equal(formatChange({ change_pct: null }, { style: 'signed' }), NOT_AVAILABLE);
+});
+
+test('formatChange writes an arrow for the direction, or a sign in the signed style', () => {
+    assert.equal(formatChange({ change_pct: 1.234 }), '▲ 1.23%');
+    assert.equal(formatChange({ change_pct: -0.5 }), '▼ 0.50%');
+    assert.equal(formatChange({ change_pct: 0 }), '0.00%');
+    assert.equal(formatChange({ change_pct: 2 }, { style: 'signed' }), '+2.00%');
+    assert.equal(formatChange({ change_pct: -2 }, { style: 'signed' }), '-2.00%');
+    assert.equal(formatChange({ change_pct: 0 }, { style: 'signed' }), '0.00%');
+    assert.equal(formatChange({ change_pct: 1.26 }, { digits: 1 }), '▲ 1.3%');
+    assert.equal(formatChange({ pct: -3 }, { field: 'pct' }), '▼ 3.00%');
+});
+
+test('formatPrice shows missing and zero prices as not available', () => {
+    assert.equal(formatPrice({ price: 12.5 }, 'price', '₺'), '12.50 ₺');
+    assert.equal(formatPrice({ price: '7.125' }, 'price', '$', 3), '7.125 $');
+    assert.equal(formatPrice({ price: 0 }, 'price', '₺'), NOT_AVAILABLE);
+    assert.equal(formatPrice({ price: null }, 'price', '₺'), NOT_AVAILABLE);
+    assert.equal(formatPrice({ price: -1 }, 'price', '₺'), NOT_AVAILABLE);
+});
+
+test('directionClass maps up to gain and down to loss; flat and unknown are neutral', () => {
+    assert.equal(directionClass('up'), 'is-gain');
+    assert.equal(directionClass('down'), 'is-loss');
+    assert.equal(directionClass('flat'), '');
+    assert.equal(directionClass(null), '');
+});
+
+test('parseTimestamp reads a timestamp without a zone as UTC', () => {
+    assert.equal(parseTimestamp('2026-11-15T17:11:00').toISOString(), '2026-11-15T17:11:00.000Z');
+    assert.equal(parseTimestamp('2026-11-15T20:11:00+03:00').toISOString(), '2026-11-15T17:11:00.000Z');
+    assert.equal(parseTimestamp('2026-11-15T17:11:00.250Z').toISOString(), '2026-11-15T17:11:00.250Z');
+});
+
+test('parseTimestamp returns null for anything that is not an ISO timestamp', () => {
+    for (const value of [null, undefined, '', 'yesterday', '2026-11-15', 42, '2026-13-45T99:00:00']) {
+        assert.equal(parseTimestamp(value), null, String(value));
+    }
+});
+
+test('summarizeChanges counts a null change as unknown, never as flat', () => {
+    const summary = summarizeChanges([
+        { symbol: 'A', change_pct: 2 },
+        { symbol: 'B', change_pct: -1 },
+        { symbol: 'C', change_pct: 0 },
+        { symbol: 'D', change_pct: null },
+        { symbol: 'E' },
+    ]);
+    assert.equal(summary.up_count, 1);
+    assert.equal(summary.down_count, 1);
+    assert.equal(summary.flat_count, 1);
+    assert.equal(summary.unknown_count, 2);
+    assert.equal(summary.avg_change_pct, 0.33);
+    assert.equal(summary.biggest_mover.symbol, 'A');
+});
+
+test('summarizeChanges has no average and no mover when no change is known', () => {
+    const summary = summarizeChanges([{ symbol: 'A', change_pct: null }, { symbol: 'B', change_pct: '' }]);
+    assert.equal(summary.avg_change_pct, null);
+    assert.equal(summary.biggest_mover, null);
+    assert.equal(summary.unknown_count, 2);
+    assert.deepEqual(summarizeChanges([]), { up_count: 0, down_count: 0, flat_count: 0, unknown_count: 0, avg_change_pct: null, biggest_mover: null });
+});
+
+test('summarizeChanges reads decimal strings and picks the largest absolute move', () => {
+    const summary = summarizeChanges([{ symbol: 'A', change_pct: '1.5' }, { symbol: 'B', change_pct: -3.3 }]);
+    assert.equal(summary.biggest_mover.symbol, 'B');
+    assert.equal(summary.avg_change_pct, -0.9);
 });

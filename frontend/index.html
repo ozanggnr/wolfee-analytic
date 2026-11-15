@@ -3,112 +3,73 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Wolfee Analytics — Real-time stock market analysis, AI-powered insights, and portfolio tracking for TR and global markets.">
-    <meta name="theme-color" content="#0C0C0C">
-    <title>Wolfee Analytics — Real-Time Market Intelligence</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Wolfee Analytics: market data, indicators and watchlists for BIST and global markets.">
+    <meta name="theme-color" content="#0B2545">
+    <title>Wolfee Analytics</title>
 
-    <!-- Google Fonts: Kanit -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-
-    <link rel="stylesheet" href="style.css?v=15.4">
+    <!-- Self-hosted IBM Plex (fonts/, OFL-1.1); tokens first, then base and page styles -->
+    <link rel="stylesheet" href="css/tokens.css?v=16.0">
+    <link rel="stylesheet" href="css/base.css?v=16.0">
+    <link rel="stylesheet" href="css/market.css?v=16.0">
+    <link rel="stylesheet" href="css/modal.css?v=16.0">
+    <link rel="stylesheet" href="css/watchlist.css?v=16.0">
+    <link rel="stylesheet" href="css/auth.css?v=16.0">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
 
 <body>
-    <!-- ===== LOADER ===== -->
-    <div id="loader">
-        <div class="loader-inner">
-            <div class="spinner"></div>
-            <span class="loader-text">WOLFEE<span class="loader-dot">.</span></span>
-        </div>
-    </div>
+    <a class="skip-link" href="#main-content">Skip to content</a>
 
-    <!-- ===== FLOATING NAVBAR (NexaCore style) ===== -->
-    <div id="navbar-wrapper">
-        <nav id="main-nav">
-            <!-- Logo -->
-            <a href="./index.html" class="nav-logo" style="text-decoration: none;">
-                <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; padding: 4px; background: rgba(200,111,255,0.1); border: 1px solid rgba(200,111,255,0.3); border-radius: 50%;">
-                  <defs>
-                    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stop-color="#c86fff" />
-                      <stop offset="100%" stop-color="#1c4eff" />
-                    </linearGradient>
-                  </defs>
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+    <!-- ===== LOADER (kept for the scripts; skeleton cards show progress) ===== -->
+    <div id="loader" class="hidden" aria-hidden="true"></div>
+
+    <!-- ===== HEADER ===== -->
+    <header id="navbar-wrapper">
+        <nav id="main-nav" aria-label="Main">
+            <a href="./index.html" class="nav-logo" aria-label="Wolfee Analytics home">
+                <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
                 <span class="nav-logo-text">Wolfee<span class="nav-logo-accent">.</span></span>
                 <span class="alpha-badge">Alpha</span>
             </a>
 
-            <!-- Desktop Nav Links -->
+            <!-- Desktop navigation -->
             <div class="nav-links hidden-mobile">
-                <button class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
-                <button class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Portfolio</button>
-                <button class="nav-link tab-btn" id="tab-opportunities" onclick="switchTab('opportunities')">Opportunities</button>
+                <button type="button" class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
+                <button type="button" class="nav-link tab-btn" id="tab-opportunities" onclick="switchTab('opportunities')">Opportunities</button>
+                <button type="button" class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Watchlist</button>
             </div>
 
-            <!-- Desktop Right Controls -->
+            <!-- Desktop controls -->
             <div class="nav-right hidden-mobile">
-                <!-- Search & Filter Group -->
                 <div class="nav-search-group">
                     <div class="search-container">
-                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                        <input type="text" id="search-input" placeholder="Search stocks..." autocomplete="off">
-                        <button id="filter-toggle-btn" class="icon-btn" onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        <label for="search-input" class="sr-only">Search symbol or name</label>
+                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                        <input type="text" id="search-input" placeholder="Search symbol or name" autocomplete="off">
+                        <button type="button" id="filter-toggle-btn" class="icon-btn" data-filter-toggle onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" title="Filters" aria-label="Filters" aria-controls="filter-popover">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                         </button>
-                        <!-- Filter Popover -->
-                        <div id="filter-popover" class="filter-popover hidden">
-                            <h3 style="margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--nexa-accent);">Filter Market</h3>
-                            <div class="filter-grid-layout">
-                                <div class="filter-group">
-                                    <label>Price Range (₺)</label>
-                                    <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                                        <input type="number" id="filter-price-min" class="filter-input-small" placeholder="Min">
-                                        <input type="number" id="filter-price-max" class="filter-input-small" placeholder="Max">
-                                    </div>
-                                </div>
-                                <div class="filter-group">
-                                    <label>Change % Range</label>
-                                    <div class="row-inputs" style="display:flex; gap:0.5rem;">
-                                        <input type="number" id="filter-change-min" class="filter-input-small" placeholder="Min" step="0.1">
-                                        <input type="number" id="filter-change-max" class="filter-input-small" placeholder="Max" step="0.1">
-                                    </div>
-                                </div>
-                                <div class="filter-group">
-                                    <label>Min Volume</label>
-                                    <input type="number" id="filter-vol-min" class="filter-input-small" placeholder="e.g. 100000">
-                                </div>
-                            </div>
-                            <div style="margin-top:0.75rem; display: flex; gap: 0.5rem;">
-                                <button onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply Filters</button>
-                                <button onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
-                            </div>
-                        </div>
-                        <div id="search-results" class="hidden"></div>
+                        <div id="search-results" class="search-results hidden"></div>
                     </div>
                 </div>
 
                 <div class="nav-divider"></div>
 
-                <!-- Market & Status Controls Group -->
                 <div class="nav-status-group">
-                    <!-- Region Toggle -->
-                    <div class="region-toggle-wrapper" title="Switch Market (TR / Global)">
+                    <div class="region-toggle-wrapper" title="Switch market (TR / Global)">
                         <span id="region-label" class="region-label">TR</span>
                         <label class="switch">
+                            <span class="sr-only">Show global markets</span>
                             <input type="checkbox" id="region-toggle" onchange="toggleRegion(this.checked)">
                             <span class="slider round"></span>
                         </label>
                     </div>
 
-                    <!-- Live Status -->
-                    <div id="live-status" class="live-status" title="Data Feed Live">
+                    <div id="live-status" class="live-status" title="Data feed status">
                         <span id="live-dot" class="live-dot"></span>
                         <span id="live-label">Live</span>
                     </div>
@@ -116,223 +77,257 @@
 
                 <div class="nav-divider"></div>
 
-                <!-- Auth Status / Sign In Button -->
                 <div id="nav-auth-container" class="nav-auth-wrap"></div>
             </div>
 
-            <!-- Mobile Right: quick controls & hamburger -->
+            <!-- Mobile header: logo and market switch; navigation is in the tab bar -->
             <div class="nav-mobile-right hidden-desktop">
-                <!-- Direct Mobile Region Switch -->
-                <div class="region-toggle-wrapper mobile-topbar-region" title="Switch Market">
+                <div class="region-toggle-wrapper mobile-topbar-region" title="Switch market (TR / Global)">
                     <span id="region-label-bar" class="region-label">TR</span>
                     <label class="switch">
+                        <span class="sr-only">Show global markets</span>
                         <input type="checkbox" id="region-toggle-bar" onchange="toggleRegion(this.checked)">
                         <span class="slider round"></span>
                     </label>
                 </div>
-
-                <!-- Hamburger -->
-                <button class="hamburger-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Open menu" aria-expanded="false">
-                    <span></span><span></span><span></span>
-                </button>
             </div>
         </nav>
-    </div>
+    </header>
 
-    <!-- Mobile Menu Drawer -->
-    <div id="mobile-menu" class="mobile-menu" aria-hidden="true">
-        <div class="mobile-menu-inner">
-            <div class="mobile-menu-header">
-                <div class="mobile-menu-logo">
-                    <svg class="nav-logo-img" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-m)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; padding: 4px; background: rgba(200,111,255,0.1); border: 1px solid rgba(200,111,255,0.3); border-radius: 50%;">
-                      <defs>
-                        <linearGradient id="logo-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stop-color="#c86fff" />
-                          <stop offset="100%" stop-color="#1c4eff" />
-                        </linearGradient>
-                      </defs>
-                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                    </svg>
-                    <span>Wolfee<span style="color:var(--nexa-accent)">.</span></span>
-                </div>
-                <button class="mobile-menu-close" onclick="toggleMobileMenu()" aria-label="Close menu">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-            </div>
-            <!-- Mobile Search -->
-            <div class="mobile-menu-search-wrap">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                <input type="text" id="mobile-menu-search" placeholder="Search stocks..." autocomplete="off" class="mobile-menu-search-input">
-                <div id="mobile-search-results" class="mobile-search-results hidden"></div>
-            </div>
-            <nav class="mobile-nav-links">
-                <button class="mobile-nav-link tab-btn active" id="tab-market-m" onclick="switchTab('market'); toggleMobileMenu()">📈 Market</button>
-                <button class="mobile-nav-link tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio'); toggleMobileMenu()">💼 Portfolio</button>
-                <button class="mobile-nav-link tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities'); toggleMobileMenu()">🎯 Opportunities</button>
-            </nav>
-            <div class="mobile-menu-controls">
-                <div class="mobile-controls-row">
-                    <div class="region-toggle-wrapper">
-                        <span id="region-label-m" class="region-label">TR</span>
-                        <label class="switch">
-                            <input type="checkbox" id="region-toggle-m" onchange="toggleRegion(this.checked)">
-                            <span class="slider round"></span>
-                        </label>
+    <!-- Market filters: a popover under the header on desktop, a bottom sheet on mobile -->
+    <div id="filter-popover" class="filter-popover hidden" role="dialog" aria-labelledby="filter-title">
+        <h2 id="filter-title" class="filter-title">Filter market</h2>
+        <div class="filter-grid-layout">
+            <fieldset class="filter-group">
+                <legend>Price range (₺)</legend>
+                <div class="row-inputs">
+                    <div class="field">
+                        <label for="filter-price-min">Minimum</label>
+                        <input type="number" id="filter-price-min" class="filter-input-small" inputmode="decimal">
                     </div>
-                    <div id="live-status-m" class="live-status">
-                        <span class="live-dot"></span>
-                        <span id="live-label-m">Live Feed</span>
+                    <div class="field">
+                        <label for="filter-price-max">Maximum</label>
+                        <input type="number" id="filter-price-max" class="filter-input-small" inputmode="decimal">
                     </div>
                 </div>
-                <div id="mobile-auth-container" class="mobile-auth-wrap"></div>
+            </fieldset>
+            <fieldset class="filter-group">
+                <legend>Change today (%)</legend>
+                <div class="row-inputs">
+                    <div class="field">
+                        <label for="filter-change-min">Minimum</label>
+                        <input type="number" id="filter-change-min" class="filter-input-small" step="0.1" inputmode="decimal">
+                    </div>
+                    <div class="field">
+                        <label for="filter-change-max">Maximum</label>
+                        <input type="number" id="filter-change-max" class="filter-input-small" step="0.1" inputmode="decimal">
+                    </div>
+                </div>
+            </fieldset>
+            <div class="filter-group field">
+                <label for="filter-vol-min">Minimum volume</label>
+                <input type="number" id="filter-vol-min" class="filter-input-small" inputmode="numeric">
             </div>
         </div>
+        <div class="filter-actions">
+            <button type="button" onclick="if(typeof applyFilters === 'function') applyFilters()" class="filter-apply-btn">Apply filters</button>
+            <button type="button" onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
+        </div>
     </div>
-    <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" onclick="toggleMobileMenu()"></div>
 
     <!-- ===== MAIN CONTENT ===== -->
     <div class="container">
-        <main>
-            <!-- Section Label & Ticker -->
-            <div class="section-header">
-                <div class="section-badge">
-                    <span class="section-badge-dot"></span>
-                    Real-Time Intelligence
+        <main id="main-content" tabindex="-1">
+            <!-- Mobile: search and filters in one bar, sticky under the header -->
+            <div id="mobile-searchbar" class="mobile-searchbar">
+                <div class="search-field">
+                    <label for="mobile-menu-search" class="sr-only">Search symbol or name</label>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                    <input type="text" id="mobile-menu-search" placeholder="Search symbol or name" autocomplete="off">
+                    <div id="mobile-search-results" class="search-results hidden"></div>
                 </div>
-                <h2 class="section-heading hero-heading">Market<br>Intelligence</h2>
-                
-                <!-- Exchange Ticker integrated below header texts -->
+                <button type="button" class="icon-btn" data-filter-toggle onclick="if(typeof toggleFilterPopover === 'function') toggleFilterPopover()" aria-label="Filters" aria-controls="filter-popover">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                </button>
+            </div>
+
+            <!-- Page title and exchange rates -->
+            <div class="section-header">
+                <div class="section-badge">BIST and global markets</div>
+                <h1 class="section-heading hero-heading">Market overview</h1>
                 <div id="exchange-ticker-wrapper" class="exchange-ticker-wrapper">
-                    <div id="exchange-ticker" class="exchange-ticker"></div>
+                    <div id="exchange-ticker" class="exchange-ticker" aria-label="Exchange rates"></div>
                 </div>
             </div>
 
-            <!-- AI Section -->
-            <div id="ai-section" class="ai-card hidden">
-                <div class="ai-header ai-header-toggle" onclick="toggleAICollapse()" role="button" tabindex="0" aria-expanded="true">
+            <!-- AI market insight -->
+            <section id="ai-section" class="ai-card hidden" aria-labelledby="ai-title">
+                <div class="ai-header ai-header-toggle" onclick="toggleAICollapse()" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleAICollapse(); }" role="button" tabindex="0" aria-expanded="true" aria-controls="ai-body">
                     <div class="ai-header-left">
-                        <div class="ai-icon-ring">🐺</div>
                         <div class="ai-title-group">
-                            <span class="ai-title-text">Wolfee AI Protocol</span>
-                            <span class="ai-badge">LIVE INSIGHT</span>
+                            <h2 class="ai-title-text" id="ai-title">Market insight</h2>
+                            <span class="ai-badge">AI generated</span>
                         </div>
                     </div>
                     <div class="ai-header-right">
-                        <span class="ai-chevron" id="ai-chevron">&#8964;</span>
+                        <svg class="ai-chevron" id="ai-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
                     </div>
                 </div>
                 <div id="ai-body">
                     <div class="ai-divider"></div>
-                    <div id="ai-text">Analyzing market data...</div>
+                    <div id="ai-text" aria-live="polite">
+                        <span class="sr-only">Loading market insight</span>
+                        <span class="skeleton-line w-60"></span>
+                        <span class="skeleton-line"></span>
+                        <span class="skeleton-line w-40"></span>
+                    </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Gold Section -->
+            <!-- Gold -->
             <div id="gold-section" class="gold-section"></div>
 
-            <!-- Market View -->
+            <!-- Market view -->
             <div id="market-view">
-                <div id="stock-grid">
-                    <!-- Stock cards injected here -->
+                <div id="stock-grid" aria-busy="true">
+                    <p class="sr-only">Loading market data</p>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
+                    <div class="stock-card skeleton-card" aria-hidden="true"><span class="skeleton-line tall w-40"></span><span class="skeleton-line w-60"></span><span class="skeleton-line"></span></div>
                 </div>
             </div>
 
             <!-- Portfolio View -->
             <div id="portfolio-view" class="hidden">
-                <div class="section-header" style="margin-bottom: 1.5rem;">
-                    <div class="section-badge">
-                        <span class="section-badge-dot"></span>
-                        Portfolio & Watchlist
-                    </div>
-                    <h2 class="section-heading hero-heading">Watchlist<br>Intelligence</h2>
+                <div class="section-header">
+                    <div class="section-badge">Instruments you follow</div>
+                    <h1 class="section-heading hero-heading">Watchlist</h1>
                 </div>
 
-                <!-- 60-Second Cached Watchlist Summary Card -->
+                <!-- Summary, cached for 60 seconds -->
                 <div id="portfolio-summary-card" class="portfolio-summary-wrap"></div>
 
-                <!-- Watchlist Quick Add Toolbar -->
+                <!-- Add an instrument; export -->
                 <div class="portfolio-toolbar">
-                    <div class="portfolio-add-input-wrap">
-                        <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
-                        <input type="text" id="portfolio-add-input" maxlength="20" placeholder="Add ticker to watchlist (e.g. THYAO, NVDA, AAPL)..." oninput="this.setCustomValidity('')" onkeydown="if(event.key==='Enter') addTickerFromPortfolioInput()">
+                    <div class="field portfolio-add-field">
+                        <label for="portfolio-add-input">Add an instrument</label>
+                        <div class="portfolio-add-row">
+                            <div class="portfolio-add-input-wrap">
+                                <svg class="search-icon-inner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                                <input type="text" id="portfolio-add-input" maxlength="20" autocomplete="off" aria-describedby="portfolio-add-hint" oninput="this.setCustomValidity('')" onkeydown="if(event.key==='Enter') addTickerFromPortfolioInput()">
+                            </div>
+                            <button type="button" class="gradient-btn" onclick="addTickerFromPortfolioInput()">Add</button>
+                        </div>
+                        <span class="field-hint" id="portfolio-add-hint">Ticker symbol, for example THYAO, NVDA or GC=F</span>
                     </div>
-                    <button class="gradient-btn" onclick="addTickerFromPortfolioInput()">+ Add Ticker</button>
-                    <button id="portfolio-export-btn" class="gradient-btn" onclick="openExportModal()" title="Export Portfolio to Excel">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export
+                    <button type="button" id="portfolio-export-btn" class="secondary-btn" onclick="openExportModal()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export to Excel
                     </button>
                 </div>
 
                 <div id="portfolio-grid" class="stock-grid-style">
-                    <!-- Portfolio cards injected here -->
+                    <!-- Watchlist cards injected here -->
                 </div>
-                <div id="portfolio-empty" class="hidden"
-                    style="text-align:center; padding: 3rem; color: var(--text-secondary);">
-                    <p style="font-size: 1.1rem;">Your watchlist is currently empty.<br>Add stocks using the input above or from the Market view!</p>
+                <div id="portfolio-empty" class="empty-state hidden">
+                    <p class="empty-title">Your watchlist is empty</p>
+                    <p>Add a ticker above, or open an instrument on the Market page and choose Add to Watchlist.</p>
                 </div>
             </div>
 
             <!-- Opportunities View (new tab page) -->
             <div id="opportunities-view" class="hidden">
-                <div class="section-header" style="margin-bottom: 1.5rem;">
-                    <div class="section-badge">
-                        <span class="section-badge-dot"></span>
-                        AI-Powered Signals
-                    </div>
-                    <h2 class="section-heading hero-heading">Buy<br>Opportunities</h2>
+                <div class="section-header">
+                    <div class="section-badge">Screened from today's market data</div>
+                    <h1 class="section-heading hero-heading">Opportunities</h1>
                 </div>
-                <div id="opportunities-grid" class="stock-grid-style">
-                    <p style="color: var(--text-secondary); grid-column: 1/-1; text-align: center;">Scanning market...</p>
+                <p class="section-note">Instruments that meet simple conditions on today's data. A condition is a description, not a recommendation to buy or sell.</p>
+                <div id="opportunities-grid" class="stock-grid-style" aria-live="polite">
+                    <p class="grid-message" role="status">Loading opportunities</p>
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- ===== EXPORT MODAL ===== -->
-    <div id="export-modal" class="modal hidden">
-        <div class="modal-content export-content">
-            <span class="close-modal" onclick="closeExportModal()">&times;</span>
-            <div class="modal-header-badge">📊 Export</div>
-            <h2 style="margin: 0.5rem 0 0.5rem;">Portfolio & Watchlist Export</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.9rem;">Select a time period to export your tracked stocks to Excel:</p>
-            <div class="export-options">
-                <button class="export-card" onclick="triggerExport('daily')">
-                    <div class="export-icon">📅</div>
-                    <div class="export-info">
-                        <h3>Daily Report</h3>
-                        <p>Last 5 trading days analysis</p>
-                    </div>
-                </button>
-                <button class="export-card" onclick="triggerExport('weekly')">
-                    <div class="export-icon">🗓️</div>
-                    <div class="export-info">
-                        <h3>Weekly Report</h3>
-                        <p>Past week performance</p>
-                    </div>
-                </button>
-                <button class="export-card" onclick="triggerExport('monthly')">
-                    <div class="export-icon">📆</div>
-                    <div class="export-info">
-                        <h3>Monthly Report</h3>
-                        <p>30-Day trend analysis</p>
-                    </div>
+    <!-- ===== MOBILE TAB BAR (below 768px) ===== -->
+    <nav class="tabbar" aria-label="Sections">
+        <button type="button" class="tabbar-item tab-btn active" id="tab-market-m" onclick="switchTab('market')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+            <span>Market</span>
+        </button>
+        <button type="button" class="tabbar-item tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>
+            <span>Opportunities</span>
+        </button>
+        <button type="button" class="tabbar-item tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            <span>Watchlist</span>
+        </button>
+        <button type="button" class="tabbar-item" id="tab-account-m" onclick="openAccount()" aria-haspopup="dialog">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>Account</span>
+        </button>
+    </nav>
+
+    <!-- ===== ACCOUNT SHEET (mobile, signed in) ===== -->
+    <div id="account-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="account-sheet-title">
+        <div class="sheet-backdrop" onclick="closeAccountSheet()"></div>
+        <div class="sheet-panel">
+            <div class="sheet-header">
+                <h2 id="account-sheet-title">Account</h2>
+                <button type="button" class="icon-btn" onclick="closeAccountSheet()" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
+            <div id="mobile-auth-container" class="mobile-auth-wrap"></div>
         </div>
     </div>
 
-    <!-- ===== STOCK DETAIL MODAL ===== -->
-    <div id="stock-modal" class="modal hidden">
+    <!-- ===== EXPORT MODAL ===== -->
+    <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <div class="modal-content export-content">
+            <button type="button" class="close-modal" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+            <h2 id="export-title" class="export-title">Export watchlist</h2>
+            <p class="export-lead">Choose a period. The file is an Excel workbook of the instruments on your watchlist.</p>
+            <div class="export-options">
+                <button type="button" class="export-card" onclick="triggerExport('daily')">
+                    <span class="export-name">Daily report</span>
+                    <span class="export-desc">Last 5 trading days</span>
+                </button>
+                <button type="button" class="export-card" onclick="triggerExport('weekly')">
+                    <span class="export-name">Weekly report</span>
+                    <span class="export-desc">Past week</span>
+                </button>
+                <button type="button" class="export-card" onclick="triggerExport('monthly')">
+                    <span class="export-name">Monthly report</span>
+                    <span class="export-desc">Past 30 days</span>
+                </button>
+            </div>
+            <p id="export-status" class="export-status" role="status" hidden></p>
+        </div>
+    </div>
+
+    <!-- ===== STOCK DETAIL MODAL (full-screen sheet below 768px) ===== -->
+    <div id="stock-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-content">
-            <span class="close-modal">&times;</span>
+            <button type="button" class="close-modal" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
             <div class="modal-header-actions">
-                <h2 id="modal-title" style="margin:0;">Stock Name</h2>
-                <div style="display:flex; gap:0.5rem;">
-                    <button id="btn-portfolio-action" class="secondary-btn" onclick="if(typeof togglePortfolioItem === 'function') togglePortfolioItem()">+ Add to Portfolio</button>
+                <h2 id="modal-title">Stock Name</h2>
+                <div class="modal-header-buttons">
+                    <button type="button" id="btn-portfolio-action" class="secondary-btn" onclick="if(typeof togglePortfolioItem === 'function') togglePortfolioItem()">+ Add to Watchlist</button>
                 </div>
             </div>
 
-            <!-- Detailed Info Grid -->
+            <!-- Key figures -->
             <div class="detailed-stats-grid">
                 <div class="ds-item"><span class="ds-label">Symbol</span><span class="ds-val" id="stat-symbol">-</span></div>
                 <div class="ds-item"><span class="ds-label">Last</span><span class="ds-val" id="stat-last">-</span></div>
@@ -342,7 +337,7 @@
                 <div class="ds-item"><span class="ds-label">Low</span><span class="ds-val" id="stat-low">-</span></div>
                 <div class="ds-item"><span class="ds-label">High</span><span class="ds-val" id="stat-high">-</span></div>
                 <div class="ds-item"><span class="ds-label">Open</span><span class="ds-val" id="stat-vwap">-</span></div>
-                <div class="ds-item"><span class="ds-label">Prev Close</span><span class="ds-val" id="stat-vol-tl">-</span></div>
+                <div class="ds-item"><span class="ds-label">Prev close</span><span class="ds-val" id="stat-vol-tl">-</span></div>
                 <div class="ds-item"><span class="ds-label">Volume</span><span class="ds-val" id="stat-vol-lot">-</span></div>
                 <div class="ds-item"><span class="ds-label">RSI (14)</span><span class="ds-val" id="stat-rsi">-</span></div>
                 <div class="ds-item"><span class="ds-label">MA 20</span><span class="ds-val" id="stat-ma20">-</span></div>
@@ -351,162 +346,134 @@
             </div>
             <div class="indicator-method hidden" id="stat-ind-method"></div>
 
-            <div class="modal-prediction" id="modal-prediction">Loading...</div>
+            <div class="modal-prediction hidden" id="modal-prediction"></div>
 
             <div id="ai-analysis-section" class="ai-analysis-section"></div>
 
-            <div class="chart-controls">
-                <button onclick="updateChart('1d')">1 Day</button>
-                <button onclick="updateChart('1mo')">1 Month</button>
-                <button onclick="updateChart('1y')" class="active">1 Year</button>
-                <button onclick="updateChart('5y')">5 Years</button>
+            <div class="chart-controls" role="group" aria-label="Chart period">
+                <button type="button" onclick="updateChart('1d')">1 Day</button>
+                <button type="button" onclick="updateChart('1mo')">1 Month</button>
+                <button type="button" onclick="updateChart('1y')" class="active">1 Year</button>
+                <button type="button" onclick="updateChart('5y')">5 Years</button>
             </div>
 
             <div class="chart-container">
-                <div id="stockChart" style="width:100%; height:100%;"></div>
+                <div id="stockChart"></div>
             </div>
         </div>
     </div>
 
     <!-- ===== AUTH MODAL (Login / Register / Forgot / Reset) ===== -->
-    <div id="auth-modal" class="modal hidden">
+    <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" aria-describedby="auth-modal-subtitle">
         <div class="modal-content auth-modal-content">
-            <span class="close-modal" onclick="closeAuthModal()">&times;</span>
+            <button type="button" class="close-modal" aria-label="Close" onclick="closeAuthModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
             <div class="auth-modal-header">
-                <div class="modal-header-badge">🔐 Wolfee Account</div>
-                <h2 id="auth-modal-title" class="auth-modal-title">Welcome Back</h2>
-                <p id="auth-modal-subtitle" class="auth-modal-subtitle">Sign in to access your cloud watchlist and live analytics.</p>
-                <div class="auth-tabs">
-                    <button class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign In</button>
-                    <button class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
-                    <button class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot</button>
+                <p class="auth-kicker">Wolfee account</p>
+                <h2 id="auth-modal-title" class="auth-modal-title">Sign in</h2>
+                <p id="auth-modal-subtitle" class="auth-modal-subtitle">Sign in to sync your watchlist across devices.</p>
+                <div class="auth-tabs" role="group" aria-label="Account actions">
+                    <button type="button" class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign in</button>
+                    <button type="button" class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
+                    <button type="button" class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot password</button>
                 </div>
             </div>
 
-            <!-- Alert notification box -->
-            <div id="auth-alert" class="auth-alert hidden"></div>
+            <!-- Messages from the server: errors and confirmations -->
+            <div id="auth-alert" class="auth-alert hidden" role="status" aria-live="polite"></div>
 
             <!-- Login Form -->
             <form id="login-form" class="auth-form-view" onsubmit="handleLoginSubmit(event)">
-                <div class="auth-field">
-                    <label for="login-email">Email Address</label>
-                    <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+                <div class="field">
+                    <label for="login-email">Email address</label>
+                    <input type="email" id="login-email" required autocomplete="email">
                 </div>
-                <div class="auth-field">
+                <div class="field">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" required placeholder="••••••••••" autocomplete="current-password">
+                    <input type="password" id="login-password" required autocomplete="current-password">
                 </div>
-                <div id="login-captcha-wrap" class="auth-field hidden">
-                    <label>Security Verification (CAPTCHA)</label>
+                <div id="login-captcha-wrap" class="field hidden">
+                    <span class="field-label">Security check</span>
                     <div class="captcha-placeholder">
-                        <span class="captcha-badge">🛡️ Bot Protection Active</span>
                         <input type="hidden" id="login-captcha" value="dev-captcha-pass">
-                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Security challenge active after multiple attempts.</p>
+                        <p class="field-hint">A security check is active after several sign-in attempts.</p>
                     </div>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
-                    <a href="javascript:void(0)" onclick="switchAuthTab('forgot')" style="color:var(--nexa-accent); font-size:0.85rem; text-decoration:none;">Forgot password?</a>
-                    <a href="javascript:void(0)" onclick="switchAuthTab('resend')" style="color:var(--text-secondary); font-size:0.85rem; text-decoration:none;">Resend verify link</a>
+                <div class="auth-links">
+                    <button type="button" class="link-btn" onclick="switchAuthTab('forgot')">Forgot password?</button>
+                    <button type="button" class="link-btn is-quiet" onclick="switchAuthTab('resend')">Resend verification email</button>
                 </div>
-                <button type="submit" id="login-submit-btn" class="gradient-btn auth-submit-btn">Sign In to Wolfee</button>
+                <button type="submit" id="login-submit-btn" class="gradient-btn auth-submit-btn">Sign in</button>
             </form>
 
             <!-- Register Form -->
             <form id="register-form" class="auth-form-view hidden" onsubmit="handleRegisterSubmit(event)">
-                <div class="auth-field">
-                    <label for="reg-email">Email Address</label>
-                    <input type="email" id="reg-email" required placeholder="you@example.com" autocomplete="email">
+                <div class="field">
+                    <label for="reg-email">Email address</label>
+                    <input type="email" id="reg-email" required autocomplete="email">
                 </div>
-                <div class="auth-field">
+                <div class="field">
                     <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" required placeholder="At least 10 characters" autocomplete="new-password" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.style.color=p.valid?'var(--success-color)':'var(--danger-color)'; }">
-                    <span id="pw-hint" class="auth-hint">Minimum 10 characters required</span>
+                    <input type="password" id="reg-password" required autocomplete="new-password" aria-describedby="pw-hint" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.classList.toggle('is-valid', p.valid); h.classList.toggle('is-invalid', !p.valid); }">
+                    <span id="pw-hint" class="field-hint auth-hint">At least 10 characters</span>
                 </div>
-                <div class="auth-field">
-                    <label for="reg-confirm">Confirm Password</label>
-                    <input type="password" id="reg-confirm" required placeholder="Repeat password" autocomplete="new-password">
+                <div class="field">
+                    <label for="reg-confirm">Confirm password</label>
+                    <input type="password" id="reg-confirm" required autocomplete="new-password">
                 </div>
-                <div class="auth-field">
-                    <label>Security Verification</label>
-                    <div class="captcha-placeholder">
-                        <span class="captcha-badge">🛡️ Bot Protection</span>
-                        <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
-                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">Protected by automated bot detection.</p>
-                    </div>
+                <div class="captcha-placeholder">
+                    <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
+                    <p class="field-hint">Registration is protected by automated bot detection.</p>
                 </div>
-                <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create Account</button>
+                <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create account</button>
             </form>
 
             <!-- Forgot Password Form -->
             <form id="forgot-form" class="auth-form-view hidden" onsubmit="handleForgotPasswordSubmit(event)">
-                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1rem;">Enter your account email to receive reset instructions:</p>
-                <div class="auth-field">
-                    <label for="forgot-email">Email Address</label>
-                    <input type="email" id="forgot-email" required placeholder="you@example.com">
+                <div class="field">
+                    <label for="forgot-email">Email address</label>
+                    <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-hint">
+                    <span class="field-hint" id="forgot-hint">We send a reset link to this address if it has an account.</span>
                 </div>
-                <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send Reset Link</button>
+                <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send reset link</button>
             </form>
 
             <!-- Resend Verification Form -->
             <form id="resend-form" class="auth-form-view hidden" onsubmit="event.preventDefault(); const em=document.getElementById('resend-email').value; if(em) authFetch(`${API_URL}/api/auth/resend-verification`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em})}).then(r=>r.json()).then(d=>showAuthAlert(d.message,true));">
-                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:1rem;">Need a fresh verification email?</p>
-                <div class="auth-field">
-                    <label for="resend-email">Email Address</label>
-                    <input type="email" id="resend-email" required placeholder="you@example.com">
+                <div class="field">
+                    <label for="resend-email">Email address</label>
+                    <input type="email" id="resend-email" required autocomplete="email">
                 </div>
-                <button type="submit" class="gradient-btn auth-submit-btn">Resend Verification</button>
+                <button type="submit" class="gradient-btn auth-submit-btn">Resend verification email</button>
             </form>
 
             <!-- Reset Password Form -->
             <form id="reset-form" class="auth-form-view hidden" onsubmit="handleResetPasswordSubmit(event)">
-                <h3 style="margin:0 0 1rem 0;font-size:1rem;color:var(--nexa-accent);">Set New Password</h3>
-                <div class="auth-field">
-                    <label for="reset-new-password">New Password</label>
-                    <input type="password" id="reset-new-password" required placeholder="At least 10 characters">
+                <div class="field">
+                    <label for="reset-new-password">New password</label>
+                    <input type="password" id="reset-new-password" required autocomplete="new-password" aria-describedby="reset-hint">
+                    <span class="field-hint" id="reset-hint">At least 10 characters</span>
                 </div>
-                <div class="auth-field">
-                    <label for="reset-confirm-password">Confirm New Password</label>
-                    <input type="password" id="reset-confirm-password" required placeholder="Repeat password">
+                <div class="field">
+                    <label for="reset-confirm-password">Confirm new password</label>
+                    <input type="password" id="reset-confirm-password" required autocomplete="new-password">
                 </div>
-                <button type="submit" class="gradient-btn auth-submit-btn">Save New Password</button>
+                <button type="submit" class="gradient-btn auth-submit-btn">Save new password</button>
             </form>
         </div>
     </div>
 
     <!-- ===== MODULAR SCRIPTS ===== -->
-    <script type="module" src="js/core/globals.js?v=15.4"></script>
-    <script src="js/config.js?v=15.4"></script>
-    <script src="js/auth.js?v=15.4"></script>
-    <script src="js/ui.js?v=15.4"></script>
-    <script src="js/filter.js?v=15.4"></script>
-    <script src="js/chart.js?v=15.4"></script>
-    <script src="js/portfolio.js?v=15.4"></script>
-    <script src="js/main.js?v=15.4"></script>
+    <script type="module" src="js/core/globals.js?v=16.0"></script>
+    <script src="js/config.js?v=16.0"></script>
+    <script src="js/auth.js?v=16.0"></script>
+    <script src="js/ui.js?v=16.0"></script>
+    <script src="js/filter.js?v=16.0"></script>
+    <script src="js/chart.js?v=16.0"></script>
+    <script src="js/portfolio.js?v=16.0"></script>
+    <script src="js/main.js?v=16.0"></script>
 
-    <script>
-        // Mobile Menu Toggle
-        function toggleMobileMenu() {
-            const menu = document.getElementById('mobile-menu');
-            const btn = document.getElementById('mobile-menu-btn');
-            const backdrop = document.getElementById('mobile-menu-backdrop');
-            const isOpen = menu.classList.toggle('mobile-menu-open');
-            btn.setAttribute('aria-expanded', String(isOpen));
-            menu.setAttribute('aria-hidden', String(!isOpen));
-            backdrop.classList.toggle('active', isOpen);
-            document.body.classList.toggle('no-scroll', isOpen);
-        }
-
-
-        // Navbar scroll effect
-        window.addEventListener('scroll', () => {
-            const nav = document.getElementById('main-nav');
-            if (window.scrollY > 10) {
-                nav.classList.add('nav-scrolled');
-            } else {
-                nav.classList.remove('nav-scrolled');
-            }
-        }, { passive: true });
-    </script>
 </body>
 
 </html>
