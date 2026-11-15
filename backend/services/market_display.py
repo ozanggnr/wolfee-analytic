@@ -58,9 +58,11 @@ def volatility_cell(value: Any) -> ExportCell:
     return value.strip() if isinstance(value, str) and value.strip() else NOT_AVAILABLE
 
 
-def _trend(prediction: Any, change_pct: float) -> str:
+def _trend(prediction: Any, change_pct: Optional[float]) -> str:
     if prediction:
         return str(prediction)
+    if change_pct is None:
+        return NOT_AVAILABLE
     if change_pct > 0:
         return f"📈 UP +{change_pct:.1f}%"
     if change_pct < 0:
@@ -72,10 +74,14 @@ def portfolio_export_row(stock: Mapping[str, Any], period: str, today: str, symb
     """One row of the portfolio Excel export from a quote/analysis dict."""
     symbol = str(stock.get("symbol") or stock.get("ticker") or symbol)
     price = number(stock.get("price")) or 0.0
-    change_pct = number(stock.get("change_pct")) or 0.0
-    change_amt = price * (change_pct / 100) if price else 0.0
-    previous_close = number(stock.get("previous_close"))
-    start_price = previous_close if previous_close else price - change_amt
+    # A null change (no previous close) is unknown, not 0 %: shown as "Not available".
+    change_pct = number(stock.get("change_pct"))
+    change_amt = price * (change_pct / 100) if price and change_pct is not None else None
+    previous_close = price_level(stock.get("previous_close"), 6)
+    if previous_close is not None:
+        start_price = previous_close
+    else:
+        start_price = price - change_amt if change_amt is not None else None
     rsi = rounded(stock.get("rsi"), 2)
     return {
         "Symbol": symbol,
@@ -85,9 +91,9 @@ def portfolio_export_row(stock: Mapping[str, Any], period: str, today: str, symb
         "Analysis Date": today,
         "Trend": _trend(stock.get("prediction"), change_pct),
         "Current Price": round(price, 2),
-        "Start Price": round(start_price, 2),
-        "Change %": round(change_pct, 2),
-        "Change Amt": round(change_amt, 2),
+        "Start Price": cell(rounded(start_price, 2)),
+        "Change %": cell(rounded(change_pct, 2)),
+        "Change Amt": cell(rounded(change_amt, 2)),
         "Period High": cell(price_level(stock.get("day_high")) or price_level(stock.get("high"))),
         "High Date": today,
         "Period Low": cell(price_level(stock.get("day_low")) or price_level(stock.get("low"))),
@@ -123,7 +129,7 @@ def stock_card(stock: Any) -> dict:
         "symbol": stock.symbol,
         "name": stock.name or stock.symbol,
         "price": stock.price or 0,
-        "change_pct": stock.change_pct or 0,
+        "change_pct": number(stock.change_pct),  # null: no previous close, no observed move
         "volume": stock.volume or 0,
         "day_high": stock.day_high,
         "day_low": stock.day_low,
@@ -135,8 +141,6 @@ def stock_card(stock: Any) -> dict:
         "ma_20": stock.ma_20,
         "volatility": stock.volatility,
         **{field: stored.get(field) for field in _PROVENANCE_FIELDS},
-        # Cache rows are enriched from real history only (REQ-10), so nothing is estimated.
-        "estimated_fields": [],
         "currency": stock.currency or "USD",
         "market_type": stock.market_type or "GLOBAL",
         "prediction": stock.prediction,
