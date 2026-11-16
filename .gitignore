@@ -29,10 +29,22 @@ ENV/
 env.bak/
 venv.bak/
 
-# Environment variables
+# Environment variables (any .env variant; only an example file may be committed)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.dev.vars
+
+# Local data and credentials that must never be committed
+*.sqlite
+*.sqlite3
+*.xlsx
+*.xls
+*.csv.local
+*.pem
+*.key
+*.p12
+*.pfx
 
 # IDE
 .vscode/
