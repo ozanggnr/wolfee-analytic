@@ -10,6 +10,7 @@ Endpoints:
 - POST /api/auth/forgot-password
 - POST /api/auth/reset-password
 - GET  /api/auth/csrf
+- GET  /api/auth/config
 """
 
 import os
@@ -644,6 +645,22 @@ async def reset_password(
 # ============================================================
 # CSRF TOKEN ENDPOINT
 # ============================================================
+class AuthConfigResponse(BaseModel):
+    email_enabled: bool
+    registration_open: bool
+
+
+@router.get("/config", response_model=AuthConfigResponse)
+async def get_auth_config():
+    """Public: which auth features work, so the UI can hide the others (REQ-36 c).
+
+    Only two booleans: whether an email provider is configured (password reset and
+    resend-verification) and whether the invite-code secret is set (registration).
+    No secret, key or code is returned.
+    """
+    return AuthConfigResponse(email_enabled=is_email_service_configured(), registration_open=registration_open())
+
+
 @router.get("/csrf")
 async def get_csrf_token(request: Request, response: Response):
     """
