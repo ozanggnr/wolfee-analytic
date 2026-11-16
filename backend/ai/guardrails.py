@@ -18,11 +18,22 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Sequence
 
-DISCLAIMER = (
-    "This is an automated explanation of figures calculated by Wolfee Analytics from your "
-    "recorded transactions and from market data that may be delayed. It is general information, "
-    "not investment advice or a recommendation to buy or sell, and not a guarantee of future results."
+# One disclaimer per surface: each names only the inputs that surface really uses (REQ-35).
+_NOT_ADVICE = (
+    "It is general information, not investment advice or a recommendation to buy or sell, "
+    "and not a guarantee of future results."
 )
+PORTFOLIO_DISCLAIMER = (
+    "This is an automated explanation of figures calculated by Wolfee Analytics from your "
+    "recorded transactions and from market data that may be delayed. " + _NOT_ADVICE
+)
+# The market summary and the single-instrument description use market data only.
+MARKET_DISCLAIMER = (
+    "This is an automated description of figures calculated by Wolfee Analytics from market "
+    "data that may be delayed. " + _NOT_ADVICE
+)
+# Kept for existing importers, all of which serve the market summary.
+DISCLAIMER = MARKET_DISCLAIMER
 
 TEMPLATE_GENERATOR = "template"
 MAX_TEXT_LENGTH = 2000

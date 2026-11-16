@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ai.explain import explain_portfolio
+from ai.explain import explain_market, explain_portfolio, explain_stock
 from ai.facts import portfolio_facts
-from ai.guardrails import DISCLAIMER, Fact, Generation, find_violations
+from ai.guardrails import MARKET_DISCLAIMER, PORTFOLIO_DISCLAIMER, Fact, Generation, find_violations
 from ai.prompts import build_portfolio_prompt
 from ai.provider import gemini_generate
 from quant.types import Freshness, FxRate, Position, PriceQuote, RiskMetrics
@@ -210,7 +210,7 @@ def test_grounded_model_output_is_returned_with_traceability():
     assert result.is_fallback is False
     assert result.generated_at == NOW
     assert result.inputs_as_of == AS_OF
-    assert result.disclaimer == DISCLAIMER
+    assert result.disclaimer == PORTFOLIO_DISCLAIMER
     assert result.violations == ()
 
 
@@ -223,7 +223,7 @@ def test_ungrounded_model_output_is_replaced_by_the_template():
     assert set(result.violations) == {"ungrounded_number", "prohibited_language"}
     assert "30,000" not in result.text
     assert "20,450.00 TRY" in result.text
-    assert result.disclaimer == DISCLAIMER
+    assert result.disclaimer == PORTFOLIO_DISCLAIMER
 
 
 @pytest.mark.parametrize("generate", [None, lambda prompt: None, model("  ")])
@@ -345,3 +345,29 @@ def test_gemini_adapter_reports_the_model_that_answered():
 def test_gemini_adapter_returns_none_when_unconfigured():
     with patch("ai_service._generate_with_gemini", return_value=None):
         assert gemini_generate("prompt") is None
+
+
+# ------------------------------------------------ disclaimer per surface (REQ-35)
+
+def test_each_surface_names_only_the_inputs_it_uses():
+    facts = (Fact("Price", "120.00 TRY"),)
+    kwargs = {"now": NOW, "inputs_as_of": None}
+
+    assert explain_portfolio(facts, **kwargs).disclaimer == PORTFOLIO_DISCLAIMER
+    assert explain_market(facts, **kwargs).disclaimer == MARKET_DISCLAIMER
+    assert explain_stock(facts, **kwargs).disclaimer == MARKET_DISCLAIMER
+
+    assert "your recorded transactions" in PORTFOLIO_DISCLAIMER
+    assert "transactions" not in MARKET_DISCLAIMER and "market data" in MARKET_DISCLAIMER
+    for text in (PORTFOLIO_DISCLAIMER, MARKET_DISCLAIMER):
+        assert "not investment advice" in text and "may be delayed" in text
+
+
+def test_model_text_and_template_carry_the_same_disclaimer():
+    facts = (Fact("Price", "120.00 TRY"),)
+
+    from_model = explain_market(facts, now=NOW, inputs_as_of=None, generate=model("The price is 120.00 TRY."))
+    from_template = explain_market(facts, now=NOW, inputs_as_of=None, generate=None)
+
+    assert (from_model.is_fallback, from_template.is_fallback) == (False, True)
+    assert from_model.disclaimer == from_template.disclaimer == MARKET_DISCLAIMER
