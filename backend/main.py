@@ -206,7 +206,7 @@ async def get_quick_market_data(background_tasks: BackgroundTasks):
             latest_update = max((s.updated_at for s in stocks if s.updated_at), default=None)
             return {
                 "stocks": stock_list,
-                "updated_at": latest_update.isoformat() if latest_update else None
+                "updated_at": ai_insight_service.utc(latest_update).isoformat() if latest_update else None
             }
 
     except Exception as e:
@@ -253,7 +253,7 @@ async def get_turkish_gold():
                     "buying_price": g.buying_price,
                     "selling_price": g.selling_price,
                     "change_pct": g.change_pct,
-                    "updated_at": g.updated_at.isoformat() if g.updated_at else None
+                    "updated_at": ai_insight_service.utc(g.updated_at).isoformat() if g.updated_at else None
                 } for g in gold]
             }
     except Exception as e:
@@ -275,7 +275,7 @@ async def get_exchange_rates():
                     "buying": r.buying,
                     "selling": r.selling,
                     "change_pct": r.change_pct,
-                    "updated_at": r.updated_at.isoformat() if r.updated_at else None
+                    "updated_at": ai_insight_service.utc(r.updated_at).isoformat() if r.updated_at else None
                 } for r in rates]
             }
     except Exception as e:

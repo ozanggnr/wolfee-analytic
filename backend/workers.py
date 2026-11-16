@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from typing import Optional
 from sqlalchemy import select, delete, func, desc
 from database import AsyncSessionLocal
-from models import StockData, TurkishGold, ExchangeRate, AIInsight
+from models import StockData, TurkishGold, ExchangeRate, AIInsight, utc_now_naive
 from quant.signals import enrich_quote
 
 logger = logging.getLogger(__name__)
@@ -346,7 +346,7 @@ async def refresh_turkish_gold() -> int:
                     existing.selling_price = item['selling_price']
                     existing.change_pct = item.get('change_pct')
                     existing.display_name = item['display_name']
-                    existing.updated_at = datetime.utcnow()
+                    existing.updated_at = utc_now_naive()
                 else:
                     session.add(TurkishGold(**item))
             
@@ -379,7 +379,7 @@ async def refresh_exchange_rates() -> int:
                     existing.selling = item['selling']
                     existing.change_pct = item.get('change_pct')
                     existing.display_name = item['display_name']
-                    existing.updated_at = datetime.utcnow()
+                    existing.updated_at = utc_now_naive()
                 else:
                     session.add(ExchangeRate(**item))
             
@@ -477,7 +477,7 @@ async def _upsert_stock(session, data: dict):
                 setattr(existing, db_key, data[src_key])
         if 'indicators_as_of' in data:
             existing.extra_data = _indicator_provenance(data)
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = utc_now_naive()
     else:
         # Map field names
         stock = StockData(

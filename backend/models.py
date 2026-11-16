@@ -5,7 +5,19 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utc_now_naive() -> datetime:
+    """The current UTC time without tzinfo, for the `timestamp without time zone` columns
+    (stock_data / turkish_gold / exchange_rates updated_at, ai_insights created_at).
+
+    Their server_default now() would store the database server's local time, which the
+    code reads as UTC (REQ-33 a). The application writes UTC itself, on insert and on
+    update, so the server's time zone no longer matters. server_default stays only so
+    the schema is unchanged (no migration).
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(Base):
@@ -124,7 +136,7 @@ class StockData(Base):
     is_buyable = Column(Boolean)
     market_cap = Column(Float, default=0)
     extra_data = Column(JSON, default=dict)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, server_default=func.now())  # UTC
 
     __table_args__ = (
         Index('idx_stock_symbol_updated', 'symbol', 'updated_at'),
@@ -141,7 +153,7 @@ class TurkishGold(Base):
     buying_price = Column(Float, default=0)
     selling_price = Column(Float, default=0)
     change_pct = Column(Float)  # NULL when the source shows no change (REQ-31 e)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, server_default=func.now())  # UTC
 
 
 class ExchangeRate(Base):
@@ -153,7 +165,7 @@ class ExchangeRate(Base):
     buying = Column(Float, default=0)
     selling = Column(Float, default=0)
     change_pct = Column(Float)  # NULL without a previous close (REQ-31 e)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive, server_default=func.now())  # UTC
 
 
 class AIInsight(Base):
@@ -163,7 +175,7 @@ class AIInsight(Base):
     insight_type = Column(String(20), default='daily')  # daily, stock_analysis, portfolio
     symbol = Column(String(20), nullable=True)  # null for daily insights
     insight_text = Column(Text)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, default=utc_now_naive, server_default=func.now())  # UTC
     # Provenance (DATABASE_CONTRACT §4.4). Nullable with no default: NULL means "written
     # before provenance existed", and such a row is never served. New rows set all four.
     generated_by = Column(String(100))
