@@ -21,7 +21,10 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.guardrails import DISCLAIMER
+try:
+    from ai.guardrails import MARKET_DISCLAIMER
+except ImportError:  # until agent/quant-ai f8bef1d (REQ-35) is merged; then drop this fallback
+    from ai.guardrails import DISCLAIMER as MARKET_DISCLAIMER
 from ai.insights import market_insight_response, stock_analysis_response
 from ai.provider import gemini_generate
 from models import AIInsight
@@ -65,7 +68,7 @@ def stored_response(row: AIInsight) -> dict:
         "generated_at": utc(row.generated_at).isoformat(),
         "inputs_as_of": None if inputs_as_of is None else inputs_as_of.isoformat(),
         "is_fallback": bool(row.is_fallback),
-        "disclaimer": DISCLAIMER,
+        "disclaimer": MARKET_DISCLAIMER,
     }
 
 
