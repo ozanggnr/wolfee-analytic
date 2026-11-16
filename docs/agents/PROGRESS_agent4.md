@@ -24,11 +24,17 @@ Order from the user, one commit each: 1 REQ-32 Portfolio page, 2 REQ-34 (a) AI b
 - [x] 6 committed as `8c734ac`.
 - [x] Verified 2026-11-16 in WSL per TESTING.md §2 (Agent 4 DB `~/wolfee-test/agent4-frontend-test.db`): frontend 68 passed (also with TZ=America/New_York), backend 598 passed. Browser check at 1440 and 390 px on the smoke DB: Market, Opportunities, Portfolio and Watchlist with no horizontal scroll, no console errors, no "[object Object]", every asset at v=16.1, 5 mobile tabs. Review page updated with Portfolio screenshots (the partial-total shot is the test fixture rendered by the real module, labelled as such).
 
+## Task: REQ-37 remainder (2026-11-16)
+- [x] 1. `GET /api/auth/config` on load (`js/auth-features.js`, parsing in `js/core/auth-config.js`, tested). It sets `data-email-enabled` / `data-registration-open` on `<html>`; `css/auth.css` hides every `[data-needs-email]` (Forgot password tab, the "Forgot password?" and "Resend verification email" links, both forms) unless email is `true`, and swaps the register fields for "Registration is closed" when registration is `false`. Before the answer and on any failure: email features hidden, register visible. Only a JSON `true` turns email on and only a JSON `false` closes registration. The auth tab group now sizes to the visible tabs.
+- [x] 2. `frontend/worker.js` deleted (nothing referenced it; `wrangler.jsonc` only names `frontend` as the Pages output dir). The mentions in `TEAM_STRUCTURE.md` and `IMPLEMENTATION_STATUS.md` are Agent 1's to update.
+- [x] 3. Asset version 16.2 (`index.html`, `globals.js`, the new module).
+- Verified in WSL: frontend 72 passed (also TZ=America/New_York). Browser at 1440 and 390 px: with the endpoint not yet in this backend (404) the safe state applies; the all-on and closed states checked by setting the same attributes; no horizontal scroll; all assets v=16.2.
+
 ## In progress
 - Nothing. Ready for the user to review; not merged or pushed.
 
 ## Next
-- Agent 2: the `invite_code` check on `POST /api/auth/register` (the form already sends it).
+- Agent 2: `GET /api/auth/config` (until it lands the page logs one 404 and a warning and shows the safe state) and the `invite_code` check on `POST /api/auth/register`.
 - Possible follow-up: the Portfolio page uses the default weighted-average cost basis; a FIFO switch (`cost_basis_method`) and realised lots (`realized_lots`) are in the API but not shown yet.
 
 ## Notes

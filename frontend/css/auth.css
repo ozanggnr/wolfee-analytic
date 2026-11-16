@@ -20,7 +20,8 @@
 
 /* Segmented switch between the three main forms */
 .auth-tabs {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Columns follow the visible tabs: 2 when the email tab is hidden (REQ-37) */
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
     padding: 2px; gap: 2px;
     background: var(--color-surface-sunken);
     border: var(--border); border-radius: var(--radius-button);
@@ -52,6 +53,18 @@
 .auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); margin-top: calc(-1 * var(--space-2)); }
 .link-btn.is-quiet { color: var(--color-text-secondary); }
 .link-btn.is-quiet:hover { color: var(--color-text); }
+
+/* REQ-37: GET /api/auth/config, applied to <html> by js/auth-features.js.
+   Email features show only when the server says email works. */
+html:not([data-email-enabled="true"]) [data-needs-email] { display: none !important; }
+.register-closed { display: none; }
+html[data-registration-open="false"] #register-form > :not(.register-closed) { display: none; }
+html[data-registration-open="false"] .register-closed {
+    display: block; padding: var(--space-4); border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel); background: var(--color-surface-sunken); color: var(--color-text-secondary);
+}
+.register-closed p { margin: 0 0 var(--space-2); }
+.register-closed-title { font-weight: var(--weight-semibold); color: var(--color-text); }
 
 .auth-submit-btn { width: 100%; height: 40px; }
 .auth-submit-btn:disabled { opacity: 0.6; cursor: progress; }

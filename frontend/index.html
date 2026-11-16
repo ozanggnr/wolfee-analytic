@@ -9,13 +9,13 @@
     <title>Wolfee Analytics</title>
 
     <!-- Self-hosted IBM Plex (fonts/, OFL-1.1); tokens first, then base and page styles -->
-    <link rel="stylesheet" href="css/tokens.css?v=16.1">
-    <link rel="stylesheet" href="css/base.css?v=16.1">
-    <link rel="stylesheet" href="css/market.css?v=16.1">
-    <link rel="stylesheet" href="css/modal.css?v=16.1">
-    <link rel="stylesheet" href="css/watchlist.css?v=16.1">
-    <link rel="stylesheet" href="css/auth.css?v=16.1">
-    <link rel="stylesheet" href="css/ledger.css?v=16.1">
+    <link rel="stylesheet" href="css/tokens.css?v=16.2">
+    <link rel="stylesheet" href="css/base.css?v=16.2">
+    <link rel="stylesheet" href="css/market.css?v=16.2">
+    <link rel="stylesheet" href="css/modal.css?v=16.2">
+    <link rel="stylesheet" href="css/watchlist.css?v=16.2">
+    <link rel="stylesheet" href="css/auth.css?v=16.2">
+    <link rel="stylesheet" href="css/ledger.css?v=16.2">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -505,7 +505,7 @@
                 <div class="auth-tabs" role="group" aria-label="Account actions">
                     <button type="button" class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign in</button>
                     <button type="button" class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
-                    <button type="button" class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot password</button>
+                    <button type="button" class="auth-tab-btn" id="auth-tab-forgot" data-needs-email onclick="switchAuthTab('forgot')">Forgot password</button>
                 </div>
             </div>
 
@@ -524,7 +524,7 @@
                     <input type="password" id="login-password" aria-describedby="login-password-error" required autocomplete="current-password">
                     <span class="field-error" id="login-password-error" hidden></span>
                 </div>
-                <div class="auth-links">
+                <div class="auth-links" data-needs-email>
                     <button type="button" class="link-btn" onclick="switchAuthTab('forgot')">Forgot password?</button>
                     <button type="button" class="link-btn is-quiet" onclick="switchAuthTab('resend')">Resend verification email</button>
                 </div>
@@ -533,6 +533,12 @@
 
             <!-- Register Form -->
             <form id="register-form" class="auth-form-view hidden" onsubmit="handleRegisterSubmit(event)">
+                <!-- Shown instead of the fields when GET /api/auth/config says registration_open: false (css/auth.css) -->
+                <div class="register-closed" role="status">
+                    <p class="register-closed-title">Registration is closed</p>
+                    <p>New accounts cannot be created right now. If you already have an account, sign in.</p>
+                    <button type="button" class="link-btn" onclick="switchAuthTab('login')">Go to sign in</button>
+                </div>
                 <div class="field" data-api-field="email">
                     <label for="reg-email">Email address</label>
                     <input type="email" id="reg-email" aria-describedby="reg-email-error" required autocomplete="email">
@@ -558,7 +564,7 @@
             </form>
 
             <!-- Forgot Password Form -->
-            <form id="forgot-form" class="auth-form-view hidden" onsubmit="handleForgotPasswordSubmit(event)">
+            <form id="forgot-form" class="auth-form-view hidden" data-needs-email onsubmit="handleForgotPasswordSubmit(event)">
                 <div class="field" data-api-field="email">
                     <label for="forgot-email">Email address</label>
                     <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-email-error forgot-hint">
@@ -569,7 +575,7 @@
             </form>
 
             <!-- Resend Verification Form -->
-            <form id="resend-form" class="auth-form-view hidden" onsubmit="handleResendVerificationSubmit(event)">
+            <form id="resend-form" class="auth-form-view hidden" data-needs-email onsubmit="handleResendVerificationSubmit(event)">
                 <div class="field" data-api-field="email">
                     <label for="resend-email">Email address</label>
                     <input type="email" id="resend-email" aria-describedby="resend-email-error" required autocomplete="email">
@@ -596,15 +602,16 @@
     </div>
 
     <!-- ===== MODULAR SCRIPTS ===== -->
-    <script type="module" src="js/core/globals.js?v=16.1"></script>
-    <script src="js/config.js?v=16.1"></script>
-    <script src="js/auth.js?v=16.1"></script>
-    <script src="js/ui.js?v=16.1"></script>
-    <script src="js/filter.js?v=16.1"></script>
-    <script src="js/chart.js?v=16.1"></script>
-    <script src="js/portfolio.js?v=16.1"></script>
-    <script src="js/main.js?v=16.1"></script>
-    <script type="module" src="js/ledger/ledger-page.js?v=16.1"></script>
+    <script type="module" src="js/core/globals.js?v=16.2"></script>
+    <script src="js/config.js?v=16.2"></script>
+    <script src="js/auth.js?v=16.2"></script>
+    <script src="js/ui.js?v=16.2"></script>
+    <script src="js/filter.js?v=16.2"></script>
+    <script src="js/chart.js?v=16.2"></script>
+    <script src="js/portfolio.js?v=16.2"></script>
+    <script src="js/main.js?v=16.2"></script>
+    <script type="module" src="js/ledger/ledger-page.js?v=16.2"></script>
+    <script type="module" src="js/auth-features.js?v=16.2"></script>
 
 </body>
 
