@@ -1,7 +1,15 @@
 # Agent 2 (Backend) progress
 
-Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` 92a5ca0 on 2026-11-16 (no conflicts). Local commits only: no push, no merge.
+Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` 59dd246 on 2026-11-16 (fast-forward). Local commits only: no push, no merge.
 Resume protocol: `git status`, read this file, continue from "In progress" / "Next".
+
+## Current task (2026-11-16, third): REQ-39, REQ-38
+
+- [x] Rebase onto `integration` 59dd246: fast-forward (cf440a2 was merged).
+- [x] REQ-39 `b4b7116`: `get_client_ip` = `Fly-Client-IP` on Fly (FLY_APP_NAME), validated; missing/invalid → shared key `fly-client-ip-missing`; locally the socket peer. CF-Connecting-IP / X-Forwarded-For never read. Every per-IP limit and security log uses it. `test_client_ip.py` (13; all fail on the old code).
+- [x] REQ-38 `cb670b7`: direct `from ai.guardrails import MARKET_DISCLAIMER`; test that a missing name is an ImportError.
+- Verification (WSL): SQLite 657 passed; PG16.16 API 194 passed; base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`.
+- For Agent 1: Dockerfile CMD `--proxy-headers --forwarded-allow-ips=*` lets uvicorn set the socket peer and scheme from client-sent X-Forwarded-* headers. The limits no longer depend on it on Fly, but drop `--forwarded-allow-ips=*` (or both flags) as REQ-39 suggests; COOKIE_SECURE=true in fly.toml already covers the Secure cookie.
 
 ## Current task (2026-11-16, second): REQ-36 (c) and the REQ-35 import
 
