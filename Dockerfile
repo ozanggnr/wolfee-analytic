@@ -23,4 +23,7 @@ USER app
 WORKDIR /app/backend
 
 EXPOSE 8080
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips=*"]
+# No --proxy-headers / --forwarded-allow-ips: the client IP comes from Fly-Client-IP
+# (security_middleware.get_client_ip, REQ-39) and HTTPS is detected from COOKIE_SECURE /
+# X-Forwarded-Proto there, so uvicorn must not rewrite the peer from client-supplied headers.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
