@@ -591,6 +591,7 @@ window.switchTab = function(tab) {
     const marketView = document.getElementById('market-view');
     const portfolioView = document.getElementById('portfolio-view');
     const opportunitiesView = document.getElementById('opportunities-view');
+    const ledgerView = document.getElementById('ledger-view');
     const aiSection = document.getElementById('ai-section');
     const goldSection = document.getElementById('gold-section');
     const sectionHeader = document.querySelector('.section-header');
@@ -601,6 +602,7 @@ window.switchTab = function(tab) {
     hideEl(marketView);
     hideEl(portfolioView);
     hideEl(opportunitiesView);
+    hideEl(ledgerView);
     hideEl(aiSection);
     hideEl(goldSection);
     hideEl(sectionHeader, true);
@@ -626,7 +628,11 @@ window.switchTab = function(tab) {
     } else if (tab === 'opportunities') {
         showWithAnim(opportunitiesView, null, 0);
         if (typeof renderOpportunitiesPage === 'function') renderOpportunitiesPage();
+    } else if (tab === 'ledger') {
+        showWithAnim(ledgerView, null, 0);
     }
+    // The Portfolio page (js/ledger/ledger-page.js, an ES module) loads its data on this event
+    document.dispatchEvent(new CustomEvent('wolfee_tab_changed', { detail: { tab } }));
 }
 
 window.openExportModal = function() {
