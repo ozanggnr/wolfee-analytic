@@ -13,6 +13,7 @@ import {
     formatIndicatorField,
     formatTimestamp,
     aiProvenance,
+    aiSourceLabel,
     splitLabelledLines,
     changeDirection,
     formatChange,
@@ -166,6 +167,16 @@ test('aiProvenance marks template output from is_fallback or generated_by', () =
     assert.equal(aiProvenance({ ...base, is_fallback: true, generated_by: 'gemini-x' }, 'insight').isTemplate, true);
     assert.equal(aiProvenance({ ...base, is_fallback: false, generated_by: 'template' }, 'insight').isTemplate, true);
     assert.equal(aiProvenance({ ...base, is_fallback: false, generated_by: 'gemini-x' }, 'insight').isTemplate, false);
+});
+
+test('aiSourceLabel says AI generated only for model text (REQ-34 a)', () => {
+    const base = { insight: 'Text', disclaimer: 'd' };
+    assert.equal(aiSourceLabel(aiProvenance({ ...base, is_fallback: false, generated_by: 'gemini-x' }, 'insight')), 'AI generated');
+    assert.equal(aiSourceLabel(aiProvenance({ ...base, is_fallback: true, generated_by: 'gemini-x' }, 'insight')), 'Template');
+    assert.equal(aiSourceLabel(aiProvenance({ ...base, is_fallback: false, generated_by: 'template' }, 'insight')), 'Template');
+    // No text, no badge
+    assert.equal(aiSourceLabel(aiProvenance({ ...base, insight: '  ' }, 'insight')), null);
+    assert.equal(aiSourceLabel(aiProvenance(null, 'insight')), null);
 });
 
 test('aiProvenance falls back to a default disclaimer for the legacy shape', () => {

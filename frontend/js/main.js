@@ -200,10 +200,12 @@ async function loadAIInsight() {
         const data = await res.json();
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) {
-            renderAIResponse(aiTextEl, data, 'insight');
+            renderAIResponse(aiTextEl, data, 'insight', [], document.getElementById('ai-source-badge'));
             addAIShowMore(aiTextEl);
         }
     } catch (e) {
+        const badge = document.getElementById('ai-source-badge');
+        if (badge) badge.hidden = true;
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) {
             aiTextEl.innerHTML = '<p class="inline-error" role="alert">Market insight is not available right now. It will load on the next visit.</p>';
@@ -455,12 +457,12 @@ window.triggerExport = async function(period) {
         });
 
         if (!response.ok) {
-            let detail = 'Export failed';
-            try {
-                const errData = await response.json();
-                if (errData && errData.detail) detail = errData.detail;
-            } catch (e) {}
-            throw new Error(detail);
+            let errData = null;
+            try { errData = await response.json(); } catch (e) { errData = null; }
+            const readable = window.WolfeeApiErrors
+                ? window.WolfeeApiErrors.readableApiError(errData, 'Export failed.').message
+                : 'Export failed.';
+            throw new Error(readable);
         }
 
         const blob = await response.blob();

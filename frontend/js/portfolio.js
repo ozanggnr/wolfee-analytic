@@ -354,7 +354,7 @@ function renderSummaryCardUI(data) {
     const pillsHTML = (data.ticker_changes || []).map(t => `
         <button type="button" class="ticker-pill" onclick="${summaryOpenHandler(t)}">
             <span class="pill-sym">${esc(t.symbol)}</span>
-            ${changeHTML(t, 'pill-change', { digits: 1 })}
+            ${changeHTML(t, 'pill-change')}
         </button>
     `).join('');
 

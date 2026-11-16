@@ -273,6 +273,18 @@ export function aiProvenance(response, textField, options = {}) {
 }
 
 /**
+ * Badge text for an AI response (REQ-34 a): "AI generated" only for model
+ * text, "Template" for the fixed template, null when there is no text.
+ *
+ * @param {{ text: string, isTemplate: boolean }} info from aiProvenance
+ * @returns {'AI generated' | 'Template' | null}
+ */
+export function aiSourceLabel(info) {
+    if (!info || typeof info.text !== 'string' || info.text.trim() === '') return null;
+    return info.isTemplate ? 'Template' : 'AI generated';
+}
+
+/**
  * Splits plain text into lines for DOM rendering with text nodes. A line that
  * starts with one of `labels` followed by ":" is returned with that label.
  *

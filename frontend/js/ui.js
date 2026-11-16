@@ -475,9 +475,21 @@ const AI_ANALYSIS_LABELS = ['Decision', 'Why this decision', 'Why someone should
  * older shape may contain markdown and goes through the escaping
  * aiTextToHTML. `violations` is never read.
  */
-function renderAIResponse(container, data, textField, highlightLabels = []) {
+function setAISourceBadge(badge, label) {
+    badge.textContent = label || '';
+    badge.hidden = !label;
+    badge.classList.toggle('is-template', label === 'Template');
+    badge.title = label === 'Template' ? 'Written from a fixed template, not by the AI model' : '';
+}
+
+/**
+ * `sourceBadge`, when given, is an existing element that shows "AI generated"
+ * or "Template" (REQ-34 a); otherwise that label goes in the provenance line.
+ */
+function renderAIResponse(container, data, textField, highlightLabels = [], sourceBadge = null) {
     const F = window.WolfeeFields;
     const info = F.aiProvenance(data, textField);
+    const sourceLabel = F.aiSourceLabel(info);
 
     const body = document.createElement('div');
     body.className = 'ai-response-text';
@@ -504,11 +516,12 @@ function renderAIResponse(container, data, textField, highlightLabels = []) {
     if (info.generatedAt) metaParts.push(`Generated ${info.generatedAt}`);
     if (info.inputsAsOf) metaParts.push(`data as of ${info.inputsAsOf}`);
     meta.textContent = metaParts.join(' · ');
-    if (info.isTemplate) {
+    if (sourceBadge) {
+        setAISourceBadge(sourceBadge, sourceLabel);
+    } else if (sourceLabel) {
         const badge = document.createElement('span');
-        badge.className = 'ai-template-badge';
-        badge.textContent = 'template';
-        badge.title = 'Written from a fixed template, not by the AI model';
+        badge.className = 'ai-badge';
+        setAISourceBadge(badge, sourceLabel);
         meta.appendChild(badge);
     }
 
@@ -591,6 +604,7 @@ window.switchTab = function(tab) {
     const marketView = document.getElementById('market-view');
     const portfolioView = document.getElementById('portfolio-view');
     const opportunitiesView = document.getElementById('opportunities-view');
+    const ledgerView = document.getElementById('ledger-view');
     const aiSection = document.getElementById('ai-section');
     const goldSection = document.getElementById('gold-section');
     const sectionHeader = document.querySelector('.section-header');
@@ -601,6 +615,7 @@ window.switchTab = function(tab) {
     hideEl(marketView);
     hideEl(portfolioView);
     hideEl(opportunitiesView);
+    hideEl(ledgerView);
     hideEl(aiSection);
     hideEl(goldSection);
     hideEl(sectionHeader, true);
@@ -626,7 +641,11 @@ window.switchTab = function(tab) {
     } else if (tab === 'opportunities') {
         showWithAnim(opportunitiesView, null, 0);
         if (typeof renderOpportunitiesPage === 'function') renderOpportunitiesPage();
+    } else if (tab === 'ledger') {
+        showWithAnim(ledgerView, null, 0);
     }
+    // The Portfolio page (js/ledger/ledger-page.js, an ES module) loads its data on this event
+    document.dispatchEvent(new CustomEvent('wolfee_tab_changed', { detail: { tab } }));
 }
 
 window.openExportModal = function() {

@@ -9,12 +9,13 @@
     <title>Wolfee Analytics</title>
 
     <!-- Self-hosted IBM Plex (fonts/, OFL-1.1); tokens first, then base and page styles -->
-    <link rel="stylesheet" href="css/tokens.css?v=16.0">
-    <link rel="stylesheet" href="css/base.css?v=16.0">
-    <link rel="stylesheet" href="css/market.css?v=16.0">
-    <link rel="stylesheet" href="css/modal.css?v=16.0">
-    <link rel="stylesheet" href="css/watchlist.css?v=16.0">
-    <link rel="stylesheet" href="css/auth.css?v=16.0">
+    <link rel="stylesheet" href="css/tokens.css?v=16.2">
+    <link rel="stylesheet" href="css/base.css?v=16.2">
+    <link rel="stylesheet" href="css/market.css?v=16.2">
+    <link rel="stylesheet" href="css/modal.css?v=16.2">
+    <link rel="stylesheet" href="css/watchlist.css?v=16.2">
+    <link rel="stylesheet" href="css/auth.css?v=16.2">
+    <link rel="stylesheet" href="css/ledger.css?v=16.2">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="icon" type="image/png" href="logo_circle.png">
 </head>
@@ -40,6 +41,7 @@
             <div class="nav-links hidden-mobile">
                 <button type="button" class="nav-link tab-btn active" id="tab-market" onclick="switchTab('market')">Market</button>
                 <button type="button" class="nav-link tab-btn" id="tab-opportunities" onclick="switchTab('opportunities')">Opportunities</button>
+                <button type="button" class="nav-link tab-btn" id="tab-ledger" onclick="switchTab('ledger')">Portfolio</button>
                 <button type="button" class="nav-link tab-btn" id="tab-portfolio" onclick="switchTab('portfolio')">Watchlist</button>
             </div>
 
@@ -134,6 +136,8 @@
             <button type="button" onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
         </div>
     </div>
+    <!-- Dims the page behind the mobile filter sheet; a tap on it closes the sheet (outside click in filter.js) -->
+    <div id="filter-backdrop" class="filter-backdrop" aria-hidden="true"></div>
 
     <!-- ===== MAIN CONTENT ===== -->
     <div class="container">
@@ -166,7 +170,7 @@
                     <div class="ai-header-left">
                         <div class="ai-title-group">
                             <h2 class="ai-title-text" id="ai-title">Market insight</h2>
-                            <span class="ai-badge">AI generated</span>
+                            <span class="ai-badge" id="ai-source-badge" hidden></span>
                         </div>
                     </div>
                     <div class="ai-header-right">
@@ -240,6 +244,127 @@
                 </div>
             </div>
 
+            <!-- Portfolio (ledger) View: /api/v1/portfolios, REQ-32 -->
+            <div id="ledger-view" class="hidden">
+                <div class="section-header">
+                    <div class="section-badge">Recorded transactions, valued in TRY</div>
+                    <h1 class="section-heading hero-heading">Portfolio</h1>
+                </div>
+                <p class="sr-only" id="ledger-announce" role="status" aria-live="polite"></p>
+
+                <div id="ledger-signed-out" class="empty-state hidden">
+                    <p class="empty-title">Sign in to see your portfolio</p>
+                    <p>Your transactions, holdings and profit or loss are kept with your account.</p>
+                    <button type="button" class="gradient-btn" id="ledger-signin-btn">Sign in</button>
+                </div>
+
+                <div id="ledger-app" class="hidden">
+                    <div id="ledger-page-error"></div>
+
+                    <div id="ledger-no-portfolio" class="empty-state" hidden>
+                        <p class="empty-title">No portfolio yet</p>
+                        <p>Create a portfolio, then record a deposit and your trades. Holdings and profit or loss are worked out from those transactions.</p>
+                        <button type="button" class="gradient-btn" id="ledger-first-btn">Create a portfolio</button>
+                    </div>
+
+                    <div class="ledger-toolbar" id="ledger-toolbar" hidden>
+                        <div class="field ledger-select-field">
+                            <label for="ledger-portfolio-select">Portfolio</label>
+                            <select id="ledger-portfolio-select"></select>
+                        </div>
+                        <button type="button" class="secondary-btn" id="ledger-new-btn">New portfolio</button>
+                    </div>
+
+                    <form id="ledger-create-form" class="panel ledger-panel ledger-create" novalidate hidden aria-labelledby="ledger-create-title">
+                        <h2 class="section-title" id="ledger-create-title">New portfolio</h2>
+                        <p class="form-alert inline-error" role="alert" hidden></p>
+                        <div class="field" data-field="name">
+                            <label for="ledger-new-name">Name</label>
+                            <input type="text" id="ledger-new-name" name="name" maxlength="100" autocomplete="off" aria-describedby="ledger-new-name-error ledger-new-name-hint">
+                            <span class="field-error" id="ledger-new-name-error" hidden></span>
+                            <span class="field-hint" id="ledger-new-name-hint">Values are shown in Turkish lira (TRY).</span>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="gradient-btn">Create portfolio</button>
+                            <button type="button" class="secondary-btn" id="ledger-cancel-create">Cancel</button>
+                        </div>
+                    </form>
+
+                    <div id="ledger-content" hidden>
+                        <section class="panel ledger-panel" id="ledger-summary" aria-labelledby="ledger-summary-title"></section>
+
+                        <section class="panel ledger-panel" aria-labelledby="ledger-holdings-title">
+                            <h2 class="section-title" id="ledger-holdings-title">Holdings</h2>
+                            <div id="ledger-holdings"></div>
+                        </section>
+
+                        <form id="ledger-tx-form" class="panel ledger-panel" novalidate aria-labelledby="ledger-tx-form-title">
+                            <h2 class="section-title" id="ledger-tx-form-title">Add a transaction</h2>
+                            <p class="form-alert inline-error" role="alert" hidden></p>
+                            <div class="ledger-form-grid">
+                                <div class="field" data-field="type">
+                                    <label for="ledger-tx-type">Type</label>
+                                    <select id="ledger-tx-type" name="type" aria-describedby="ledger-tx-type-error"></select>
+                                    <span class="field-error" id="ledger-tx-type-error" hidden></span>
+                                </div>
+                                <div class="field" data-field="trade_date">
+                                    <label for="ledger-tx-date">Trade date</label>
+                                    <input type="date" id="ledger-tx-date" name="trade_date" min="1900-01-01" aria-describedby="ledger-tx-date-error">
+                                    <span class="field-error" id="ledger-tx-date-error" hidden></span>
+                                </div>
+                                <div class="field" data-field="symbol">
+                                    <label for="ledger-tx-symbol">Symbol <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-symbol" name="symbol" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="ledger-tx-symbol-error ledger-tx-symbol-hint">
+                                    <span class="field-error" id="ledger-tx-symbol-error" hidden></span>
+                                    <span class="field-hint" id="ledger-tx-symbol-hint">For example THYAO or AAPL</span>
+                                </div>
+                                <div class="field" data-field="quantity">
+                                    <label for="ledger-tx-quantity" id="ledger-tx-quantity-label">Quantity <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-quantity" name="quantity" inputmode="decimal" autocomplete="off" aria-describedby="ledger-tx-quantity-error">
+                                    <span class="field-error" id="ledger-tx-quantity-error" hidden></span>
+                                </div>
+                                <div class="field" data-field="price">
+                                    <label for="ledger-tx-price" id="ledger-tx-price-label">Price per unit <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-price" name="price" inputmode="decimal" autocomplete="off" aria-describedby="ledger-tx-price-error ledger-tx-price-hint">
+                                    <span class="field-error" id="ledger-tx-price-error" hidden></span>
+                                    <span class="field-hint" id="ledger-tx-price-hint">In the instrument's currency</span>
+                                </div>
+                                <div class="field" data-field="fee">
+                                    <label for="ledger-tx-fee">Fee <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-fee" name="fee" inputmode="decimal" autocomplete="off" aria-describedby="ledger-tx-fee-error">
+                                    <span class="field-error" id="ledger-tx-fee-error" hidden></span>
+                                </div>
+                                <div class="field" data-field="currency">
+                                    <label for="ledger-tx-currency">Currency <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-currency" name="currency" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="ledger-tx-currency-error ledger-tx-currency-hint">
+                                    <span class="field-error" id="ledger-tx-currency-error" hidden></span>
+                                    <span class="field-hint" id="ledger-tx-currency-hint">Three-letter code, for example TRY</span>
+                                </div>
+                                <div class="field" data-field="fx_rate_to_base">
+                                    <label for="ledger-tx-fx">Rate to TRY <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-fx" name="fx_rate_to_base" inputmode="decimal" autocomplete="off" aria-describedby="ledger-tx-fx-error ledger-tx-fx-hint">
+                                    <span class="field-error" id="ledger-tx-fx-error" hidden></span>
+                                    <span class="field-hint" id="ledger-tx-fx-hint">For a foreign currency only. Without it, the TRY value shows as Not available.</span>
+                                </div>
+                                <div class="field ledger-note-field" data-field="note">
+                                    <label for="ledger-tx-note">Note <span class="field-optional">(optional)</span></label>
+                                    <input type="text" id="ledger-tx-note" name="note" maxlength="500" autocomplete="off" aria-describedby="ledger-tx-note-error">
+                                    <span class="field-error" id="ledger-tx-note-error" hidden></span>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="gradient-btn">Add transaction</button>
+                            </div>
+                        </form>
+
+                        <section class="panel ledger-panel" aria-labelledby="ledger-tx-title">
+                            <h2 class="section-title" id="ledger-tx-title">Transactions</h2>
+                            <div id="ledger-transactions"></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
             <!-- Opportunities View (new tab page) -->
             <div id="opportunities-view" class="hidden">
                 <div class="section-header">
@@ -263,6 +388,10 @@
         <button type="button" class="tabbar-item tab-btn" id="tab-opportunities-m" onclick="switchTab('opportunities')">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>
             <span>Opportunities</span>
+        </button>
+        <button type="button" class="tabbar-item tab-btn" id="tab-ledger-m" onclick="switchTab('ledger')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M2 13h20"/></svg>
+            <span>Portfolio</span>
         </button>
         <button type="button" class="tabbar-item tab-btn" id="tab-portfolio-m" onclick="switchTab('portfolio')">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
@@ -376,7 +505,7 @@
                 <div class="auth-tabs" role="group" aria-label="Account actions">
                     <button type="button" class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthTab('login')">Sign in</button>
                     <button type="button" class="auth-tab-btn" id="auth-tab-register" onclick="switchAuthTab('register')">Register</button>
-                    <button type="button" class="auth-tab-btn" id="auth-tab-forgot" onclick="switchAuthTab('forgot')">Forgot password</button>
+                    <button type="button" class="auth-tab-btn" id="auth-tab-forgot" data-needs-email onclick="switchAuthTab('forgot')">Forgot password</button>
                 </div>
             </div>
 
@@ -385,22 +514,17 @@
 
             <!-- Login Form -->
             <form id="login-form" class="auth-form-view" onsubmit="handleLoginSubmit(event)">
-                <div class="field">
+                <div class="field" data-api-field="email">
                     <label for="login-email">Email address</label>
-                    <input type="email" id="login-email" required autocomplete="email">
+                    <input type="email" id="login-email" aria-describedby="login-email-error" required autocomplete="email">
+                    <span class="field-error" id="login-email-error" hidden></span>
                 </div>
-                <div class="field">
+                <div class="field" data-api-field="password">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" required autocomplete="current-password">
+                    <input type="password" id="login-password" aria-describedby="login-password-error" required autocomplete="current-password">
+                    <span class="field-error" id="login-password-error" hidden></span>
                 </div>
-                <div id="login-captcha-wrap" class="field hidden">
-                    <span class="field-label">Security check</span>
-                    <div class="captcha-placeholder">
-                        <input type="hidden" id="login-captcha" value="dev-captcha-pass">
-                        <p class="field-hint">A security check is active after several sign-in attempts.</p>
-                    </div>
-                </div>
-                <div class="auth-links">
+                <div class="auth-links" data-needs-email>
                     <button type="button" class="link-btn" onclick="switchAuthTab('forgot')">Forgot password?</button>
                     <button type="button" class="link-btn is-quiet" onclick="switchAuthTab('resend')">Resend verification email</button>
                 </div>
@@ -409,50 +533,63 @@
 
             <!-- Register Form -->
             <form id="register-form" class="auth-form-view hidden" onsubmit="handleRegisterSubmit(event)">
-                <div class="field">
-                    <label for="reg-email">Email address</label>
-                    <input type="email" id="reg-email" required autocomplete="email">
+                <!-- Shown instead of the fields when GET /api/auth/config says registration_open: false (css/auth.css) -->
+                <div class="register-closed" role="status">
+                    <p class="register-closed-title">Registration is closed</p>
+                    <p>New accounts cannot be created right now. If you already have an account, sign in.</p>
+                    <button type="button" class="link-btn" onclick="switchAuthTab('login')">Go to sign in</button>
                 </div>
-                <div class="field">
+                <div class="field" data-api-field="email">
+                    <label for="reg-email">Email address</label>
+                    <input type="email" id="reg-email" aria-describedby="reg-email-error" required autocomplete="email">
+                    <span class="field-error" id="reg-email-error" hidden></span>
+                </div>
+                <div class="field" data-api-field="password">
                     <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" required autocomplete="new-password" aria-describedby="pw-hint" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.classList.toggle('is-valid', p.valid); h.classList.toggle('is-invalid', !p.valid); }">
+                    <input type="password" id="reg-password" required autocomplete="new-password" aria-describedby="reg-password-error pw-hint" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.classList.toggle('is-valid', p.valid); h.classList.toggle('is-invalid', !p.valid); }">
+                    <span class="field-error" id="reg-password-error" hidden></span>
                     <span id="pw-hint" class="field-hint auth-hint">At least 10 characters</span>
                 </div>
                 <div class="field">
                     <label for="reg-confirm">Confirm password</label>
                     <input type="password" id="reg-confirm" required autocomplete="new-password">
                 </div>
-                <div class="captcha-placeholder">
-                    <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
-                    <p class="field-hint">Registration is protected by automated bot detection.</p>
+                <div class="field" data-api-field="invite_code">
+                    <label for="reg-invite">Invite code</label>
+                    <input type="text" id="reg-invite" name="invite_code" required autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="reg-invite-error reg-invite-hint">
+                    <span class="field-error" id="reg-invite-error" hidden></span>
+                    <span class="field-hint" id="reg-invite-hint">Wolfee is invite-only for now. Enter the code you were given.</span>
                 </div>
                 <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create account</button>
             </form>
 
             <!-- Forgot Password Form -->
-            <form id="forgot-form" class="auth-form-view hidden" onsubmit="handleForgotPasswordSubmit(event)">
-                <div class="field">
+            <form id="forgot-form" class="auth-form-view hidden" data-needs-email onsubmit="handleForgotPasswordSubmit(event)">
+                <div class="field" data-api-field="email">
                     <label for="forgot-email">Email address</label>
-                    <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-hint">
+                    <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-email-error forgot-hint">
+                    <span class="field-error" id="forgot-email-error" hidden></span>
                     <span class="field-hint" id="forgot-hint">We send a reset link to this address if it has an account.</span>
                 </div>
                 <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send reset link</button>
             </form>
 
             <!-- Resend Verification Form -->
-            <form id="resend-form" class="auth-form-view hidden" onsubmit="event.preventDefault(); const em=document.getElementById('resend-email').value; if(em) authFetch(`${API_URL}/api/auth/resend-verification`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em})}).then(r=>r.json()).then(d=>showAuthAlert(d.message,true));">
-                <div class="field">
+            <form id="resend-form" class="auth-form-view hidden" data-needs-email onsubmit="handleResendVerificationSubmit(event)">
+                <div class="field" data-api-field="email">
                     <label for="resend-email">Email address</label>
-                    <input type="email" id="resend-email" required autocomplete="email">
+                    <input type="email" id="resend-email" aria-describedby="resend-email-error" required autocomplete="email">
+                    <span class="field-error" id="resend-email-error" hidden></span>
                 </div>
                 <button type="submit" class="gradient-btn auth-submit-btn">Resend verification email</button>
             </form>
 
             <!-- Reset Password Form -->
             <form id="reset-form" class="auth-form-view hidden" onsubmit="handleResetPasswordSubmit(event)">
-                <div class="field">
+                <div class="field" data-api-field="new_password">
                     <label for="reset-new-password">New password</label>
-                    <input type="password" id="reset-new-password" required autocomplete="new-password" aria-describedby="reset-hint">
+                    <input type="password" id="reset-new-password" required autocomplete="new-password" aria-describedby="reset-new-password-error reset-hint">
+                    <span class="field-error" id="reset-new-password-error" hidden></span>
                     <span class="field-hint" id="reset-hint">At least 10 characters</span>
                 </div>
                 <div class="field">
@@ -465,14 +602,16 @@
     </div>
 
     <!-- ===== MODULAR SCRIPTS ===== -->
-    <script type="module" src="js/core/globals.js?v=16.0"></script>
-    <script src="js/config.js?v=16.0"></script>
-    <script src="js/auth.js?v=16.0"></script>
-    <script src="js/ui.js?v=16.0"></script>
-    <script src="js/filter.js?v=16.0"></script>
-    <script src="js/chart.js?v=16.0"></script>
-    <script src="js/portfolio.js?v=16.0"></script>
-    <script src="js/main.js?v=16.0"></script>
+    <script type="module" src="js/core/globals.js?v=16.2"></script>
+    <script src="js/config.js?v=16.2"></script>
+    <script src="js/auth.js?v=16.2"></script>
+    <script src="js/ui.js?v=16.2"></script>
+    <script src="js/filter.js?v=16.2"></script>
+    <script src="js/chart.js?v=16.2"></script>
+    <script src="js/portfolio.js?v=16.2"></script>
+    <script src="js/main.js?v=16.2"></script>
+    <script type="module" src="js/ledger/ledger-page.js?v=16.2"></script>
+    <script type="module" src="js/auth-features.js?v=16.2"></script>
 
 </body>
 
