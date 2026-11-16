@@ -61,7 +61,7 @@ An owner is the only agent that edits the file. Everyone may read everything.
 
 | Path | Notes |
 |------|-------|
-| `frontend/**` | `index.html`, `style.css`, `js/*.js`, `worker.js`, images |
+| `frontend/**` | `index.html`, `css/*.css`, `js/**/*.js`, `fonts/`, images |
 
 ### Unowned / local-only
 

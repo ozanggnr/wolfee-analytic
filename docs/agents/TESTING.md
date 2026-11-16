@@ -148,7 +148,8 @@ cd /mnt/c/Users/ozang/Desktop/Projects/wolfee-integration/backend
 DATABASE_URL=postgresql://postgres@127.0.0.1:55432/wolfee_smoke ~/venvs/wolfee/bin/alembic upgrade head
 env -u GEMINI_API_KEY DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/wolfee_smoke \
     ~/venvs/wolfee/bin/python -m services.instrument_service
-env -u GEMINI_API_KEY -u CAPTCHA_SECRET_KEY PYTHONDONTWRITEBYTECODE=1 \
+env -u GEMINI_API_KEY -u RESEND_API_KEY -u SENDGRID_API_KEY -u SMTP_HOST PYTHONDONTWRITEBYTECODE=1 \
+    REGISTRATION_INVITE_CODE="$(openssl rand -hex 16)" \
     DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/wolfee_smoke \
     AUTO_VERIFY_DEV=true COOKIE_SECURE=false \
     ~/venvs/wolfee/bin/uvicorn main:app --host 127.0.0.1 --port 8000
@@ -191,6 +192,12 @@ The temporary PostgreSQL 18 cluster (`~/wolfee-test/pg18` and `pg18.log`) was de
 | 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.2 on **PostgreSQL 16.16**, empty `wolfee_migrations`: upgrade → downgrade base → upgrade → downgrade base → upgrade | all exit 0; single head `e4a8c2f6b1d3`; `alembic check`: "No new upgrade operations detected"; 14 tables |
 | 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.3 seed twice | "361 inserted, 0 updated", then "0 inserted, 0 updated"; 361 / 361 distinct |
 | 2026-11-15 | `wolfee-integration` @ `10318c3` | §3.4 browser smoke, real providers (355 quotes cached), headless Chrome, 1440 px and 390 px | all 7 views at each width: no horizontal scroll, no overflow, no bad text; register 200, sign-in 200; the only HTTP error is the expected `401 /api/auth/me` before sign-in. Found: insight "data as of" 3 h ahead (cluster time zone, REQ-33 a); "AI generated" badge on template text (REQ-34 a) |
+| 2026-11-16 | `wolfee-integration` @ `dd08370` (after merging `agent/quant-ai` `f8bef1d`, `agent/backend` `cf440a2`, `agent/frontend` `ee33aee`) | §2 backend (repo root) | **643 passed**, 3 warnings (88 s) |
+| 2026-11-16 | `wolfee-integration` @ `dd08370` | §2 frontend | **72 tests, 72 pass, 0 fail** |
+| 2026-11-16 | `wolfee-integration` @ `dd08370` | §3.1 on **PostgreSQL 16.16**, fresh `wolfee_tests` | **194 passed** (16 s) |
+| 2026-11-16 | `wolfee-integration` @ `dd08370` | §3.2 migrations up/down/up/down/up on an empty database | all exit 0; single head `e4a8c2f6b1d3`; `alembic check`: "No new upgrade operations detected"; 14 tables (REQ-33 a needed no migration) |
+| 2026-11-16 | `wolfee-integration` @ `dd08370` | §3.3 seed twice | 361 inserted, then 0 inserted; 361 / 361 distinct |
+| 2026-11-16 | `wolfee-integration` @ `dd08370` | §3.4 browser smoke with `REGISTRATION_INVITE_CODE` set, no e-mail provider, `REQUIRE_EMAIL_VERIFICATION=false`, no `AUTO_VERIFY_DEV`; headless Chrome at 1440 px and 390 px | all 11 views at each width: no horizontal scroll, no overflow, no bad text. `/api/auth/config` 200 `{"email_enabled":false,"registration_open":true}`, no 404. Forgot-password tab and resend link hidden (no visible `[data-needs-email]`). Wrong code → **403**, "Registration requires a valid invite code." shown; right code → 200, account verified, sign-in 200. Portfolio page: create 201, BUY THYAO 201, note `<b>smoke</b> & note` shown as text, void 201 (reversal row added, both struck through, positions empty). HTTP errors only the expected `401 /api/auth/me` before sign-in and the deliberate 403. Server log (281 lines): 0 matches for `token=`, `verify-email`, `reset-password?`, session / CSRF cookie names, `Set-Cookie`, the invite code, the wrong code, or the password |
 
 Note (2026-11-15): the PG16 test cluster runs in `Europe/Istanbul` (WSL's zone). Production must be UTC (DEPLOYMENT §2.1 D3); until REQ-33 (a) is fixed, local "as of" times read 3 h ahead.
 

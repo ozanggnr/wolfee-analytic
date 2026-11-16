@@ -29,7 +29,7 @@ primary_region = "fra"
   # Secrets (set with `fly secrets set`, never here): DATABASE_URL (via `fly postgres attach`),
   # GEMINI_API_KEY, REGISTRATION_INVITE_CODE. No CAPTCHA keys (no CAPTCHA, user 2026-11-16),
   # no e-mail provider at launch, no data-source keys (none are read).
-  # Must never be set in production: ALLOW_DEV_CAPTCHA_BYPASS, AUTO_VERIFY_DEV.
+  # Must never be set in production: AUTO_VERIFY_DEV.
 
 [http_service]
   internal_port = 8080

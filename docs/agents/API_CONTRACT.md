@@ -39,9 +39,10 @@ Response examples in §2 list the fields the code returns. They were read from s
 | Scope | Limit | Response |
 |-------|-------|----------|
 | `POST`/`PUT` on `/api/auth/{login,register,forgot-password,resend-verification,reset-password}` | 10 per 60 s | `429` + `Retry-After` |
+| Rejected invite codes on `POST /api/auth/register` | 5 per hour per IP | `429` + `Retry-After` (also for a correct code until the hour passes) |
 | All other `/api/*` | 120 per 60 s | `429` + `Retry-After` |
 
-Client IP is taken from `CF-Connecting-IP`, then the first `X-Forwarded-For` entry, then the socket.
+Client IP is taken from `CF-Connecting-IP`, then the first `X-Forwarded-For` entry, then the socket. **Both headers are client-supplied**, so every per-IP limit above can be bypassed by sending a different value on each request; REQ-39 (Agent 2) switches to Fly's `Fly-Client-IP` before the first deploy (DEPLOYMENT §2.1 D6).
 
 ### 1.5 Symbols
 
@@ -211,15 +212,18 @@ D4 status (2026-11-14): `/api/export/{period}` leaves a figure it cannot compute
 
 | Method | Path | Request | Success | Errors |
 |--------|------|---------|---------|--------|
-| POST | `/register` | `{"email", "password", "captcha_token"?}` | 200 `{"message"}` — same generic message whether or not the email exists | 400 password policy, 400 captcha, 429 |
+| POST | `/register` | `{"email", "password", "invite_code"}` (`invite_code` ≤ 256 chars) | 200 `{"message"}` — same generic message whether or not the email exists; with `REQUIRE_EMAIL_VERIFICATION=false` the account is verified at once and the message says so | **403** `"Registration requires a valid invite code."` for a missing or wrong code **and** when registration is closed (`REGISTRATION_INVITE_CODE` unset); checked before anything else. **429** + `Retry-After` after 5 rejected codes per IP per hour (then even the right code is refused until the hour passes); 400 password policy; 422 body validation; 429 auth limit |
 | GET | `/verify-email?token=` | | HTML page | HTML error page |
-| POST | `/resend-verification` | `{"email"}` | 200 `{"message"}` | 429 |
-| POST | `/login` | `{"email", "password", "captcha_token"?}` | 200 `{"user": {"id", "email", "email_verified"}, "message"}` + session and CSRF cookies | 401 generic, 401 locked (with seconds), 400 captcha (header `X-Captcha-Required: true`), 403 unverified, 429 |
+| POST | `/resend-verification` | `{"email"}` | 200 `{"message"}` | **503** `"Email verification is not available yet."` when no e-mail provider is configured (no lookup, no token created); 429 |
+| POST | `/login` | `{"email", "password"}` | 200 `{"user": {"id", "email", "email_verified"}, "message"}` + session and CSRF cookies | 401 generic, 401 locked (with seconds), 403 unverified, 429 |
 | POST | `/logout` | | 200 `{"message"}`, cookies cleared | 403 CSRF |
 | GET | `/me` | | 200 `{"id", "email", "email_verified", "created_at"}` | 401 |
-| POST | `/forgot-password` | `{"email", "captcha_token"?}` | 200 generic `{"message"}` | 429 |
+| POST | `/forgot-password` | `{"email"}` | 200 generic `{"message"}` | **503** `"Password reset is not available yet."` when no e-mail provider is configured (no lookup, no token created); 429 |
 | POST | `/reset-password` | `{"token", "new_password"}` | 200 `{"message"}`, all sessions revoked | 400 policy, 400 invalid token, 429 |
 | GET | `/csrf` | | 200 `{"csrf_token"}` | |
+| GET | `/config` | | 200 `{"email_enabled": bool, "registration_open": bool}`. Public, no auth. `email_enabled`: an e-mail provider is configured (`RESEND_API_KEY`, `SENDGRID_API_KEY` or SMTP); `registration_open`: `REGISTRATION_INVITE_CODE` is set. Never returns a key or the code | |
+
+**CAPTCHA removed** (decision D1, 2026-11-16, merged at `7bf4d6b`): no `captcha_token` field and no `X-Captcha-Required` header anywhere; an old client that still sends `captcha_token` is not rejected for it (unknown fields are ignored). Without an e-mail provider no verification or reset token is created and no link is ever logged (REQ-36 c).
 
 Password policy: minimum 10 characters plus a common-password blocklist. Lockout: 1 min after 5 failures, 5 min after 6, 15 min after 7 or more.
 

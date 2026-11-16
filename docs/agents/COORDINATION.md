@@ -186,6 +186,11 @@ Decided by the user on 2026-11-16 (deployment readiness, DEPLOYMENT §2.1):
 - **Old deploy configs deleted:** `railway.json` and `wrangler.jsonc` (Railway is gone; Cloudflare is being disconnected). Nothing deploys from them.
 - **Deploy is blocked** until REQ-36 and REQ-37 are merged and verified. Agent 1 waits for Agents 2, 3 and 4.
 
+Merged on 2026-11-16 (user instruction, order quant-ai → backend → frontend):
+
+- `agent/quant-ai` `f8bef1d` → `6fbb26d` (REQ-35); `agent/backend` `cf440a2` → `7bf4d6b` (REQ-36, REQ-33); `agent/frontend` `ee33aee` → `dd08370` (REQ-32, REQ-34, REQ-37; assets v=16.2). REQ-32 to REQ-37 are DONE.
+- Final verification and the deploy sequence: TESTING.md §5, DEPLOYMENT.md §2.1 and §10. New: REQ-38 (Agent 2, drop the DISCLAIMER import fallback), REQ-39 (Agent 2, client IP from `Fly-Client-IP`, DEPLOYMENT §2.1 D6), REQ-40 (Agent 4, stale CAPTCHA comment).
+
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
 ### Requests between agents
@@ -575,7 +580,7 @@ Needs:     after the UI redesign, a Portfolio page on /api/v1/portfolios (API_CO
            amount: shown as "Not available", never estimated). Bump the asset version.
 Why:       the ledger API is on integration since a63f25d and has no UI yet
 Blocking:  no — starts after the redesign
-Status:    open (unblocked 2026-11-15: redesign merged at 10318c3)
+Status:    DONE 2026-11-16 — 7e61301 (Portfolio page on /api/v1/portfolios), agent/frontend ee33aee, merged at dd08370
 
 ID:        REQ-33
 From:      Agent 1 (final verification, 2026-11-15)
@@ -592,7 +597,7 @@ Needs:     (a) stock_data / turkish_gold / exchange_rates `updated_at` and ai_in
 Why:       (a) on a non-UTC Postgres the market insight's "data as of" is hours off (seen on
            the WSL cluster); (b) stale credentialed origins (DEPLOYMENT §2.1 S1)
 Blocking:  (a) no, if the Fly database runs in UTC (DEPLOYMENT §2.1 D3); (b) no
-Status:    open
+Status:    DONE 2026-11-16 — 41a47c9 (a: the application writes UTC on insert and update; no migration), 85fd500 (b: exact CORS origins only); agent/backend cf440a2, merged at 7bf4d6b
 
 ID:        REQ-34
 From:      Agent 1 (browser smoke test, 2026-11-15)
@@ -608,7 +613,7 @@ Needs:     (a) index.html:169 "AI generated" badge shows even when the insight i
 Why:       the label must not claim AI wrote template text; registration must work in
            production; readable errors
 Blocking:  (b) depends on the user's D1 decision; the rest no
-Status:    open
+Status:    DONE 2026-11-16 — 21ffc67 (a), 92fbcf3 (c), 1b7394e (d); (b) superseded by REQ-37; merged at dd08370
 
 ID:        REQ-35
 From:      Agent 1 (browser smoke test, 2026-11-15)
@@ -618,7 +623,7 @@ Needs:     ai/guardrails.py disclaimer says "figures calculated ... from your re
            transactions. Use a market-only wording for market and stock insights.
 Why:       the disclaimer should describe the inputs actually used
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-16 — f8bef1d (MARKET_DISCLAIMER for market and stock text, PORTFOLIO_DISCLAIMER for portfolio text), merged at 6fbb26d
 
 ID:        REQ-36
 From:      Agent 1 (user decisions D1 and D2, 2026-11-16)
@@ -644,7 +649,7 @@ Needs:     (a) Invite code: POST /api/auth/register takes `invite_code` (require
                contract on merge.
 Why:       D1 (no CAPTCHA, invite-only registration) and D2 (no e-mail provider at launch)
 Blocking:  yes — the first Fly deploy (DEPLOYMENT §2.1 D1, D2)
-Status:    open
+Status:    DONE 2026-11-16 — ccfc76d, 7d00ac2 (a, b: invite code, 403, 5/hour then 429; CAPTCHA removed), d2ac740, 08b8d33 (c: 503 without a provider, no token created or logged, GET /api/auth/config); merged at 7bf4d6b
 
 ID:        REQ-37
 From:      Agent 1 (user decisions D1 and D2, 2026-11-16)
@@ -660,5 +665,40 @@ Needs:     (a) Register form: an "Invite code" field (required, autocomplete off
            Bump the asset version.
 Why:       D1 and D2
 Blocking:  yes — the first Fly deploy, together with REQ-36
+Status:    DONE 2026-11-16 — 29a3414 (a), ee33aee (b), bc6d4b9 (d), assets v=16.2; merged at dd08370. Leftover: the header comment in frontend/js/auth.js:7 still lists "CAPTCHA integration" (REQ-40)
+
+ID:        REQ-38
+From:      Agent 1 (merge of f8bef1d before cf440a2, 2026-11-16)
+To:        Agent 2
+Needs:     services/ai_insight_service.py:24-27: drop the temporary
+               try: from ai.guardrails import MARKET_DISCLAIMER
+               except ImportError: from ai.guardrails import DISCLAIMER as MARKET_DISCLAIMER
+           and import MARKET_DISCLAIMER directly; MARKET_DISCLAIMER is on integration since
+           6fbb26d. Adjust tests/services/test_insight_disclaimer_import.py if it covers the
+           fallback.
+Why:       the fallback hides a real import error behind the old alias
+Blocking:  no
+Status:    open
+
+ID:        REQ-39
+From:      Agent 1 (review of cf440a2, 2026-11-16)
+To:        Agent 2
+Needs:     security_middleware.get_client_ip: on Fly, use the `Fly-Client-IP` header (set by the
+           Fly proxy) and stop trusting `CF-Connecting-IP` and the left-most `X-Forwarded-For`,
+           which the client controls. Keep the socket address for local runs. Tests: a spoofed
+           CF-Connecting-IP / X-Forwarded-For does not change the key; Fly-Client-IP does.
+           Consider dropping `--forwarded-allow-ips=*` from the Dockerfile CMD in the same
+           change (tell Agent 1; the Dockerfile is Agent 1's file).
+Why:       with a fresh fake IP per request every per-IP limit can be bypassed, including the
+           5-per-hour invite-code limit (DEPLOYMENT §2.1 D6, API_CONTRACT §1)
+Blocking:  recommended before the first deploy; a long random invite code is the stopgap
+Status:    open
+
+ID:        REQ-40
+From:      Agent 1 (review of ee33aee, 2026-11-16)
+To:        Agent 4
+Needs:     frontend/js/auth.js:7 header comment still lists "CAPTCHA integration"; remove it.
+Why:       CAPTCHA was removed (D1)
+Blocking:  no
 Status:    open
 ```

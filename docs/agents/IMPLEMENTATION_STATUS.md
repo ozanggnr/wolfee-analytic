@@ -68,7 +68,7 @@ Status values:
 | Account lockout with backoff | DONE | |
 | Security headers, CSP | DONE | CSP allows `'unsafe-inline'` scripts because the frontend uses inline handlers |
 | Audit log | DONE | `security_logs`, unpruned |
-| CAPTCHA | TO BE REMOVED | Never effective (the frontend sent a constant). User decision 2026-11-16: no CAPTCHA; invite-code registration instead (REQ-36, REQ-37) |
+| CAPTCHA | REMOVED | User decision 2026-11-16: no CAPTCHA. Registration needs an invite code (`REGISTRATION_INVITE_CODE`; REQ-36 / REQ-37, merged at `7bf4d6b` / `dd08370`) |
 | User-level isolation on watchlist | DONE | All queries filter by `current_user.id` |
 | Roles / admin | MISSING | |
 | Account deletion, session list, change password while signed in | MISSING | |
@@ -100,7 +100,7 @@ Status values:
 | Feature | Status | Evidence / gap |
 |---------|--------|----------------|
 | Railway deployment | REMOVED | `railway.json` deleted 2026-11-16; production target is Fly.io (`fly.toml`, `Dockerfile`) |
-| Cloudflare Pages config for the frontend | REMOVED | `wrangler.jsonc` deleted 2026-11-16; `frontend/worker.js` to be removed by Agent 4 (REQ-37 d) |
+| Cloudflare Pages config for the frontend | REMOVED | `wrangler.jsonc` and the Pages worker deleted 2026-11-16 (`92a5ca0`, `dd08370`) |
 | Alembic migrations | PARTIAL | Cover 5 of 9 tables; failures ignored at startup (DATABASE_CONTRACT §2.1) |
 | CI | MISSING | |
 | `.env.example` / environment documentation | MISSING | Variables are listed in §4 below |
@@ -192,8 +192,8 @@ Status values:
 | `RAILWAY_PUBLIC_DOMAIN`, `RAILWAY_ENVIRONMENT` | CORS, cookies, base URL | — |
 | `CORS_ORIGINS` | `main.py` | — |
 | `SESSION_DURATION_DAYS`, `COOKIE_SECURE` | `security_middleware.py` | 30, false |
-| `CAPTCHA_SECRET_KEY`, `CAPTCHA_SITE_KEY`, `CAPTCHA_VERIFY_URL`, `ALLOW_DEV_CAPTCHA_BYPASS` | `auth_utils.py` | empty (verification skipped) |
-| `AUTO_VERIFY_DEV`, `REQUIRE_EMAIL_VERIFICATION` | `auth_routes.py` | false, true |
+| `REGISTRATION_INVITE_CODE` | `auth_utils.py` | empty (registration closed) |
+| `AUTO_VERIFY_DEV`, `REQUIRE_EMAIL_VERIFICATION` | `auth_routes.py` | false, true (`fly.toml` sets `false` for launch, D2) |
 | `APP_BASE_URL`, `EMAIL_FROM` | `auth_utils.py` | — |
 | `RESEND_API_KEY`, `SENDGRID_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | `auth_utils.py` | — |
 
@@ -216,7 +216,7 @@ Dependencies listed in `requirements.txt` with no import in application code: `s
 | R7 | Single-process assumptions | Rate limiters, summary cache, refresh lock and AI model cache live in process memory, and the refresh loop runs inside the web process. A second instance would duplicate refreshes and split rate limits |
 | R8 | `Float` money and no ledger | Fine for the cache, unusable for portfolio accounting. New tables must use `NUMERIC` |
 | R9 | Symbol ambiguity | Duplicate cache rows and per-layer normalisation (DATABASE_CONTRACT §2.6). Must be fixed before transactions reference instruments |
-| R10 | CAPTCHA is not effective | Resolved by decision 2026-11-16: CAPTCHA removed, invite-code registration (REQ-36, REQ-37) |
+| R10 | CAPTCHA is not effective | Resolved 2026-11-16: CAPTCHA removed, invite-code registration merged (`7bf4d6b`, `dd08370`) |
 | R11 | No verified test baseline and no CI | §7 |
 | R12 | Business logic in route handlers | `main.py` export handlers and `watchlist_routes.get_watchlist_summary` compute inline, against CLAUDE.md. New work must not copy the pattern |
 | R13 | Trader Skill is US-oriented and not located | SEC, House Clerk and NYSE data have no direct BIST equivalent; scope must be reviewed before any adaptation |
@@ -246,7 +246,7 @@ See COORDINATION §9 for the list (D1–D9). Agent 1 recommendations:
 - **External providers were not called**; whether each source currently works is unknown.
 - The duplicate-row behaviour in DATABASE_CONTRACT §2.6 is inferred from code.
 - Parts of `auth_utils.py`, `frontend/js/ui.js`, `auth.js`, `filter.js`, `main.js`, `index.html` and `style.css` were searched rather than read line by line.
-- README drift noted but not corrected: `SameSite=Strict` cookies (the code sets `Lax`), and a CAPTCHA challenge.
+- README drift noted but not corrected: `SameSite=Strict` cookies (the code sets `Lax`). The CAPTCHA line was replaced 2026-11-16.
 
 ---
 

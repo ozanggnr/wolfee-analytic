@@ -28,12 +28,12 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 - Step 3d (2026-11-15): merged `agent/quant-ai` `631dc76` → **`836c3a3`** (legacy estimates and `estimated_fields` gone, `change_pct` null without previous close, chart bars without filled OHLC, loading fact). WSL: backend 583 passed, frontend 28/28. API_CONTRACT §2.2/§2.4/§5 updated. New REQ-31 (Agent 2: watchlist `round(None)` HIGH, market_placeholder loading, main.py chart fallback, stock_card, gold/FX change, delete api_router.py) and REQ-32 (Agent 4: Portfolio page after the redesign). Watchlist crash accepted on local-only integration
 - Step 4 (2026-11-15): merged `agent/backend` `98ee277` → **`fe6d8c6`** (REQ-31 closed) and `agent/frontend` `a75332b` → **`10318c3`** (redesign, REQ-29 closed, v=16.0). The "▲ 0.00%" report was re-checked: fixed by the redesign. api_router.py doc references removed. Final WSL verification all green (598 / 41 / PG16 191 / migrations / seed / browser smoke at 1440 and 390). Readiness: DEPLOYMENT §2.1 (D1 CAPTCHA, D2 e-mail, D3 Postgres UTC, D4 app name, D5 PG16). New REQ-33 (Agent 2), REQ-34 (Agent 4), REQ-35 (Agent 3)
 - Decisions recorded (2026-11-16): D1 invite code, no CAPTCHA; D2 no e-mail verification at launch, reset unavailable; D3 UTC check at DB creation; D4 app name at deploy. `fly.toml` `REQUIRE_EMAIL_VERIFICATION=false`. `railway.json` and `wrangler.jsonc` deleted. New REQ-36 (Agent 2), REQ-37 (Agent 4)
-- **Waiting for Agents 2, 3 and 4:** REQ-33, REQ-36 (blocks deploy), REQ-35, REQ-37 (blocks deploy), REQ-34 (a, c, d), REQ-32. Nothing pushed; `main` untouched
+- Final merge (2026-11-16): `agent/quant-ai` `f8bef1d` → **`6fbb26d`**, `agent/backend` `cf440a2` → **`7bf4d6b`**, `agent/frontend` `ee33aee` → **`dd08370`**. REQ-32…37 DONE. API_CONTRACT §1/§2.7 (invite code 403/429, no CAPTCHA, 503s, `/api/auth/config`), DEPLOYMENT (invite secret, CAPTCHA rows removed, D6 spoofable IP, §10 split into user / Agent 1 commands), worker.js refs removed, README CAPTCHA line replaced. New REQ-38 (Agent 2 DISCLAIMER fallback), REQ-39 (Agent 2 `Fly-Client-IP`), REQ-40 (Agent 4 comment). Full WSL verification green (643 / 72 / PG16 194 / migrations / seed / browser smoke with invite code, no tokens in logs). Nothing pushed; `main` untouched
 
 ## Next (only after approval)
-- Review and merge REQ-36 / REQ-37 (then REQ-33/34/35, REQ-32); update API_CONTRACT §2.7 for the invite code; re-run the full verification incl. §3.4 with REGISTRATION_INVITE_CODE
-- Then the deploy sequence (DEPLOYMENT §10), each Fly command approved by the user
-- Merge the REQ-33 / REQ-34 / REQ-35 fixes and REQ-32 (Portfolio page) as they land
+- User: D6 decision (wait for REQ-39 or deploy with a long random code), then DEPLOYMENT §10.1 U1–U7
+- Agent 1 after approval: §10.2 A1–A3
+- Merge REQ-38 / REQ-39 / REQ-40 as they land
 
 ## Notes for whoever resumes
 - `fly.toml` release_command (`alembic upgrade head && python -m services.instrument_service`) is runnable on integration since `a63f25d`. Still no Fly resources; nothing deployed.

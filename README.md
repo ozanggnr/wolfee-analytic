@@ -57,7 +57,7 @@ A lightweight, high-performance interface built for clarity and speed.
 -   **Brute-Force & Bot Defense**:
     -   Per-IP sliding-window rate limiting (10 req/min) on sensitive authentication endpoints.
     -   Per-account lockout with exponential backoff cooldowns: 1 min after 5 failures, 5 min after 6 failures, 15 min after 7+ failures.
-    -   CAPTCHA bot protection challenge on registration and dynamically triggered after 3 failed login attempts.
+    -   Invite-only registration: an invite code (`REGISTRATION_INVITE_CODE`) is required, with at most 5 rejected codes per IP per hour.
     -   Security audit logs recording failed attempts, source IPs, and timestamps.
 -   **Session Security**:
     -   Server-side sessions stored in PostgreSQL `user_sessions` table for instant multi-device revocation.
