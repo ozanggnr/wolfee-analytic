@@ -243,6 +243,43 @@
             alertEl.textContent = '';
             alertEl.classList.add('hidden');
         }
+        document.querySelectorAll('#auth-modal [data-api-field]').forEach((wrap) => {
+            const error = wrap.querySelector('.field-error');
+            if (error) { error.textContent = ''; error.hidden = true; }
+            wrap.querySelectorAll('input').forEach((input) => input.removeAttribute('aria-invalid'));
+        });
+    }
+
+    /** Reads a JSON error body; null when the body is not JSON. */
+    async function readJSON(res) {
+        try { return await res.json(); } catch (e) { return null; }
+    }
+
+    /**
+     * Shows an API error as readable text (REQ-34 c): a 422 message goes under
+     * its field in `form`, other messages in the alert. Never "[object Object]".
+     */
+    function showApiError(form, data, fallback) {
+        const api = window.WolfeeApiErrors;
+        const result = api
+            ? api.readableApiError(data, fallback)
+            : { message: data && typeof data.detail === 'string' ? data.detail : fallback, fields: {} };
+        const unplaced = [];
+        let firstInvalid = null;
+        Object.entries(result.fields).forEach(([field, message]) => {
+            const wrap = form ? form.querySelector(`[data-api-field="${field}"]`) : null;
+            const error = wrap ? wrap.querySelector('.field-error') : null;
+            const input = wrap ? wrap.querySelector('input') : null;
+            if (!error) { unplaced.push(message); return; }
+            error.textContent = message;
+            error.hidden = false;
+            if (input) {
+                input.setAttribute('aria-invalid', 'true');
+                firstInvalid = firstInvalid || input;
+            }
+        });
+        showAuthAlert(unplaced[0] || result.message);
+        if (firstInvalid) firstInvalid.focus();
     }
 
     // ============================================================
@@ -299,14 +336,14 @@
                 body: JSON.stringify({ email, password, captcha_token: captcha })
             });
 
-            const data = await res.json();
+            const data = await readJSON(res);
 
             if (res.ok) {
                 // Anti-enumeration generic confirmation
-                showAuthAlert(data.message || 'Verification link sent! Please check your email inbox.', true);
+                showAuthAlert((data && data.message) || 'Verification link sent! Please check your email inbox.', true);
                 document.getElementById('register-form')?.reset();
             } else {
-                showAuthAlert(data.detail || 'Registration failed. Please try again.');
+                showApiError(document.getElementById('register-form'), data, 'Registration failed. Please try again.');
             }
         } catch (err) {
             showAuthAlert('Network error. Please try again later.');
@@ -338,7 +375,7 @@
                 body: JSON.stringify({ email, password, captcha_token: captcha })
             });
 
-            const data = await res.json();
+            const data = await readJSON(res);
 
             if (res.ok) {
                 window.currentUser = data.user;
@@ -351,7 +388,7 @@
                 if (typeof renderPortfolio === 'function') renderPortfolio();
             } else {
                 // Show generic error
-                showAuthAlert(data.detail || 'Invalid email or password.');
+                showApiError(document.getElementById('login-form'), data, 'Invalid email or password.');
 
                 // Check if CAPTCHA was requested
                 if (res.headers.get('X-Captcha-Required') === 'true' || res.status === 400) {
@@ -386,12 +423,44 @@
                 body: JSON.stringify({ email })
             });
 
-            const data = await res.json();
-            showAuthAlert(data.message || 'If registered, reset instructions have been sent.', true);
+            const data = await readJSON(res);
+            if (res.ok) {
+                showAuthAlert((data && data.message) || 'If registered, reset instructions have been sent.', true);
+            } else {
+                showApiError(document.getElementById('forgot-form'), data, 'The reset link could not be sent. Try again later.');
+            }
         } catch (err) {
             showAuthAlert('Network error. Please try again later.');
         } finally {
             if (btn) btn.disabled = false;
+        }
+    };
+
+    window.handleResendVerificationSubmit = async function (event) {
+        event.preventDefault();
+        clearAuthAlerts();
+
+        const form = document.getElementById('resend-form');
+        const email = document.getElementById('resend-email')?.value?.trim();
+        if (!email) {
+            showAuthAlert('Please enter your email address.');
+            return;
+        }
+
+        try {
+            const res = await authFetch(`${API_URL}/api/auth/resend-verification`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await readJSON(res);
+            if (res.ok) {
+                showAuthAlert((data && data.message) || 'If the address needs verifying, a new link has been sent.', true);
+            } else {
+                showApiError(form, data, 'The verification email could not be sent. Try again later.');
+            }
+        } catch (err) {
+            showAuthAlert('Network error. Please try again later.');
         }
     };
 
@@ -427,12 +496,12 @@
                 body: JSON.stringify({ token, new_password })
             });
 
-            const data = await res.json();
+            const data = await readJSON(res);
             if (res.ok) {
-                showAuthAlert(data.message || 'Password successfully reset. Please log in.', true);
+                showAuthAlert((data && data.message) || 'Password successfully reset. Please log in.', true);
                 setTimeout(() => switchAuthTab('login'), 2000);
             } else {
-                showAuthAlert(data.detail || 'Password reset failed.');
+                showApiError(document.getElementById('reset-form'), data, 'Password reset failed.');
             }
         } catch (err) {
             showAuthAlert('Network error. Please try again.');

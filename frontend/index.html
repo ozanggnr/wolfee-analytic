@@ -512,13 +512,15 @@
 
             <!-- Login Form -->
             <form id="login-form" class="auth-form-view" onsubmit="handleLoginSubmit(event)">
-                <div class="field">
+                <div class="field" data-api-field="email">
                     <label for="login-email">Email address</label>
-                    <input type="email" id="login-email" required autocomplete="email">
+                    <input type="email" id="login-email" aria-describedby="login-email-error" required autocomplete="email">
+                    <span class="field-error" id="login-email-error" hidden></span>
                 </div>
-                <div class="field">
+                <div class="field" data-api-field="password">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" required autocomplete="current-password">
+                    <input type="password" id="login-password" aria-describedby="login-password-error" required autocomplete="current-password">
+                    <span class="field-error" id="login-password-error" hidden></span>
                 </div>
                 <div id="login-captcha-wrap" class="field hidden">
                     <span class="field-label">Security check</span>
@@ -536,13 +538,15 @@
 
             <!-- Register Form -->
             <form id="register-form" class="auth-form-view hidden" onsubmit="handleRegisterSubmit(event)">
-                <div class="field">
+                <div class="field" data-api-field="email">
                     <label for="reg-email">Email address</label>
-                    <input type="email" id="reg-email" required autocomplete="email">
+                    <input type="email" id="reg-email" aria-describedby="reg-email-error" required autocomplete="email">
+                    <span class="field-error" id="reg-email-error" hidden></span>
                 </div>
-                <div class="field">
+                <div class="field" data-api-field="password">
                     <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" required autocomplete="new-password" aria-describedby="pw-hint" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.classList.toggle('is-valid', p.valid); h.classList.toggle('is-invalid', !p.valid); }">
+                    <input type="password" id="reg-password" required autocomplete="new-password" aria-describedby="reg-password-error pw-hint" oninput="const p=checkPasswordPolicyClient(this.value); const h=document.getElementById('pw-hint'); if(h) { h.textContent=p.message; h.classList.toggle('is-valid', p.valid); h.classList.toggle('is-invalid', !p.valid); }">
+                    <span class="field-error" id="reg-password-error" hidden></span>
                     <span id="pw-hint" class="field-hint auth-hint">At least 10 characters</span>
                 </div>
                 <div class="field">
@@ -558,28 +562,31 @@
 
             <!-- Forgot Password Form -->
             <form id="forgot-form" class="auth-form-view hidden" onsubmit="handleForgotPasswordSubmit(event)">
-                <div class="field">
+                <div class="field" data-api-field="email">
                     <label for="forgot-email">Email address</label>
-                    <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-hint">
+                    <input type="email" id="forgot-email" required autocomplete="email" aria-describedby="forgot-email-error forgot-hint">
+                    <span class="field-error" id="forgot-email-error" hidden></span>
                     <span class="field-hint" id="forgot-hint">We send a reset link to this address if it has an account.</span>
                 </div>
                 <button type="submit" id="forgot-submit-btn" class="gradient-btn auth-submit-btn">Send reset link</button>
             </form>
 
             <!-- Resend Verification Form -->
-            <form id="resend-form" class="auth-form-view hidden" onsubmit="event.preventDefault(); const em=document.getElementById('resend-email').value; if(em) authFetch(`${API_URL}/api/auth/resend-verification`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em})}).then(r=>r.json()).then(d=>showAuthAlert(d.message,true));">
-                <div class="field">
+            <form id="resend-form" class="auth-form-view hidden" onsubmit="handleResendVerificationSubmit(event)">
+                <div class="field" data-api-field="email">
                     <label for="resend-email">Email address</label>
-                    <input type="email" id="resend-email" required autocomplete="email">
+                    <input type="email" id="resend-email" aria-describedby="resend-email-error" required autocomplete="email">
+                    <span class="field-error" id="resend-email-error" hidden></span>
                 </div>
                 <button type="submit" class="gradient-btn auth-submit-btn">Resend verification email</button>
             </form>
 
             <!-- Reset Password Form -->
             <form id="reset-form" class="auth-form-view hidden" onsubmit="handleResetPasswordSubmit(event)">
-                <div class="field">
+                <div class="field" data-api-field="new_password">
                     <label for="reset-new-password">New password</label>
-                    <input type="password" id="reset-new-password" required autocomplete="new-password" aria-describedby="reset-hint">
+                    <input type="password" id="reset-new-password" required autocomplete="new-password" aria-describedby="reset-new-password-error reset-hint">
+                    <span class="field-error" id="reset-new-password-error" hidden></span>
                     <span class="field-hint" id="reset-hint">At least 10 characters</span>
                 </div>
                 <div class="field">

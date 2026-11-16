@@ -4,6 +4,8 @@
 // browsers do not keep a cached copy of a changed module.
 import { escapeHTML, isValidSymbol, aiTextToHTML } from './safe-html.js?v=16.1';
 import * as fields from './market-fields.js?v=16.1';
+import { readableApiError } from './api-errors.js?v=16.1';
 
 window.WolfeeSafe = Object.freeze({ escapeHTML, isValidSymbol, aiTextToHTML });
 window.WolfeeFields = Object.freeze({ ...fields });
+window.WolfeeApiErrors = Object.freeze({ readableApiError });
