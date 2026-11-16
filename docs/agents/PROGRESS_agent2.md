@@ -1,7 +1,17 @@
 # Agent 2 (Backend) progress
 
-Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` f9e64d2 on 2026-11-16 (no conflicts). Local commits only: no push, no merge.
+Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` 92a5ca0 on 2026-11-16 (no conflicts). Local commits only: no push, no merge.
 Resume protocol: `git status`, read this file, continue from "In progress" / "Next".
+
+## Current task (2026-11-16, second): REQ-36 (c) and the REQ-35 import
+
+- [x] Rebase onto `integration` 92a5ca0: clean (commit hashes of the task below changed: ccfc76d, 41a47c9, 85fd500).
+- [x] REQ-36 (c) `d2ac740`: no provider → forgot-password / resend-verification 503 for every address, before any lookup, no token; registration creates no verification token; the email fallback and provider errors never log the link, body, exception text or recipient. `test_email_unavailable.py` (7, incl. a known token string scanned in log records and stdout/stderr).
+- [x] `08b8d33`: public `GET /api/auth/config` → `{"email_enabled", "registration_open"}`. `test_auth_config.py` (8).
+- [x] `8bd0220`: `ai_insight_service` imports `MARKET_DISCLAIMER` (fallback to `DISCLAIMER` until agent/quant-ai f8bef1d is merged; drop it then). `test_insight_disclaimer_import.py` (2).
+- [x] `7d00ac2`: rejected invite code → 403 (REQ-36 a), was 400.
+- Verification (WSL): SQLite 641 passed; PG16.16 API 194 passed; base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`.
+- API_CONTRACT §2.7 changes for Agent 1 (REQ-36 d): register `{"email","password","invite_code"}`, 403 "Registration requires a valid invite code." (missing/wrong/closed), 429 + Retry-After after 5 rejections/h/IP; no `captcha_token` anywhere, no `X-Captcha-Required`; forgot-password and resend-verification 503 without a provider; new `GET /api/auth/config`.
 
 Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private names so other agents' runs cannot delete my database mid-run: SQLite file `~/wolfee-test/agent2/test.db`, Postgres databases `wolfee_tests_agent2` and `wolfee_migrations_agent2` on the PG16 cluster (port 55432). (The shared `~/wolfee-test/test.db` gave one run with 6 "readonly database" failures; the same commit passed 525/525 on rerun.)
 
