@@ -1,6 +1,6 @@
 """Decision D1: no CAPTCHA; registration requires the REGISTRATION_INVITE_CODE secret.
 
-- Missing code, wrong code and closed registration (secret unset) give the same 400.
+- Missing code, wrong code and closed registration (secret unset) give the same 403.
 - No account is created and the e-mail is never looked up without a valid code.
 - The comparison is constant-time (hmac.compare_digest).
 - 5 wrong codes per hour from one IP block registration from it (429), even with the right code.
@@ -71,7 +71,7 @@ def test_registration_is_closed_without_the_secret(monkeypatch, secret):
 
     for code in (None, "", "anything", "   "):
         response = _register(TestClient(app), email, **({} if code is None else {"invite_code": code}))
-        assert (response.status_code, response.json()["detail"]) == (400, GENERIC)
+        assert (response.status_code, response.json()["detail"]) == (403, GENERIC)
     assert _user(email) is None
 
 
@@ -84,7 +84,7 @@ def test_a_missing_or_wrong_code_gets_the_generic_error_and_no_account(monkeypat
 
     response = _register(TestClient(app), email, **payload)
 
-    assert (response.status_code, response.json()) == (400, {"detail": GENERIC})
+    assert (response.status_code, response.json()) == (403, {"detail": GENERIC})
     assert _user(email) is None
 
 
@@ -105,7 +105,7 @@ def test_an_existing_email_with_a_wrong_code_reveals_nothing(monkeypatch):
 
     response = _register(TestClient(app), email, invite_code="wrong")
 
-    assert (response.status_code, response.json()["detail"]) == (400, GENERIC)
+    assert (response.status_code, response.json()["detail"]) == (403, GENERIC)
 
 
 def test_a_wrong_code_is_checked_before_the_password_policy(monkeypatch):
@@ -136,7 +136,7 @@ def test_five_wrong_codes_block_the_ip_even_for_the_right_code(monkeypatch):
     client = TestClient(app)
 
     for attempt in range(5):
-        assert _register(client, _email(), invite_code=f"guess-{attempt}").status_code == 400
+        assert _register(client, _email(), invite_code=f"guess-{attempt}").status_code == 403
     blocked = _register(client, _email(), invite_code=INVITE)
 
     assert blocked.status_code == 429

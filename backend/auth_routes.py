@@ -131,7 +131,7 @@ async def register_user(
                            user_agent=request.headers.get("User-Agent", "")[:250],
                            details="Missing or wrong invite code, or registration closed"))
         await db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVITE_REQUIRED_ERROR)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=INVITE_REQUIRED_ERROR)  # REQ-36 a
 
     # 2. Enforce password policy
     is_valid_pw, pw_error = validate_password_policy(req.password)
