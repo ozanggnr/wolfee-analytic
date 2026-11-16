@@ -28,6 +28,7 @@ from models import User, UserSession, AuthToken, SecurityLog
 from auth_utils import (
     hash_password, verify_password, validate_password_policy,
     calculate_lockout_cooldown, is_account_locked, invite_code_matches, registration_open,
+    is_email_service_configured,
     generate_secure_token, hash_token,
     send_verification_email, send_password_reset_email
 )
@@ -83,6 +84,10 @@ GENERIC_REGISTER_SUCCESS = (
 )
 # Same text for a missing code, a wrong code and closed registration (no secret set).
 INVITE_REQUIRED_ERROR = "Registration requires a valid invite code."
+# Without an email provider these actions are refused before any lookup (REQ-36 c, D2):
+# same answer for every address, and no token is created or logged.
+PASSWORD_RESET_UNAVAILABLE = "Password reset is not available yet."
+VERIFICATION_EMAIL_UNAVAILABLE = "Email verification is not available yet."
 GENERIC_FORGOT_SUCCESS = (
     "If that email address exists in our system, password reset instructions have been sent."
 )
@@ -159,21 +164,20 @@ async def register_user(
     db.add(new_user)
     await db.flush()  # Populates new_user.id
 
-    # 6. Generate email verification token (24 hour expiration)
-    raw_token = generate_secure_token()
-    token_h = hash_token(raw_token)
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(hours=24)
-
-    auth_tok = AuthToken(
-        user_id=new_user.id,
-        token_hash=token_h,
-        token_type="verify_email",
-        created_at=now,
-        expires_at=expires_at,
-        is_used=False
-    )
-    db.add(auth_tok)
+    # 6. Verification token, only when an email can actually carry it (REQ-36 c): without a
+    #    provider, or for an account that is already verified, none is created.
+    raw_token = None
+    if not auto_verify and is_email_service_configured():
+        raw_token = generate_secure_token()
+        now = datetime.now(timezone.utc)
+        db.add(AuthToken(
+            user_id=new_user.id,
+            token_hash=hash_token(raw_token),
+            token_type="verify_email",
+            created_at=now,
+            expires_at=now + timedelta(hours=24),
+            is_used=False
+        ))
 
     # 7. Audit log
     sec_log = SecurityLog(
@@ -186,8 +190,9 @@ async def register_user(
     db.add(sec_log)
     await db.commit()
 
-    # 8. Send verification email (or log link if no email provider is configured)
-    await send_verification_email(email_normalized, raw_token, request=request)
+    # 8. Send the verification email (never logged)
+    if raw_token:
+        await send_verification_email(email_normalized, raw_token, request=request)
 
     if auto_verify:
         return {"message": "Account created successfully! You can now log in."}
@@ -285,6 +290,8 @@ async def resend_verification(
     db: AsyncSession = Depends(get_db)
 ):
     """Resend email verification link with anti-enumeration protection."""
+    if not is_email_service_configured():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=VERIFICATION_EMAIL_UNAVAILABLE)
     client_ip = get_client_ip(request)
     email_normalized = req.email.lower().strip()
 
@@ -527,8 +534,10 @@ async def forgot_password(
 ):
     """
     Request password reset link.
-    Returns generic anti-enumeration response.
+    Returns generic anti-enumeration response; 503 for everyone without an email provider.
     """
+    if not is_email_service_configured():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PASSWORD_RESET_UNAVAILABLE)
     client_ip = get_client_ip(request)
     email_normalized = req.email.lower().strip()
 

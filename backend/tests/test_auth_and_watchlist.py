@@ -408,8 +408,17 @@ def test_failed_logins_trigger_exponential_lockout():
     assert "temporarily locked" in res_locked.json()["detail"]
 
 
-def test_password_reset_flow():
+def test_password_reset_flow(monkeypatch):
     """Test forgot-password request, token creation, reset-password, and session invalidation."""
+    import auth_routes
+    sent = []
+
+    async def fake_send(to_email, raw_token, **kwargs):  # an email provider is configured, nothing leaves
+        sent.append(to_email)
+        return True
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_not_a_real_key")
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", fake_send)
     client = TestClient(app)
     import asyncio
     from database import AsyncSessionLocal
@@ -444,6 +453,7 @@ def test_password_reset_flow():
     )
     assert res_forgot.status_code == 200
     assert "instructions have been sent" in res_forgot.json()["message"]
+    assert sent == [email]
 
     # Fetch the generated reset token from DB
     async def get_reset_token():

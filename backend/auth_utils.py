@@ -288,15 +288,13 @@ async def dispatch_email(
     subject: str,
     text_body: str,
     html_body: str,
-    fallback_link: str = "",
-    action_name: str = "Email Action"
 ) -> bool:
     """
     Unified email dispatcher:
     1. Resend API (RESEND_API_KEY) - instant HTTPS setup, no SMTP ports needed
     2. SendGrid API (SENDGRID_API_KEY)
     3. SMTP Relay (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD) - supporting Port 465 (SSL) & 587 (STARTTLS)
-    4. Console logger fallback with actionable Railway instructions
+    4. Nothing sent: a warning without the link (the link holds a live token)
     """
     email_from = os.getenv("EMAIL_FROM") or "Wolfee Analytics <onboarding@resend.dev>"
 
@@ -321,9 +319,9 @@ async def dispatch_email(
                     logger.info(f"Email '{subject}' successfully sent to {to_email} via Resend API.")
                     return True
                 else:
-                    logger.error(f"Resend API error ({resp.status_code}): {resp.text}")
+                    logger.error("Resend API error (HTTP %s); response body not logged (it may echo the link)", resp.status_code)
         except Exception as e:
-            logger.error(f"Failed to send email via Resend API to {to_email}: {e}")
+            logger.error("Failed to send email via Resend API: %s", type(e).__name__)
 
     # 2. SendGrid HTTP API
     sendgrid_key = os.getenv("SENDGRID_API_KEY")
@@ -348,9 +346,9 @@ async def dispatch_email(
                     logger.info(f"Email '{subject}' sent to {to_email} via SendGrid.")
                     return True
                 else:
-                    logger.error(f"SendGrid API error ({resp.status_code}): {resp.text}")
+                    logger.error("SendGrid API error (HTTP %s); response body not logged (it may echo the link)", resp.status_code)
         except Exception as e:
-            logger.error(f"Failed to send email via SendGrid to {to_email}: {e}")
+            logger.error("Failed to send email via SendGrid: %s", type(e).__name__)
 
     # 3. SMTP Relay
     smtp_host = os.getenv("SMTP_HOST")
@@ -382,20 +380,11 @@ async def dispatch_email(
             logger.info(f"Email '{subject}' sent to {to_email} via SMTP ({smtp_host}:{smtp_port}).")
             return True
         except Exception as e:
-            logger.error(f"Failed to send email via SMTP ({smtp_host}:{smtp_port}) to {to_email}: {e}")
+            logger.error("Failed to send email via SMTP (%s:%s): %s", smtp_host, smtp_port, type(e).__name__)
 
-    # 4. Fallback: Log directly to Railway console
-    logger.warning("================================================================================")
-    logger.warning(f"⚠️ [NO LIVE EMAIL SENT] No email service configured on Railway.")
-    logger.warning(f"Target: {to_email} | Subject: {subject}")
-    if fallback_link:
-        logger.warning(f"Action Link for {action_name}:")
-        logger.warning(f"👉 {fallback_link}")
-    logger.warning("To send live emails to inboxes:")
-    logger.warning("  Option A (Recommended): Set RESEND_API_KEY=re_... in Railway variables.")
-    logger.warning("  Option B: Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM.")
-    logger.warning("  Option C (Dev bypass): Set AUTO_VERIFY_DEV=true in Railway variables.")
-    logger.warning("================================================================================")
+    # 4. Not sent. Never log the link: it carries a live verification / reset token (REQ-36 c).
+    logger.warning("Email '%s' not sent: no email provider configured or every provider failed "
+                   "(set RESEND_API_KEY, SENDGRID_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASSWORD).", subject)
     return False
 
 
@@ -405,7 +394,7 @@ async def send_verification_email(
     base_url: str = "",
     request: Optional[Request] = None
 ) -> bool:
-    """Send an email verification link (via Resend, SendGrid, SMTP, or log fallback)."""
+    """Send an email verification link (via Resend, SendGrid or SMTP)."""
     if not base_url:
         base_url = get_app_base_url(request)
 
@@ -431,8 +420,6 @@ async def send_verification_email(
         subject=subject,
         text_body=text_body,
         html_body=html_body,
-        fallback_link=verify_link,
-        action_name="Email Verification"
     )
 
 
@@ -442,7 +429,7 @@ async def send_password_reset_email(
     base_url: str = "",
     request: Optional[Request] = None
 ) -> bool:
-    """Send a password reset link (via Resend, SendGrid, SMTP, or log fallback)."""
+    """Send a password reset link (via Resend, SendGrid or SMTP)."""
     if not base_url:
         base_url = get_app_base_url(request)
 
@@ -467,6 +454,4 @@ async def send_password_reset_email(
         subject=subject,
         text_body=text_body,
         html_body=html_body,
-        fallback_link=reset_link,
-        action_name="Password Reset"
     )
