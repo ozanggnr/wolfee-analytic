@@ -19,13 +19,16 @@ primary_region = "fra"
   COOKIE_SECURE = "true"
   APP_BASE_URL = "https://wolfee-analytics.fly.dev"
   CORS_ORIGINS = "https://wolfee-analytics.fly.dev"
-  REQUIRE_EMAIL_VERIFICATION = "true"
+  # No e-mail provider at launch (user, 2026-11-16): accounts are verified on registration;
+  # password reset and resend-verification are unavailable until a provider is added.
+  REQUIRE_EMAIL_VERIFICATION = "false"
   REFRESH_INTERVAL_MINUTES = "30"
   # Database: a separate Fly Postgres app, pinned to major version 16 when it is created
   # (`fly postgres create ... --image-ref flyio/postgres-flex:16`, DEPLOYMENT.md §5).
   # Tests run on PostgreSQL 16 as well (TESTING.md §3). This file cannot set the version.
   # Secrets (set with `fly secrets set`, never here): DATABASE_URL (via `fly postgres attach`),
-  # GEMINI_API_KEY, CAPTCHA_SECRET_KEY, one e-mail provider key. (No data-source keys: none are read.)
+  # GEMINI_API_KEY, REGISTRATION_INVITE_CODE. No CAPTCHA keys (no CAPTCHA, user 2026-11-16),
+  # no e-mail provider at launch, no data-source keys (none are read).
   # Must never be set in production: ALLOW_DEV_CAPTCHA_BYPASS, AUTO_VERIFY_DEV.
 
 [http_service]

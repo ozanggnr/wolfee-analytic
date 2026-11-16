@@ -68,7 +68,7 @@ Status values:
 | Account lockout with backoff | DONE | |
 | Security headers, CSP | DONE | CSP allows `'unsafe-inline'` scripts because the frontend uses inline handlers |
 | Audit log | DONE | `security_logs`, unpruned |
-| CAPTCHA | PARTIAL | Backend can verify hCaptcha-style tokens. The frontend has no widget and submits the fixed string `dev-captcha-pass`. With `CAPTCHA_SECRET_KEY` unset, every request passes |
+| CAPTCHA | TO BE REMOVED | Never effective (the frontend sent a constant). User decision 2026-11-16: no CAPTCHA; invite-code registration instead (REQ-36, REQ-37) |
 | User-level isolation on watchlist | DONE | All queries filter by `current_user.id` |
 | Roles / admin | MISSING | |
 | Account deletion, session list, change password while signed in | MISSING | |
@@ -99,8 +99,8 @@ Status values:
 
 | Feature | Status | Evidence / gap |
 |---------|--------|----------------|
-| Railway deployment | DONE | `railway.json`, `start.sh`, health check `/healthz` |
-| Cloudflare Pages config for the frontend | PARTIAL | `wrangler.jsonc` and `worker.js` exist, but `config.js` uses same-origin API calls when there is no port, so a separately hosted frontend would have no API. Appears to be legacy |
+| Railway deployment | REMOVED | `railway.json` deleted 2026-11-16; production target is Fly.io (`fly.toml`, `Dockerfile`) |
+| Cloudflare Pages config for the frontend | REMOVED | `wrangler.jsonc` deleted 2026-11-16; `frontend/worker.js` to be removed by Agent 4 (REQ-37 d) |
 | Alembic migrations | PARTIAL | Cover 5 of 9 tables; failures ignored at startup (DATABASE_CONTRACT §2.1) |
 | CI | MISSING | |
 | `.env.example` / environment documentation | MISSING | Variables are listed in §4 below |
@@ -216,7 +216,7 @@ Dependencies listed in `requirements.txt` with no import in application code: `s
 | R7 | Single-process assumptions | Rate limiters, summary cache, refresh lock and AI model cache live in process memory, and the refresh loop runs inside the web process. A second instance would duplicate refreshes and split rate limits |
 | R8 | `Float` money and no ledger | Fine for the cache, unusable for portfolio accounting. New tables must use `NUMERIC` |
 | R9 | Symbol ambiguity | Duplicate cache rows and per-layer normalisation (DATABASE_CONTRACT §2.6). Must be fixed before transactions reference instruments |
-| R10 | CAPTCHA is not effective | Frontend sends a constant; backend accepts everything when no secret is configured |
+| R10 | CAPTCHA is not effective | Resolved by decision 2026-11-16: CAPTCHA removed, invite-code registration (REQ-36, REQ-37) |
 | R11 | No verified test baseline and no CI | §7 |
 | R12 | Business logic in route handlers | `main.py` export handlers and `watchlist_routes.get_watchlist_summary` compute inline, against CLAUDE.md. New work must not copy the pattern |
 | R13 | Trader Skill is US-oriented and not located | SEC, House Clerk and NYSE data have no direct BIST equivalent; scope must be reviewed before any adaptation |

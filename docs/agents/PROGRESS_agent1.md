@@ -27,10 +27,12 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 - Step 3b, backend only (2026-11-15): reviewed `agent/backend` `13b8c61` (rebased onto integration; clean merge) → **`a63f25d`**. WSL: backend 564 passed, frontend 28/28, PG16 API 187 passed, migration chain clean to `e4a8c2f6b1d3`, seed CLI idempotent (361 / 0). Closed REQ-7, 8, 9, 10, 13, 15, 16, 17 (Agent 2 half), 18–21, 26, 28, 30; REQ-22/23 status corrected (done at d3f30bf). REQ-11 still open (3 failures from backend/). Contracts' status notes updated
 - Step 3d (2026-11-15): merged `agent/quant-ai` `631dc76` → **`836c3a3`** (legacy estimates and `estimated_fields` gone, `change_pct` null without previous close, chart bars without filled OHLC, loading fact). WSL: backend 583 passed, frontend 28/28. API_CONTRACT §2.2/§2.4/§5 updated. New REQ-31 (Agent 2: watchlist `round(None)` HIGH, market_placeholder loading, main.py chart fallback, stock_card, gold/FX change, delete api_router.py) and REQ-32 (Agent 4: Portfolio page after the redesign). Watchlist crash accepted on local-only integration
 - Step 4 (2026-11-15): merged `agent/backend` `98ee277` → **`fe6d8c6`** (REQ-31 closed) and `agent/frontend` `a75332b` → **`10318c3`** (redesign, REQ-29 closed, v=16.0). The "▲ 0.00%" report was re-checked: fixed by the redesign. api_router.py doc references removed. Final WSL verification all green (598 / 41 / PG16 191 / migrations / seed / browser smoke at 1440 and 390). Readiness: DEPLOYMENT §2.1 (D1 CAPTCHA, D2 e-mail, D3 Postgres UTC, D4 app name, D5 PG16). New REQ-33 (Agent 2), REQ-34 (Agent 4), REQ-35 (Agent 3)
-- **Waiting for the user:** decisions D1 (CAPTCHA) and D2 (e-mail), then approval to start the Fly deploy sequence (DEPLOYMENT §10). Nothing pushed; `main` untouched
+- Decisions recorded (2026-11-16): D1 invite code, no CAPTCHA; D2 no e-mail verification at launch, reset unavailable; D3 UTC check at DB creation; D4 app name at deploy. `fly.toml` `REQUIRE_EMAIL_VERIFICATION=false`. `railway.json` and `wrangler.jsonc` deleted. New REQ-36 (Agent 2), REQ-37 (Agent 4)
+- **Waiting for Agents 2, 3 and 4:** REQ-33, REQ-36 (blocks deploy), REQ-35, REQ-37 (blocks deploy), REQ-34 (a, c, d), REQ-32. Nothing pushed; `main` untouched
 
 ## Next (only after approval)
-- User decides D1 / D2 (DEPLOYMENT §2.1); then the deploy sequence (§10), each Fly command approved by the user
+- Review and merge REQ-36 / REQ-37 (then REQ-33/34/35, REQ-32); update API_CONTRACT §2.7 for the invite code; re-run the full verification incl. §3.4 with REGISTRATION_INVITE_CODE
+- Then the deploy sequence (DEPLOYMENT §10), each Fly command approved by the user
 - Merge the REQ-33 / REQ-34 / REQ-35 fixes and REQ-32 (Portfolio page) as they land
 
 ## Notes for whoever resumes

@@ -31,7 +31,7 @@ An owner is the only agent that edits the file. Everyone may read everything.
 | `CLAUDE.md` | Project instructions |
 | `docs/**` | All coordination and contract documents |
 | `README.md` | Has drift from the code (see IMPLEMENTATION_STATUS §7) |
-| `railway.json`, `wrangler.jsonc`, `backend/Procfile`, `backend/start.sh`, `backend/runtime.txt`, `.python-version` | Deployment config |
+| `fly.toml`, `Dockerfile`, `.dockerignore`, `backend/Procfile`, `backend/start.sh`, `backend/runtime.txt`, `.python-version` | Deployment config |
 | `requirements.txt`, `backend/requirements.txt` | Dependency changes are requested through COORDINATION §5 |
 | `.gitignore`, `backend/.gitignore` | |
 

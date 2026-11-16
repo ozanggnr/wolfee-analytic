@@ -12,7 +12,7 @@ Everything in this document is **PROPOSED** process, except §1 which records th
 - One worktree only (the repository root). No agent worktrees exist yet.
 - `CLAUDE.md` and `docs/` are **untracked** — they are not committed, so a fresh worktree will not contain them until they are.
 - No CI configuration exists (no `.github/`). Nothing runs tests automatically.
-- `railway.json` deploys with `cd backend && bash start.sh` and watches `backend/**` and `frontend/**`. Which branch Railway deploys from is configured in Railway and could not be verified from the repository; treat `main` as production.
+- `railway.json` deployed with `cd backend && bash start.sh`. (Deleted on `integration` 2026-11-16 together with `wrangler.jsonc`: Railway is gone and Cloudflare is being disconnected; production moves to Fly.io.)
 
 ---
 
@@ -176,6 +176,15 @@ Decided by the user on 2026-11-15 (Step 4, final integration):
 - **Agent 2's "▲ 0.00%" report** (`portfolio.js:342–419`, `ui.js:177–218`, pre-redesign) re-checked on `10318c3`: no longer true. `changeHTML` → `WolfeeFields.formatChange` returns "Not available" for a null change, with no arrow and no colour, on cards, gold, exchange rates, the watchlist pills and the biggest mover; the summary average uses the same rule. Nothing logged for Agent 4.
 - REQ-32 (Portfolio page) is now unblocked: the redesign is done.
 - **Final verification on `10318c3`** (TESTING.md §5): backend 598, frontend 41/41, PG16 API 191, migrations base→head→base→head clean, `alembic check` clean, seed 361/0, browser smoke test of every page at 1440 px and 390 px passed. Deployment readiness: DEPLOYMENT.md §2.1 (must-settle items D1–D5). New REQ-33 (Agent 2), REQ-34 (Agent 4), REQ-35 (Agent 3).
+
+Decided by the user on 2026-11-16 (deployment readiness, DEPLOYMENT §2.1):
+
+- **D1 — no CAPTCHA; invite code instead.** Registration requires an invite code checked against the new secret `REGISTRATION_INVITE_CODE`. `CAPTCHA_SECRET_KEY` (and the other CAPTCHA settings) are removed from the plan. Backend: Agent 2 (REQ-36). Form: Agent 4 (REQ-37). REQ-34 (b) is replaced by REQ-37.
+- **D2 — `REQUIRE_EMAIL_VERIFICATION=false` for launch** (set in `fly.toml`). Password reset stays unavailable until an e-mail provider is added. Without a provider the backend must not create or log reset / verification links (REQ-36 c); the UI hides those actions (REQ-37 b).
+- **D3 — check `show timezone` right after creating the Fly database and set it to UTC** if it is not. REQ-33 (a) stays open as the permanent fix.
+- **D4 — check the app name at deploy time** (`fly apps create`); change `fly.toml` `app`, `APP_BASE_URL` and `CORS_ORIGINS` together if needed.
+- **Old deploy configs deleted:** `railway.json` and `wrangler.jsonc` (Railway is gone; Cloudflare is being disconnected). Nothing deploys from them.
+- **Deploy is blocked** until REQ-36 and REQ-37 are merged and verified. Agent 1 waits for Agents 2, 3 and 4.
 
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
@@ -591,9 +600,7 @@ To:        Agent 4
 Needs:     (a) index.html:169 "AI generated" badge shows even when the insight is the template
                (no model call): show it only for model text, or say "Template". The
                provenance line already shows a "template" chip.
-           (b) CAPTCHA: the forms always send `dev-captcha-pass` (index.html:399, :426;
-               auth.js:274, :324). If the user picks option (b) in DEPLOYMENT §2.1 D1, add the
-               widget with CAPTCHA_SITE_KEY (with Agent 2 for a site-key endpoint).
+           (b) SUPERSEDED 2026-11-16 by REQ-37 (no CAPTCHA; invite code instead).
            (c) auth.js showAuthAlert(data.detail): a 422 has `detail` as an array, so the
                alert would read "[object Object]". Show the first `msg` or a generic line.
            (d) Watchlist pills use one decimal (0.2%) next to the two-decimal biggest move
@@ -611,5 +618,47 @@ Needs:     ai/guardrails.py disclaimer says "figures calculated ... from your re
            transactions. Use a market-only wording for market and stock insights.
 Why:       the disclaimer should describe the inputs actually used
 Blocking:  no
+Status:    open
+
+ID:        REQ-36
+From:      Agent 1 (user decisions D1 and D2, 2026-11-16)
+To:        Agent 2
+Needs:     (a) Invite code: POST /api/auth/register takes `invite_code` (required string) and
+               accepts it only when it equals the secret REGISTRATION_INVITE_CODE, compared with
+               secrets.compare_digest. Unset or empty REGISTRATION_INVITE_CODE = registration is
+               closed (fail closed). A wrong or missing code returns 403 with one generic message;
+               the code is never logged, stored or echoed; the existing auth rate limit applies.
+               Check the code before the email-exists branch so the anti-enumeration message is
+               unchanged for valid codes. Tests: right code, wrong code, missing code, unset
+               secret, timing-safe comparison used.
+           (b) Remove CAPTCHA: verify_captcha, captcha_token in register / login /
+               forgot-password, the X-Captcha-Required login path and the CAPTCHA_* settings.
+               The failed-login lockout stays as it is.
+           (c) No e-mail provider: when none of RESEND_API_KEY / SENDGRID_API_KEY / SMTP is
+               configured, /forgot-password and /resend-verification return 503 (e.g. "Password
+               reset is not available yet.") without creating a token, and send_email never
+               writes an action link to the log (today the fallback logs the full link: a live
+               reset token in the logs). Expose `email_enabled: bool` on a public endpoint
+               (e.g. GET /api/auth/config) so the UI can hide those actions.
+           (d) List the API_CONTRACT §2.7 changes in the branch report; Agent 1 edits the
+               contract on merge.
+Why:       D1 (no CAPTCHA, invite-only registration) and D2 (no e-mail provider at launch)
+Blocking:  yes — the first Fly deploy (DEPLOYMENT §2.1 D1, D2)
+Status:    open
+
+ID:        REQ-37
+From:      Agent 1 (user decisions D1 and D2, 2026-11-16)
+To:        Agent 4
+Needs:     (a) Register form: an "Invite code" field (required, autocomplete off), sent as
+               `invite_code`; show the 403 message from the server. Remove the hidden
+               `dev-captcha-pass` inputs and the login CAPTCHA wrap (index.html:396-399, :425-426;
+               auth.js:274, :324) and the "protected by automated bot detection" line.
+           (b) Hide "Forgot password" and "Resend verification email" (tab and links) while
+               GET /api/auth/config reports `email_enabled: false` (REQ-36 c).
+           (c) Replaces REQ-34 (b). REQ-34 (a), (c), (d) stay.
+           (d) Delete frontend/worker.js (Cloudflare Pages worker; wrangler.jsonc was deleted).
+           Bump the asset version.
+Why:       D1 and D2
+Blocking:  yes — the first Fly deploy, together with REQ-36
 Status:    open
 ```

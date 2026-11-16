@@ -76,7 +76,7 @@ primary_region = "fra"
   COOKIE_SECURE = "true"
   APP_BASE_URL = "https://wolfee-analytics.fly.dev"
   CORS_ORIGINS = "https://wolfee-analytics.fly.dev"
-  REQUIRE_EMAIL_VERIFICATION = "true"
+  REQUIRE_EMAIL_VERIFICATION = "false"   # no e-mail provider at launch (D2)
   REFRESH_INTERVAL_MINUTES = "30"
   # Never set on Fly: ALLOW_DEV_CAPTCHA_BYPASS, AUTO_VERIFY_DEV
 
@@ -118,16 +118,16 @@ Set secrets with `fly secrets set NAME=…`. **No values are recorded here.**
 |------|------|----------|-------|
 | `DATABASE_URL` | secret | yes | Set automatically by `fly postgres attach`. `database.py` converts `postgres://` to asyncpg |
 | `GEMINI_API_KEY` | secret | no | Without it the AI text uses the template |
-| `CAPTCHA_SECRET_KEY` | secret | if CAPTCHA is used | |
-| `CAPTCHA_SITE_KEY` | env | if CAPTCHA is used | public |
-| `CAPTCHA_VERIFY_URL` | env | no | |
-| `RESEND_API_KEY` **or** `SENDGRID_API_KEY` **or** `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` | secret | for e-mail verification | Pick one provider |
-| `EMAIL_FROM` | env | for e-mail | |
+| `REGISTRATION_INVITE_CODE` | secret | **yes** (once REQ-36 is merged) | Invite code required by `POST /api/auth/register` (D1). Share it with invited users out of band; rotate with `fly secrets set` |
+| `CAPTCHA_SECRET_KEY`, `CAPTCHA_SITE_KEY`, `CAPTCHA_VERIFY_URL` | — | **not used** | CAPTCHA dropped (D1, 2026-11-16); REQ-36 removes the code |
+| `RESEND_API_KEY` **or** `SENDGRID_API_KEY` **or** `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` | secret | **not at launch** (D2) | Adding one later re-enables password reset and lets `REQUIRE_EMAIL_VERIFICATION` go back to `true` |
+| `EMAIL_FROM` | env | with a provider | |
 | `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `POLYGON_API_KEY` | — | no | **Not read by any code** since `api_router.py` was deleted (`fe6d8c6`). Do not set them |
 | `COOKIE_SECURE` | env | **yes** | `true` (F3) |
 | `APP_BASE_URL` | env | yes | Used in e-mail links; Fly has no `RAILWAY_PUBLIC_DOMAIN` |
 | `CORS_ORIGINS` | env | yes | The Fly URL (plus any proxy origin, §6) |
-| `GEMINI_MODEL`, `AI_INSIGHT_CACHE_HOURS`, `SESSION_DURATION_DAYS`, `REFRESH_INTERVAL_MINUTES`, `REQUIRE_EMAIL_VERIFICATION` | env | no | Defaults in code |
+| `REQUIRE_EMAIL_VERIFICATION` | env | yes | `false` at launch (D2, set in `fly.toml`) |
+| `GEMINI_MODEL`, `AI_INSIGHT_CACHE_HOURS`, `SESSION_DURATION_DAYS`, `REFRESH_INTERVAL_MINUTES` | env | no | Defaults in code |
 | `ALLOW_DEV_CAPTCHA_BYPASS`, `AUTO_VERIFY_DEV` | env | **must not be set** | Development only |
 
 `RAILWAY_ENVIRONMENT` / `RAILWAY_PUBLIC_DOMAIN` are read by the code but will be absent on Fly. `COOKIE_SECURE`, `APP_BASE_URL` and `CORS_ORIGINS` replace what they did.
@@ -259,10 +259,10 @@ Everything on `integration` passes in WSL (TESTING.md §5) and the browser smoke
 
 | # | Item | Owner | Detail |
 |---|------|-------|--------|
-| D1 | **CAPTCHA is not wired in the frontend** | user decision, then Agent 4 + Agent 2 | The register and login forms always send the token `dev-captcha-pass`; no widget exists. With `CAPTCHA_SECRET_KEY` set (as §4 and `fly.toml` say), hCaptcha rejects that token, so **nobody can register**. Without the key, `verify_captcha` accepts every request (no bot protection). Choose: (a) launch without CAPTCHA (do not set the key; the IP rate limits stay) or (b) Agent 4 adds the hCaptcha / Turnstile widget with `CAPTCHA_SITE_KEY` before launch. REQ-34 (b) |
-| D2 | **E-mail provider for verification** | user | `REQUIRE_EMAIL_VERIFICATION=true` in `fly.toml`: without one of `RESEND_API_KEY` / `SENDGRID_API_KEY` / SMTP plus `EMAIL_FROM`, new accounts can never be verified. Either set a provider secret or set `REQUIRE_EMAIL_VERIFICATION=false` for the first deploy. Never set `AUTO_VERIFY_DEV` |
-| D3 | **Postgres time zone must be UTC** | Agent 1 at deploy; Agent 2 for the fix | `stock_data`, `turkish_gold`, `exchange_rates` `updated_at` and `ai_insights.created_at` are `timestamp without time zone` with `server_default=now()`: they store the database server's local time, and the code reads them as UTC. On the WSL cluster (Europe/Istanbul) the market insight showed "data as of" 3 h after "generated". Run `show timezone` on the Fly cluster right after `fly postgres create`; if it is not UTC, `ALTER DATABASE … SET timezone TO 'UTC'` before the first deploy. Permanent fix: REQ-33 (a) |
-| D4 | `app` name and domain | user | `fly.toml` uses `wolfee-analytics` and `https://wolfee-analytics.fly.dev` in `APP_BASE_URL` / `CORS_ORIGINS`. If the name is taken, change all three together |
+| D1 | **No CAPTCHA; registration needs an invite code** — DECIDED (user, 2026-11-16) | Agent 2 (REQ-36), Agent 4 (REQ-37) | CAPTCHA is dropped: `CAPTCHA_SECRET_KEY` / `CAPTCHA_SITE_KEY` / `CAPTCHA_VERIFY_URL` are removed from the plan and are not set. `POST /api/auth/register` requires an invite code compared with the new secret `REGISTRATION_INVITE_CODE`; the form gets an invite-code field. The IP rate limits and the login lockout stay. **Blocks the deploy until REQ-36 and REQ-37 are merged** |
+| D2 | **No e-mail provider at launch** — DECIDED (user, 2026-11-16) | Agent 1 (`fly.toml`), Agent 2 (REQ-36 c), Agent 4 (REQ-37 b) | `REQUIRE_EMAIL_VERIFICATION=false` (set in `fly.toml`): accounts are usable right after registration. Password reset and resend-verification stay **unavailable** until a provider is added. Today, without a provider, `auth_utils` writes the full reset / verification link to the log, which would put live reset tokens in Fly logs: REQ-36 (c) makes those routes refuse without creating a token, and the UI hides them. **Blocks the deploy until REQ-36 (c) is merged** |
+| D3 | **Postgres time zone must be UTC** — DECIDED (user, 2026-11-16) | Agent 1 at deploy; Agent 2 for the permanent fix | Right after `fly postgres create`, run `show timezone`; if it is not `UTC`, run `ALTER DATABASE <db> SET timezone TO 'UTC'` before the first `fly deploy` (§10 step 3). Why: `stock_data`, `turkish_gold`, `exchange_rates` `updated_at` and `ai_insights.created_at` are `timestamp without time zone` with `server_default=now()` and are read as UTC; on the Europe/Istanbul WSL cluster the insight's "data as of" read 3 h ahead. Permanent fix: REQ-33 (a) |
+| D4 | **App name** — DECIDED (user, 2026-11-16): checked at deploy time | Agent 1 at deploy | `fly.toml` uses `wolfee-analytics` and `https://wolfee-analytics.fly.dev` in `APP_BASE_URL` / `CORS_ORIGINS`. If `fly apps create` reports the name taken, change all three together before deploying |
 | D5 | Fly Postgres major version | user runs | `--image-ref flyio/postgres-flex:16` (§5); tests run on 16.16 |
 
 **Should be fixed soon after; not blocking:**
@@ -270,7 +270,7 @@ Everything on `integration` passes in WSL (TESTING.md §5) and the browser smoke
 | # | Item | Owner | Detail |
 |---|------|-------|--------|
 | S1 | Stale CORS origins | Agent 2 (REQ-33 b) | `main.py` still allows `*.up.railway.app` (regex), `RAILWAY_PUBLIC_DOMAIN`, `wolfee-backend.onrender.com` and `solitary-scene-04bc…workers.dev`, all with credentials. Not exploitable today because the session cookie is `SameSite=Lax`, but the list should hold only the Fly origin and localhost |
-| S2 | Old deploy configs | user decision | `railway.json` (Railway is dropped) and `wrangler.jsonc` (Cloudflare Pages build of `frontend/`). Remove once the user confirms nothing deploys from them (step 6 below) |
+| S2 | Old deploy configs | done / user | `railway.json` and `wrangler.jsonc` **deleted** (user, 2026-11-16: Railway is gone, Cloudflare is being disconnected). `frontend/worker.js` (the Cloudflare Pages worker) is now unused: Agent 4 removes it (REQ-37 d). The user disconnects the Cloudflare project |
 | S3 | Indicators start empty | none | On a fresh database every card shows "Not available" for RSI / average / volatility and `/api/opportunities` is empty until the daily-close job has stored 15 / 20 / 21 closes. With `auto_stop_machines = "stop"` the job runs only while the machine is awake. Expected (D4); tell users at launch |
 | S4 | UI and AI wording | Agent 4 (REQ-34 a, c, d), Agent 3 (REQ-35) | "AI generated" badge on template text; a 422 would show "[object Object]"; the market disclaimer mentions "your recorded transactions" |
 | S5 | Portfolio page | Agent 4 (REQ-32) | The ledger API is live but has no UI yet |
@@ -282,9 +282,10 @@ Everything on `integration` passes in WSL (TESTING.md §5) and the browser smoke
 1. Fix F1 (Agent 2) and F2/F6 (Agent 1) on `integration`; merge `agent/backend` and `agent/frontend` per the integration plan.
 2. Add `Dockerfile`, `.dockerignore`, `fly.toml` on `integration` (Agent 1).
 3. `fly apps create`, `fly postgres create`, `fly postgres attach`, `fly secrets set …` — **user runs or approves each command**.
+   Right after `fly postgres create`: `show timezone`, and set UTC if needed (§2.1 D3). Before `fly deploy`: set `REGISTRATION_INVITE_CODE` (§2.1 D1); check the app name (D4).
 4. `fly deploy` from `integration`. Release command migrates the empty database; app starts; check `/healthz` and the smoke list (IMPLEMENTATION_STATUS §8).
 5. Seed instruments once REQ-7 exists.
-6. Choose §6 option; disconnect unused Cloudflare/Netlify Git integrations.
+6. Choose §6 option; the user disconnects the Cloudflare project (its config files were deleted 2026-11-16) and any Netlify Git integration.
 7. Merge `integration` into `main` only after the deploy is verified.
 
 ---
