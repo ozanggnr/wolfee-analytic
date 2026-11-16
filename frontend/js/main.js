@@ -200,10 +200,12 @@ async function loadAIInsight() {
         const data = await res.json();
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) {
-            renderAIResponse(aiTextEl, data, 'insight');
+            renderAIResponse(aiTextEl, data, 'insight', [], document.getElementById('ai-source-badge'));
             addAIShowMore(aiTextEl);
         }
     } catch (e) {
+        const badge = document.getElementById('ai-source-badge');
+        if (badge) badge.hidden = true;
         const aiTextEl = document.getElementById('ai-text');
         if (aiTextEl) {
             aiTextEl.innerHTML = '<p class="inline-error" role="alert">Market insight is not available right now. It will load on the next visit.</p>';
