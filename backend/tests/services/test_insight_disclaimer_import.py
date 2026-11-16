@@ -1,5 +1,6 @@
-"""REQ-35 note (Agent 3): ai_insight_service uses MARKET_DISCLAIMER, not the DISCLAIMER alias,
-so the alias can be removed from ai.guardrails without breaking stored insights."""
+"""REQ-35 note / REQ-38: ai_insight_service imports MARKET_DISCLAIMER directly (no fallback to
+the DISCLAIMER alias), so the alias can be removed from ai.guardrails and a missing
+MARKET_DISCLAIMER fails loudly instead of silently serving the old wording."""
 import importlib
 import os
 import sys
@@ -19,9 +20,7 @@ ROW = SimpleNamespace(insight_text="x", generated_by="template", is_fallback=Tru
 
 
 def test_stored_insights_carry_the_market_disclaimer():
-    expected = getattr(guardrails, "MARKET_DISCLAIMER", guardrails.DISCLAIMER)
-
-    assert ai_insight_service.stored_response(ROW)["disclaimer"] == expected
+    assert ai_insight_service.stored_response(ROW)["disclaimer"] == guardrails.MARKET_DISCLAIMER
 
 
 def test_the_service_works_once_the_disclaimer_alias_is_removed(monkeypatch):
@@ -37,3 +36,18 @@ def test_the_service_works_once_the_disclaimer_alias_is_removed(monkeypatch):
         importlib.reload(ai_insight_service)
 
     assert not hasattr(ai_insight_service, "DISCLAIMER")
+
+
+def test_a_missing_market_disclaimer_is_an_import_error(monkeypatch):
+    """The old fallback hid this behind the DISCLAIMER alias."""
+    import pytest
+
+    only_alias = types.ModuleType("ai.guardrails")
+    only_alias.__dict__.update({k: v for k, v in vars(guardrails).items() if k != "MARKET_DISCLAIMER"})
+    monkeypatch.setitem(sys.modules, "ai.guardrails", only_alias)
+    try:
+        with pytest.raises(ImportError):
+            importlib.reload(ai_insight_service)
+    finally:
+        monkeypatch.undo()
+        importlib.reload(ai_insight_service)

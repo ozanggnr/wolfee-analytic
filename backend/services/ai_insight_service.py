@@ -21,10 +21,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-try:
-    from ai.guardrails import MARKET_DISCLAIMER
-except ImportError:  # until agent/quant-ai f8bef1d (REQ-35) is merged; then drop this fallback
-    from ai.guardrails import DISCLAIMER as MARKET_DISCLAIMER
+from ai.guardrails import MARKET_DISCLAIMER
 from ai.insights import market_insight_response, stock_analysis_response
 from ai.provider import gemini_generate
 from models import AIInsight
