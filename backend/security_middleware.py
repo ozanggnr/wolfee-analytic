@@ -156,7 +156,7 @@ public_api_rate_limiter = IPRateLimiter(
 class SecurityMiddleware(BaseHTTPMiddleware):
     """
     Unified security middleware:
-    1. Enforce HTTPS redirect on Railway / reverse proxy connections
+    1. Enforce HTTPS redirect behind an HTTPS reverse proxy
     2. IP rate limiting on auth (10/min) and general public API (120/min)
     3. CSRF token validation on state-changing endpoints
     4. Auto-sets CSRF cookie on non-mutating requests if missing
@@ -349,7 +349,7 @@ def is_connection_secure(request: Optional[Request] = None) -> bool:
     """
     Determine if connection is secure:
     - If request is local HTTP (localhost / 127.0.0.1), always return False so browser accepts cookies.
-    - If request is HTTPS or behind an HTTPS reverse proxy (Railway, Cloudflare), return True.
+    - If request is HTTPS or behind an HTTPS reverse proxy (X-Forwarded-Proto / X-Forwarded-Ssl), return True.
     - If environment sets COOKIE_SECURE=true or RAILWAY_ENVIRONMENT, return True.
     """
     if request:

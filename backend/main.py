@@ -99,29 +99,29 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ============================================================
 # CORS (Strict origin allowlist - no wildcard with credentials)
 # ============================================================
-origins = [
+LOCAL_ORIGINS = (
     "http://localhost:8080",
     "http://localhost:8000",
     "http://127.0.0.1:8080",
     "http://127.0.0.1:8000",
-    "https://wolfee-backend.onrender.com",
-    "https://solitary-scene-04bc.ozanggnr.workers.dev",
-]
+)
 
-# Add Railway domain dynamically
-railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
-if railway_domain:
-    origins.append(f"https://{railway_domain}")
 
-# Support custom allowed CORS origins from environment
-custom_cors = os.getenv("CORS_ORIGINS")
-if custom_cors:
-    origins.extend([o.strip() for o in custom_cors.split(",") if o.strip()])
+def cors_origins(configured: Optional[str]) -> list[str]:
+    """Local development origins plus the comma-separated CORS_ORIGINS (the deployed site).
+
+    No hosting-provider wildcards or old deployments (REQ-33 b): credentialed requests
+    are accepted only from these exact origins.
+    """
+    extra = [origin.strip() for origin in (configured or "").split(",") if origin.strip()]
+    return list(dict.fromkeys([*LOCAL_ORIGINS, *extra]))
+
+
+origins = cors_origins(os.getenv("CORS_ORIGINS"))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https:\/\/.*\.up\.railway\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
