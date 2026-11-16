@@ -308,10 +308,18 @@
         const email = document.getElementById('reg-email')?.value?.trim();
         const password = document.getElementById('reg-password')?.value;
         const confirm = document.getElementById('reg-confirm')?.value;
-        const captcha = document.getElementById('reg-captcha')?.value || 'dev-captcha-pass';
+        const inviteCode = document.getElementById('reg-invite')?.value?.trim() || '';
 
         if (!email || !password) {
             showAuthAlert('Please fill in all required fields.');
+            return;
+        }
+
+        // Registration is invite-only; no CAPTCHA (decision D1). Agent 2 checks the code.
+        if (inviteCode === '') {
+            showApiError(document.getElementById('register-form'),
+                { detail: [{ loc: ['body', 'invite_code'], msg: 'Enter your invite code.' }] },
+                'Enter your invite code.');
             return;
         }
 
@@ -333,7 +341,7 @@
             const res = await authFetch(`${API_URL}/api/auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password, captcha_token: captcha })
+                body: JSON.stringify({ email, password, invite_code: inviteCode })
             });
 
             const data = await readJSON(res);
@@ -358,7 +366,6 @@
 
         const email = document.getElementById('login-email')?.value?.trim();
         const password = document.getElementById('login-password')?.value;
-        const captcha = document.getElementById('login-captcha')?.value || 'dev-captcha-pass';
 
         if (!email || !password) {
             showAuthAlert('Please enter both email and password.');
@@ -372,29 +379,23 @@
             const res = await authFetch(`${API_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password, captcha_token: captcha })
+                body: JSON.stringify({ email, password })
             });
 
             const data = await readJSON(res);
 
-            if (res.ok) {
+            if (res.ok && data && data.user) {
                 window.currentUser = data.user;
                 try {
                     localStorage.setItem('wolfee_cached_user', JSON.stringify(data.user));
                 } catch (e) {}
                 updateAuthUI(data.user);
                 closeAuthModal();
-                // Refresh portfolio page
+                // Watchlist and the Portfolio page (ledger-page.js) refresh on this event
+                document.dispatchEvent(new CustomEvent('wolfee_auth_changed', { detail: { user: data.user } }));
                 if (typeof renderPortfolio === 'function') renderPortfolio();
             } else {
-                // Show generic error
                 showApiError(document.getElementById('login-form'), data, 'Invalid email or password.');
-
-                // Check if CAPTCHA was requested
-                if (res.headers.get('X-Captcha-Required') === 'true' || res.status === 400) {
-                    const captchaWrap = document.getElementById('login-captcha-wrap');
-                    if (captchaWrap) captchaWrap.classList.remove('hidden');
-                }
             }
         } catch (err) {
             showAuthAlert('Network error. Please try again later.');

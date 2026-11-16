@@ -522,13 +522,6 @@
                     <input type="password" id="login-password" aria-describedby="login-password-error" required autocomplete="current-password">
                     <span class="field-error" id="login-password-error" hidden></span>
                 </div>
-                <div id="login-captcha-wrap" class="field hidden">
-                    <span class="field-label">Security check</span>
-                    <div class="captcha-placeholder">
-                        <input type="hidden" id="login-captcha" value="dev-captcha-pass">
-                        <p class="field-hint">A security check is active after several sign-in attempts.</p>
-                    </div>
-                </div>
                 <div class="auth-links">
                     <button type="button" class="link-btn" onclick="switchAuthTab('forgot')">Forgot password?</button>
                     <button type="button" class="link-btn is-quiet" onclick="switchAuthTab('resend')">Resend verification email</button>
@@ -553,9 +546,11 @@
                     <label for="reg-confirm">Confirm password</label>
                     <input type="password" id="reg-confirm" required autocomplete="new-password">
                 </div>
-                <div class="captcha-placeholder">
-                    <input type="hidden" id="reg-captcha" value="dev-captcha-pass">
-                    <p class="field-hint">Registration is protected by automated bot detection.</p>
+                <div class="field" data-api-field="invite_code">
+                    <label for="reg-invite">Invite code</label>
+                    <input type="text" id="reg-invite" name="invite_code" required autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="reg-invite-error reg-invite-hint">
+                    <span class="field-error" id="reg-invite-error" hidden></span>
+                    <span class="field-hint" id="reg-invite-hint">Wolfee is invite-only for now. Enter the code you were given.</span>
                 </div>
                 <button type="submit" id="reg-submit-btn" class="gradient-btn auth-submit-btn">Create account</button>
             </form>
