@@ -1,30 +1,31 @@
 # Agent 4 (frontend) progress
 
-Branch `agent/frontend`, worktree `Wolfee-frontend`, rebased onto `integration` `3515621`.
-Tests run in WSL only (`docs/agents/TESTING.md` §2), with Agent 4's own SQLite file under `~/wolfee-test/`.
+Branch `agent/frontend`, worktree `Wolfee-frontend`, rebased onto `integration` `f9e64d2` (redesign merged as `10318c3`).
+Tests run in WSL only (`docs/agents/TESTING.md` §2), with Agent 4's own SQLite files under `~/wolfee-test/`.
 
-## Task: UI redesign, phase B (approved 2026-11-15)
+## Task: Portfolio page and REQ-34 fixes (2026-11-16)
 
-White and blue business look, plain CSS. Tokens in `frontend/css/tokens.css`; self-hosted IBM Plex in `frontend/fonts/`.
-Visual only: routes, element IDs, form field names, API calls and the safe-html code are unchanged.
-Decisions from the user: four mobile tabs (Market, Opportunities, Watchlist, Account); Account opens sign-in, or a sheet with the email and Log out; blue line chart everywhere, skipping bars without a close; mobile market insight starts at two lines with "Show more"; no label badge when the label is null; a null `change_pct` shows "Not available".
+Order from the user, one commit each: 1 REQ-32 Portfolio page, 2 REQ-34 (a) AI badge, 3 REQ-34 (c) readable validation errors, 4 REQ-34 (d) watchlist change at 2 decimals, 5 registration without CAPTCHA plus "Invite code" (`invite_code`), 6 dim the page behind the mobile filter sheet. Then tests and a browser check at 1440 and 390 px in WSL, review page screenshots of the Portfolio page. No merge, no push.
 
 ## Done
-- [x] Page 1: shell and market page. New stylesheets replace `style.css`; navy header; mobile tab bar and Account sheet; one search and filter bar on mobile (filters as a bottom sheet); cards, gold and exchange rates null-safe for `change_pct` and prices (`formatChange`, `formatPrice`, `changeDirection`, `directionClass` in `market-fields.js`); `updated_at` without a zone read as UTC (`parseTimestamp`).
-- [x] Page 2: stock modal. Close is a button, dialog semantics, Escape closes, focus returns; blue line chart for every period from closes only (bars without a close skipped); null change shows "Not available"; label badge hidden when null; no inline styles.
-- [x] Page 3: Opportunities. Neutral heading and note (no "Buy" wording); cards share the market card markup; condition badges only from available inputs; reason hidden when missing or equal to the label; empty state. Fixed a crash: the page still called the removed getSignalStyle.
-- [x] Page 4: Watchlist and export. Summary panel without emoji (navy mono KPI figures); a null change counts as "not available", not flat, and is left out of the average and the biggest move (`summarizeChanges`, tested); `|| 0` guards on change_pct removed; add field with label above and hint below; empty state; export dialog with text states and inline errors instead of alert(); `css/watchlist.css`.
-- [x] Page 5: account dialog. Labels above, hints and server messages below (no placeholder as label), no emoji or inline styles, focus to the first field, Escape closes, password hint by class; sentence-case titles; `css/auth.css`.
-- [x] Asset version 16.0 (`index.html`, `js/core/globals.js`).
-- [x] Verified 2026-11-15 in WSL per TESTING.md §2 (Agent 4 DB `~/wolfee-test/agent4-frontend-test.db`): frontend 41 passed (also with TZ=America/New_York), backend 583 passed. Browser check of every page at 1440 and 390 px: no horizontal scroll, every asset at v=16.0.
+- [x] 1. REQ-32 Portfolio page on `/api/v1/portfolios` (API_CONTRACT §5.1.1, §5.2.1), commit `7e61301`.
+  - Modules: `js/ledger/ledger-api.js` (requests via `authFetch`, CSRF on writes), `ledger-render.js` (escaped markup), `ledger-page.js` (controller, ES module); `js/core/ledger-format.js` (display rounding with BigInt and strings, no float arithmetic; per-type transaction rules and body builder); `js/core/api-errors.js` (422 detail to per-field messages); `css/ledger.css`.
+  - Create and select a portfolio (TRY only, D3; 409 shown on the name field); add transactions with type-driven fields (labels above, errors below, decimal strings sent); void with an inline confirmation, voided and reversal rows marked; holdings, summary and realised P/L in TRY as the API returns them.
+  - Partial state: "Partial total, N positions not valued" plus the unvalued symbols. A null figure shows "Not available" with the reason (`missing_fx_rate` reads "No exchange rate to TRY"; a trade without a stored rate gives no TRY cost basis). The API's own figure in the instrument currency is shown under it, never converted by the frontend.
+  - Empty states: signed out, no portfolio, no positions, no transactions. Errors inline with "Try again".
+  - Desktop tab "Portfolio" and a fifth mobile tab; `switchTab('ledger')` fires `wolfee_tab_changed`. Asset version 16.1.
+  - Tests: `ledger-format`, `ledger-render`, `api-errors` (67 frontend tests on Windows node). Browser smoke at 1440 and 390 against the smoke DB (instruments seeded with `python -m services.instrument_service`, TESTING §3.3).
 
 ## In progress
-- Nothing. Phase B is ready for the user to review; not merged or pushed.
+- 2. REQ-34 (a): AI badge only for model text, "Template" otherwise.
 
 ## Next
-- Possible follow-up: dim the page behind the mobile filter sheet (it has a shadow, no backdrop).
-- After phase B: REQ-32 Portfolio page on `/api/v1/portfolios`, then the Portfolio tab returns.
+- 3 to 6 above, then WSL tests, browser check, review page, report HEAD.
 
 ## Notes
-- For Agent 2: `GET /api/watchlist/summary` (`backend/watchlist_routes.py`, summary loop) still turns a null change_pct into 0.0 and counts it as flat; it also feeds the average and biggest mover. The frontend now handles a null if the backend sends one, and shows `unknown_count` when present. Related to REQ-31.
-- For Agent 3: the market insight template text contains an em-dash ("not available yet — no instrument ..."). AI text is shown as sent.
+- Smoke DB: `POST /api/v1/portfolios` returned 500 "database is locked" once while the start-up stock fill was writing to SQLite; it worked on retry. Local SQLite only; for Agent 2 if it shows up elsewhere.
+- For Agent 2: `GET /api/watchlist/summary` still turns a null change_pct into 0.0 and counts it as flat (REQ-31).
+- For Agent 3: the market insight template text contains an em-dash. AI text is shown as sent.
+
+## Earlier: UI redesign phase B (merged as `10318c3`)
+Pages 1 to 5 (shell and market, stock modal, Opportunities, Watchlist and export, account dialog), tokens and self-hosted IBM Plex, asset version 16.0. Verified 2026-11-15: frontend 41 passed, backend 583 passed, every page at 1440 and 390 px.
