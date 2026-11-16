@@ -84,7 +84,7 @@ def test_portfolio_export_bounds():
 
 
 def test_cors_origin_handling():
-    """Verify that CORS honors explicit allowlist and railway domains, and does not return wildcard with credentials."""
+    """Verify that CORS honors the explicit allowlist and does not return a wildcard with credentials."""
     client = TestClient(app)
 
     # 1. Disallowed origin

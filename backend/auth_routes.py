@@ -10,6 +10,7 @@ Endpoints:
 - POST /api/auth/forgot-password
 - POST /api/auth/reset-password
 - GET  /api/auth/csrf
+- GET  /api/auth/config
 """
 
 import os
@@ -19,7 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import RedirectResponse, HTMLResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,13 +28,14 @@ from database import get_db
 from models import User, UserSession, AuthToken, SecurityLog
 from auth_utils import (
     hash_password, verify_password, validate_password_policy,
-    calculate_lockout_cooldown, is_account_locked, verify_captcha,
+    calculate_lockout_cooldown, is_account_locked, invite_code_matches, registration_open,
+    is_email_service_configured,
     generate_secure_token, hash_token,
     send_verification_email, send_password_reset_email
 )
 from security_middleware import (
     get_client_ip, create_user_session, set_auth_cookies, clear_auth_cookies,
-    get_current_user, SESSION_COOKIE_NAME, CSRF_COOKIE_NAME
+    get_current_user, SESSION_COOKIE_NAME, CSRF_COOKIE_NAME, invite_failure_limiter
 )
 
 logger = logging.getLogger("auth_routes")
@@ -47,18 +49,16 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
-    captcha_token: Optional[str] = None
+    invite_code: Optional[str] = Field(default=None, max_length=256)
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    captcha_token: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
-    captcha_token: Optional[str] = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -83,6 +83,12 @@ GENERIC_REGISTER_SUCCESS = (
     "If this email is eligible for an account, a verification email has been sent. "
     "Please check your inbox."
 )
+# Same text for a missing code, a wrong code and closed registration (no secret set).
+INVITE_REQUIRED_ERROR = "Registration requires a valid invite code."
+# Without an email provider these actions are refused before any lookup (REQ-36 c, D2):
+# same answer for every address, and no token is created or logged.
+PASSWORD_RESET_UNAVAILABLE = "Password reset is not available yet."
+VERIFICATION_EMAIL_UNAVAILABLE = "Email verification is not available yet."
 GENERIC_FORGOT_SUCCESS = (
     "If that email address exists in our system, password reset instructions have been sent."
 )
@@ -100,7 +106,7 @@ async def register_user(
     """
     Register a new user account:
     - Enforces server-side password policy (min 10 chars, blocklist)
-    - Validates CAPTCHA
+    - Requires the invite code (REGISTRATION_INVITE_CODE); closed when it is unset
     - Hashes password using bcrypt (cost factor 12)
     - Requires email verification before login
     - Returns generic anti-enumeration response
@@ -108,18 +114,29 @@ async def register_user(
     client_ip = get_client_ip(request)
     email_normalized = req.email.lower().strip()
 
-    # 1. Enforce password policy
+    # 1. Invite code, checked before anything else (decision D1). Too many wrong codes
+    #    from one IP block registration from it, even with the right code.
+    retry_after = invite_failure_limiter.blocked_for(client_ip)
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please slow down and try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    if not invite_code_matches(req.invite_code):
+        if not registration_open():
+            logger.warning("Registration refused: REGISTRATION_INVITE_CODE is not set (registration closed)")
+        invite_failure_limiter.record(client_ip)
+        db.add(SecurityLog(event_type="REGISTER_INVITE_REJECTED", email=email_normalized, ip_address=client_ip,
+                           user_agent=request.headers.get("User-Agent", "")[:250],
+                           details="Missing or wrong invite code, or registration closed"))
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=INVITE_REQUIRED_ERROR)  # REQ-36 a
+
+    # 2. Enforce password policy
     is_valid_pw, pw_error = validate_password_policy(req.password)
     if not is_valid_pw:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=pw_error)
-
-    # 2. Enforce CAPTCHA on registration
-    captcha_valid = await verify_captcha(req.captcha_token, remote_ip=client_ip)
-    if not captcha_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CAPTCHA verification failed. Please complete the CAPTCHA."
-        )
 
     # 3. Check for existing user (Anti-enumeration: don't disclose whether email exists)
     result = await db.execute(select(User).where(User.email == email_normalized))
@@ -148,21 +165,20 @@ async def register_user(
     db.add(new_user)
     await db.flush()  # Populates new_user.id
 
-    # 6. Generate email verification token (24 hour expiration)
-    raw_token = generate_secure_token()
-    token_h = hash_token(raw_token)
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(hours=24)
-
-    auth_tok = AuthToken(
-        user_id=new_user.id,
-        token_hash=token_h,
-        token_type="verify_email",
-        created_at=now,
-        expires_at=expires_at,
-        is_used=False
-    )
-    db.add(auth_tok)
+    # 6. Verification token, only when an email can actually carry it (REQ-36 c): without a
+    #    provider, or for an account that is already verified, none is created.
+    raw_token = None
+    if not auto_verify and is_email_service_configured():
+        raw_token = generate_secure_token()
+        now = datetime.now(timezone.utc)
+        db.add(AuthToken(
+            user_id=new_user.id,
+            token_hash=hash_token(raw_token),
+            token_type="verify_email",
+            created_at=now,
+            expires_at=now + timedelta(hours=24),
+            is_used=False
+        ))
 
     # 7. Audit log
     sec_log = SecurityLog(
@@ -175,8 +191,9 @@ async def register_user(
     db.add(sec_log)
     await db.commit()
 
-    # 8. Send verification email (or log link if no email provider is configured)
-    await send_verification_email(email_normalized, raw_token, request=request)
+    # 8. Send the verification email (never logged)
+    if raw_token:
+        await send_verification_email(email_normalized, raw_token, request=request)
 
     if auto_verify:
         return {"message": "Account created successfully! You can now log in."}
@@ -274,6 +291,8 @@ async def resend_verification(
     db: AsyncSession = Depends(get_db)
 ):
     """Resend email verification link with anti-enumeration protection."""
+    if not is_email_service_configured():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=VERIFICATION_EMAIL_UNAVAILABLE)
     client_ip = get_client_ip(request)
     email_normalized = req.email.lower().strip()
 
@@ -318,7 +337,6 @@ async def login_user(
     """
     User login with:
     - Per-account lockout with exponential backoff (1m, 5m, 15m)
-    - CAPTCHA enforcement on 3+ failed attempts
     - Password validation using bcrypt
     - Mandatory email verification check
     - Audit logging of failed/successful logins with IP and timestamp
@@ -354,16 +372,6 @@ async def login_user(
                 detail=f"Account temporarily locked due to consecutive failed attempts. Please retry in {remaining_seconds} seconds."
             )
 
-        # 3. Check CAPTCHA requirement (triggered when failed_login_count >= 3)
-        if user.failed_login_count >= 3:
-            captcha_ok = await verify_captcha(req.captcha_token, remote_ip=client_ip)
-            if not captcha_ok:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Security verification required. Please complete the CAPTCHA.",
-                    headers={"X-Captcha-Required": "true"}
-                )
-
     # 4. Verify password
     password_correct = False
     if user:
@@ -371,7 +379,6 @@ async def login_user(
 
     # 5. Handle failed authentication
     if not user or not password_correct:
-        captcha_required = False
         if user:
             user.failed_login_count += 1
 
@@ -383,8 +390,6 @@ async def login_user(
                     f"Account {email_normalized} locked for {cooldown.total_seconds()}s "
                     f"after {user.failed_login_count} failed attempts."
                 )
-
-            captcha_required = user.failed_login_count >= 3
 
             # Record failed login attempt in security logs with IP and timestamp
             sec_log = SecurityLog(
@@ -409,15 +414,7 @@ async def login_user(
             await db.commit()
 
         # Always return generic message (anti-enumeration)
-        headers = {}
-        if captcha_required:
-            headers["X-Captcha-Required"] = "true"
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=GENERIC_LOGIN_ERROR,
-            headers=headers
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
 
     # 6. Check Email Verification
     if not user.email_verified:
@@ -538,8 +535,10 @@ async def forgot_password(
 ):
     """
     Request password reset link.
-    Returns generic anti-enumeration response.
+    Returns generic anti-enumeration response; 503 for everyone without an email provider.
     """
+    if not is_email_service_configured():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PASSWORD_RESET_UNAVAILABLE)
     client_ip = get_client_ip(request)
     email_normalized = req.email.lower().strip()
 
@@ -646,6 +645,22 @@ async def reset_password(
 # ============================================================
 # CSRF TOKEN ENDPOINT
 # ============================================================
+class AuthConfigResponse(BaseModel):
+    email_enabled: bool
+    registration_open: bool
+
+
+@router.get("/config", response_model=AuthConfigResponse)
+async def get_auth_config():
+    """Public: which auth features work, so the UI can hide the others (REQ-36 c).
+
+    Only two booleans: whether an email provider is configured (password reset and
+    resend-verification) and whether the invite-code secret is set (registration).
+    No secret, key or code is returned.
+    """
+    return AuthConfigResponse(email_enabled=is_email_service_configured(), registration_open=registration_open())
+
+
 @router.get("/csrf")
 async def get_csrf_token(request: Request, response: Response):
     """

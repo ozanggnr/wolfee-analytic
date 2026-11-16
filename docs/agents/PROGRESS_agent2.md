@@ -1,11 +1,33 @@
 # Agent 2 (Backend) progress
 
-Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` 490995e on 2026-11-14 (no conflicts; before that acfd92e). Local commits only: no push, no merge.
+Worktree `Wolfee-backend`, branch `agent/backend`, rebased onto `integration` 92a5ca0 on 2026-11-16 (no conflicts). Local commits only: no push, no merge.
 Resume protocol: `git status`, read this file, continue from "In progress" / "Next".
+
+## Current task (2026-11-16, second): REQ-36 (c) and the REQ-35 import
+
+- [x] Rebase onto `integration` 92a5ca0: clean (commit hashes of the task below changed: ccfc76d, 41a47c9, 85fd500).
+- [x] REQ-36 (c) `d2ac740`: no provider → forgot-password / resend-verification 503 for every address, before any lookup, no token; registration creates no verification token; the email fallback and provider errors never log the link, body, exception text or recipient. `test_email_unavailable.py` (7, incl. a known token string scanned in log records and stdout/stderr).
+- [x] `08b8d33`: public `GET /api/auth/config` → `{"email_enabled", "registration_open"}`. `test_auth_config.py` (8).
+- [x] `8bd0220`: `ai_insight_service` imports `MARKET_DISCLAIMER` (fallback to `DISCLAIMER` until agent/quant-ai f8bef1d is merged; drop it then). `test_insight_disclaimer_import.py` (2).
+- [x] `7d00ac2`: rejected invite code → 403 (REQ-36 a), was 400.
+- Verification (WSL): SQLite 641 passed; PG16.16 API 194 passed; base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`.
+- API_CONTRACT §2.7 changes for Agent 1 (REQ-36 d): register `{"email","password","invite_code"}`, 403 "Registration requires a valid invite code." (missing/wrong/closed), 429 + Retry-After after 5 rejections/h/IP; no `captcha_token` anywhere, no `X-Captcha-Required`; forgot-password and resend-verification 503 without a provider; new `GET /api/auth/config`.
 
 Tests run in WSL (docs/agents/TESTING.md §2, §3.1, §3.2), with agent-private names so other agents' runs cannot delete my database mid-run: SQLite file `~/wolfee-test/agent2/test.db`, Postgres databases `wolfee_tests_agent2` and `wolfee_migrations_agent2` on the PG16 cluster (port 55432). (The shared `~/wolfee-test/test.db` gave one run with 6 "readonly database" failures; the same commit passed 525/525 on rerun.)
 
-## Current task (2026-11-15): REQ-31 (a)–(f)
+## Current task (2026-11-16): invite code (D1), REQ-33 (a)(b)
+
+Decisions: D1 = no CAPTCHA, registration by invite code; D2 = REQUIRE_EMAIL_VERIFICATION off for launch.
+
+- [x] Rebase onto `integration` f9e64d2: clean.
+- [x] Invite code `f82010f`: `invite_code` checked first, constant time, against `REGISTRATION_INVITE_CODE` (unset/blank = closed); one generic 400 for missing/wrong/closed; 5 rejections/h/IP → 429 even with the right code; audited `REGISTER_INVITE_REJECTED`. CAPTCHA removed (register + login after 3 failures, `X-Captcha-Required`). `test_registration_invite.py` (18).
+- [x] REQ-33 (a) `4ca2c5a`: the four naive columns get `default`/`onupdate` = `models.utc_now_naive` (no DDL, no migration); API sends their `updated_at` with `+00:00`. `tests/api/test_utc_timestamps.py` (3, session at Asia/Tokyo on PG; fail on PG16 without the fix).
+- [x] REQ-33 (b) `2518d91`: CORS = localhost + `CORS_ORIGINS` only. `test_cors_origins.py` (7).
+- Verification (WSL, own DB names): SQLite 625 passed; PG16.16 API 194 passed; base→head→base→head ok, `alembic check` clean at `e4a8c2f6b1d3`.
+- For Agent 4: register form needs an `invite_code` field (without it nobody can register from the UI); remove the CAPTCHA inputs and the `X-Captcha-Required` handling (auth.js:274-359, index.html:396-426).
+- For Agent 1: API_CONTRACT §register (`invite_code`, no `captcha_token`, 400 invite / 429); DEPLOYMENT: set the `REGISTRATION_INVITE_CODE` secret, drop the `CAPTCHA_*` / `ALLOW_DEV_CAPTCHA_BYPASS` rows, D2 → `REQUIRE_EMAIL_VERIFICATION = "false"` in fly.toml; D3 no longer blocking.
+
+## Earlier task (2026-11-15): REQ-31 (a)–(f)
 
 - [x] Rebase onto `integration` 3515621: fast-forward (integration already held all my commits).
 - [x] (a) HIGH `de7b239`: watchlist `round(None)` on change_pct. Cached, live and placeholder rows keep null; the summary lists a null ticker but skips it in counts, average and biggest mover; `avg_change_pct` is null when no ticker has a change. 2 tests (fail without the fix).

@@ -82,6 +82,19 @@ class IPRateLimiter:
         self.requests[ip].append(now)
         return True, 0
 
+    def blocked_for(self, ip: str) -> int:
+        """Seconds until ``ip`` may try again (0 = not blocked), without recording a request."""
+        now = time.time()
+        recent = [t for t in self.requests.get(ip, []) if t > now - self.window]
+        if len(recent) < self.max_requests:
+            return 0
+        return int(max(1, self.window - (now - recent[0])))
+
+    def record(self, ip: str) -> None:
+        """Count one event (e.g. a failed attempt) for ``ip``."""
+        now = time.time()
+        self.requests[ip] = [t for t in self.requests.get(ip, []) if t > now - self.window] + [now]
+
     def _cleanup(self, now: float):
         cutoff = now - self.window
         stale_ips = [ip for ip, ts in self.requests.items() if not ts or ts[-1] <= cutoff]
@@ -93,6 +106,16 @@ class IPRateLimiter:
 auth_rate_limiter = IPRateLimiter(
     window_seconds=RATE_LIMIT_WINDOW_SECONDS,
     max_requests=RATE_LIMIT_MAX_REQUESTS
+)
+
+
+# Wrong or missing invite codes: 5 per hour per IP, on top of the 10/min auth limit.
+# Once reached, registration from that IP is refused (429) even with the right code.
+INVITE_FAILURE_WINDOW_SECONDS = 3600
+INVITE_FAILURE_MAX_ATTEMPTS = 5
+invite_failure_limiter = IPRateLimiter(
+    window_seconds=INVITE_FAILURE_WINDOW_SECONDS,
+    max_requests=INVITE_FAILURE_MAX_ATTEMPTS
 )
 
 
@@ -133,7 +156,7 @@ public_api_rate_limiter = IPRateLimiter(
 class SecurityMiddleware(BaseHTTPMiddleware):
     """
     Unified security middleware:
-    1. Enforce HTTPS redirect on Railway / reverse proxy connections
+    1. Enforce HTTPS redirect behind an HTTPS reverse proxy
     2. IP rate limiting on auth (10/min) and general public API (120/min)
     3. CSRF token validation on state-changing endpoints
     4. Auto-sets CSRF cookie on non-mutating requests if missing
@@ -326,7 +349,7 @@ def is_connection_secure(request: Optional[Request] = None) -> bool:
     """
     Determine if connection is secure:
     - If request is local HTTP (localhost / 127.0.0.1), always return False so browser accepts cookies.
-    - If request is HTTPS or behind an HTTPS reverse proxy (Railway, Cloudflare), return True.
+    - If request is HTTPS or behind an HTTPS reverse proxy (X-Forwarded-Proto / X-Forwarded-Ssl), return True.
     - If environment sets COOKIE_SECURE=true or RAILWAY_ENVIRONMENT, return True.
     """
     if request:
