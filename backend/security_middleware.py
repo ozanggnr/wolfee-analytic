@@ -6,6 +6,7 @@ Security Middleware & Session Management for Wolfee Analytics
 - Server-side session verification against PostgreSQL/SQLite user_sessions table
 """
 
+import ipaddress
 import os
 import time
 import secrets
@@ -119,22 +120,40 @@ invite_failure_limiter = IPRateLimiter(
 )
 
 
+FLY_CLIENT_IP_HEADER = "Fly-Client-IP"
+# Key used on Fly when the proxy header is missing or malformed: those requests share one
+# bucket (fail closed) instead of falling back to anything the client could choose.
+UNKNOWN_FLY_CLIENT = "fly-client-ip-missing"
+
+
+def running_on_fly() -> bool:
+    return bool(os.getenv("FLY_APP_NAME"))
+
+
+def _valid_ip(value: Optional[str]) -> Optional[str]:
+    try:
+        return str(ipaddress.ip_address((value or "").strip()))
+    except ValueError:
+        return None
+
+
 def get_client_ip(request: Request) -> str:
-    """Extract real client IP considering Cloudflare and reverse proxies."""
-    # 1. Cloudflare header
-    cf_ip = request.headers.get("CF-Connecting-IP")
-    if cf_ip:
-        return cf_ip.strip()
+    """The client IP that keys every per-IP limit and security log (REQ-39).
 
-    # 2. X-Forwarded-For (take the left-most client IP)
-    xff = request.headers.get("X-Forwarded-For")
-    if xff:
-        return xff.split(",")[0].strip()
+    On Fly (FLY_APP_NAME set) only the Fly-Client-IP header, which the Fly proxy sets, is
+    used. CF-Connecting-IP and X-Forwarded-For are never read: the client controls them,
+    and a fresh fake value per request would bypass every per-IP limit. Locally and in
+    tests the socket peer address is used.
+    """
+    if running_on_fly():
+        fly_ip = _valid_ip(request.headers.get(FLY_CLIENT_IP_HEADER))
+        if fly_ip:
+            return fly_ip
+        logger.warning("Fly-Client-IP missing or invalid on %s; using the shared fallback key", request.url.path)
+        return UNKNOWN_FLY_CLIENT
 
-    # 3. Direct client host
     if request.client and request.client.host:
         return request.client.host.strip()
-
     return "127.0.0.1"
 
 
