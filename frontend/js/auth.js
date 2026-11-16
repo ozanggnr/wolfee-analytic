@@ -4,7 +4,6 @@
  * - Automatic CSRF token handling for state-changing requests
  * - Password policy validation (>= 10 characters, common password prevention)
  * - Anti-enumeration generic feedback messaging
- * - CAPTCHA integration
  */
 
 (function () {
