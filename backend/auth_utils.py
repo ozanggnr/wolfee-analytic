@@ -3,12 +3,13 @@ Security & Authentication Utilities for Wolfee Analytics
 - Password hashing with bcrypt (cost factor 12) with library built-in salting
 - Password policy enforcement (min 10 chars, common passwords blocklist)
 - Per-account lockout with exponential backoff (1m, 5m, 15m)
-- CAPTCHA validation (hCaptcha, reCAPTCHA, Cloudflare Turnstile with dev bypass)
+- Registration invite code check (constant-time)
 - Cryptographic token generation and SHA-256 hashing
 - Email notification handling (SMTP or local development fallback)
 """
 
 import os
+import hmac
 import secrets
 import hashlib
 import logging
@@ -157,45 +158,26 @@ def is_account_locked(locked_until: Optional[datetime]) -> Tuple[bool, Optional[
 
 
 # ============================================================
-# CAPTCHA VERIFICATION (hCaptcha / reCAPTCHA / Cloudflare Turnstile)
+# REGISTRATION INVITE CODE (decision D1: no CAPTCHA, registration by invite)
 # ============================================================
-CAPTCHA_SECRET_KEY = os.getenv("CAPTCHA_SECRET_KEY", "")
-CAPTCHA_SITE_KEY = os.getenv("CAPTCHA_SITE_KEY", "")
-CAPTCHA_VERIFY_URL = os.getenv("CAPTCHA_VERIFY_URL", "https://hcaptcha.com/siteverify")
+INVITE_CODE_ENV = "REGISTRATION_INVITE_CODE"
 
-async def verify_captcha(token: Optional[str], remote_ip: Optional[str] = None) -> bool:
+
+def registration_open() -> bool:
+    """Registration is closed while the REGISTRATION_INVITE_CODE secret is unset or blank."""
+    return bool(os.getenv(INVITE_CODE_ENV, "").strip())
+
+
+def invite_code_matches(provided: Optional[str]) -> bool:
+    """Constant-time comparison with the REGISTRATION_INVITE_CODE secret.
+
+    Read on every call so a rotated secret applies without a code change. False when
+    the secret is unset (registration closed) or no code was given.
     """
-    Verify CAPTCHA token.
-    If CAPTCHA_SECRET_KEY is not configured (e.g. in local development / testing),
-    it allows testing via a bypass token 'dev-captcha-pass' or when running in dev mode.
-    """
-    # If no secret key is set, log a warning and accept in dev mode
-    if not CAPTCHA_SECRET_KEY:
-        if token in ("dev-captcha-pass", "test-token", "bypass", None, ""):
-            logger.info("Dev mode CAPTCHA bypass used (no CAPTCHA_SECRET_KEY set)")
-            return True
-        return True
-
-    if not token:
+    expected = os.getenv(INVITE_CODE_ENV, "").strip()
+    if not expected or not provided:
         return False
-
-    # Dev token bypass when explicitly enabled
-    if os.getenv("ALLOW_DEV_CAPTCHA_BYPASS", "false").lower() == "true" and token == "dev-captcha-pass":
-        return True
-
-    try:
-        data = {"secret": CAPTCHA_SECRET_KEY, "response": token}
-        if remote_ip:
-            data["remoteip"] = remote_ip
-
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.post(CAPTCHA_VERIFY_URL, data=data)
-            resp.raise_for_status()
-            res_json = resp.json()
-            return bool(res_json.get("success", False))
-    except Exception as e:
-        logger.error(f"CAPTCHA verification failed with error: {e}")
-        return False
+    return hmac.compare_digest(provided.strip().encode("utf-8"), expected.encode("utf-8"))
 
 
 # ============================================================

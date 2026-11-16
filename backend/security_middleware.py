@@ -82,6 +82,19 @@ class IPRateLimiter:
         self.requests[ip].append(now)
         return True, 0
 
+    def blocked_for(self, ip: str) -> int:
+        """Seconds until ``ip`` may try again (0 = not blocked), without recording a request."""
+        now = time.time()
+        recent = [t for t in self.requests.get(ip, []) if t > now - self.window]
+        if len(recent) < self.max_requests:
+            return 0
+        return int(max(1, self.window - (now - recent[0])))
+
+    def record(self, ip: str) -> None:
+        """Count one event (e.g. a failed attempt) for ``ip``."""
+        now = time.time()
+        self.requests[ip] = [t for t in self.requests.get(ip, []) if t > now - self.window] + [now]
+
     def _cleanup(self, now: float):
         cutoff = now - self.window
         stale_ips = [ip for ip, ts in self.requests.items() if not ts or ts[-1] <= cutoff]
@@ -93,6 +106,16 @@ class IPRateLimiter:
 auth_rate_limiter = IPRateLimiter(
     window_seconds=RATE_LIMIT_WINDOW_SECONDS,
     max_requests=RATE_LIMIT_MAX_REQUESTS
+)
+
+
+# Wrong or missing invite codes: 5 per hour per IP, on top of the 10/min auth limit.
+# Once reached, registration from that IP is refused (429) even with the right code.
+INVITE_FAILURE_WINDOW_SECONDS = 3600
+INVITE_FAILURE_MAX_ATTEMPTS = 5
+invite_failure_limiter = IPRateLimiter(
+    window_seconds=INVITE_FAILURE_WINDOW_SECONDS,
+    max_requests=INVITE_FAILURE_MAX_ATTEMPTS
 )
 
 

@@ -160,8 +160,9 @@ def setup_test_db():
     yield
 
 
-def test_auth_registration_and_anti_enumeration():
+def test_auth_registration_and_anti_enumeration(monkeypatch):
     """Test user registration, verification flow, and anti-enumeration generic responses."""
+    monkeypatch.setenv("REGISTRATION_INVITE_CODE", "test-invite-code")
     client = TestClient(app)
     unique_email = f"trader_{secrets.token_hex(4)}@example.com"
     strong_pw = "TraderSecure2026!#"
@@ -170,7 +171,7 @@ def test_auth_registration_and_anti_enumeration():
     res = client.post("/api/auth/register", json={
         "email": unique_email,
         "password": "short",
-        "captcha_token": "dev-captcha-pass"
+        "invite_code": "test-invite-code"
     })
     assert res.status_code == 400
     assert "at least 10 characters" in res.json()["detail"]
@@ -179,7 +180,7 @@ def test_auth_registration_and_anti_enumeration():
     res = client.post("/api/auth/register", json={
         "email": unique_email,
         "password": strong_pw,
-        "captcha_token": "dev-captcha-pass"
+        "invite_code": "test-invite-code"
     })
     assert res.status_code == 200
     assert "verification email has been sent" in res.json()["message"]
@@ -188,7 +189,7 @@ def test_auth_registration_and_anti_enumeration():
     res_dup = client.post("/api/auth/register", json={
         "email": unique_email,
         "password": strong_pw,
-        "captcha_token": "dev-captcha-pass"
+        "invite_code": "test-invite-code"
     })
     assert res_dup.status_code == 200
     assert res_dup.json()["message"] == res.json()["message"]
@@ -197,7 +198,7 @@ def test_auth_registration_and_anti_enumeration():
     res_login_unverified = client.post("/api/auth/login", json={
         "email": unique_email,
         "password": strong_pw,
-        "captcha_token": "dev-captcha-pass"
+        "invite_code": "test-invite-code"
     })
     assert res_login_unverified.status_code in (401, 403)
     assert "verify" in res_login_unverified.json()["detail"].lower()
@@ -263,7 +264,7 @@ def test_login_flow_and_session_cookie_security():
     # 1. Login with incorrect password -> 401 Generic Error
     res_bad = client.post(
         "/api/auth/login",
-        json={"email": email, "password": "WrongPassword123!", "captcha_token": "dev-captcha-pass"},
+        json={"email": email, "password": "WrongPassword123!"},
         headers={CSRF_HEADER_NAME: csrf_token}
     )
     assert res_bad.status_code == 401
@@ -272,7 +273,7 @@ def test_login_flow_and_session_cookie_security():
     # 2. Login with correct password -> Success & Cookies
     res_good = client.post(
         "/api/auth/login",
-        json={"email": email, "password": password, "captcha_token": "dev-captcha-pass"},
+        json={"email": email, "password": password},
         headers={CSRF_HEADER_NAME: csrf_token}
     )
     assert res_good.status_code == 200
@@ -383,7 +384,7 @@ def test_failed_logins_trigger_exponential_lockout():
     for i in range(4):
         res = client.post(
             "/api/auth/login",
-            json={"email": email, "password": f"BadPassword{i}!", "captcha_token": "dev-captcha-pass"},
+            json={"email": email, "password": f"BadPassword{i}!"},
             headers={CSRF_HEADER_NAME: csrf_token}
         )
         assert res.status_code == 401
@@ -392,7 +393,7 @@ def test_failed_logins_trigger_exponential_lockout():
     # 5th bad attempt -> Triggers lockout cooldown
     res5 = client.post(
         "/api/auth/login",
-        json={"email": email, "password": "BadPassword5!", "captcha_token": "dev-captcha-pass"},
+        json={"email": email, "password": "BadPassword5!"},
         headers={CSRF_HEADER_NAME: csrf_token}
     )
     assert res5.status_code == 401
@@ -400,7 +401,7 @@ def test_failed_logins_trigger_exponential_lockout():
     # Immediate next attempt (even with CORRECT password) is blocked by lockout cooldown!
     res_locked = client.post(
         "/api/auth/login",
-        json={"email": email, "password": password, "captcha_token": "dev-captcha-pass"},
+        json={"email": email, "password": password},
         headers={CSRF_HEADER_NAME: csrf_token}
     )
     assert res_locked.status_code == 401
@@ -499,7 +500,7 @@ def test_password_reset_flow():
     # 3. Old password fails
     res_old = client.post(
         "/api/auth/login",
-        json={"email": email, "password": old_password, "captcha_token": "dev-captcha-pass"},
+        json={"email": email, "password": old_password},
         headers={CSRF_HEADER_NAME: csrf_token}
     )
     assert res_old.status_code == 401
@@ -507,7 +508,7 @@ def test_password_reset_flow():
     # 4. New password succeeds
     res_new = client.post(
         "/api/auth/login",
-        json={"email": email, "password": new_password, "captcha_token": "dev-captcha-pass"},
+        json={"email": email, "password": new_password},
         headers={CSRF_HEADER_NAME: csrf_token}
     )
     assert res_new.status_code == 200
