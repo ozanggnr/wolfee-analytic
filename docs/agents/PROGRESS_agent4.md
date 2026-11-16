@@ -15,12 +15,17 @@ Order from the user, one commit each: 1 REQ-32 Portfolio page, 2 REQ-34 (a) AI b
   - Empty states: signed out, no portfolio, no positions, no transactions. Errors inline with "Try again".
   - Desktop tab "Portfolio" and a fifth mobile tab; `switchTab('ledger')` fires `wolfee_tab_changed`. Asset version 16.1.
   - Tests: `ledger-format`, `ledger-render`, `api-errors` (67 frontend tests on Windows node). Browser smoke at 1440 and 390 against the smoke DB (instruments seeded with `python -m services.instrument_service`, TESTING §3.3).
+- [x] 2. REQ-34 (a), `21ffc67`: the market insight badge comes from the response (`aiSourceLabel`, tested): "AI generated" only for model text, "Template" when `is_fallback` or `generated_by == "template"`, hidden without text. The stock analysis shows the same label in its provenance line.
+- [x] 3. REQ-34 (c), `92fbcf3`: `readableApiError` bridged as `window.WolfeeApiErrors`; auth forms show each 422 message under its field (`data-api-field`, `aria-invalid`), body-level text in the alert, never "[object Object]". Also export errors. Fixed the resend-verification form (it called a function out of scope) and the forgot-password form (showed success on an error).
+- [x] 4. REQ-34 (d), `1b7394e`: watchlist pills at 2 decimals like the mover, average and cards.
+- [x] 5. Registration, `29a3414`: no CAPTCHA token or markup (D1); "Invite code" field sent as `invite_code` (empty caught before the request). The current backend ignores the key until Agent 2's check lands (`RegisterRequest` does not forbid extra fields). Signing in from the dialog now fires `wolfee_auth_changed`, so the Portfolio page loads without a reload.
+- [x] 6. Filter sheet backdrop: below 768px the page (header and tab bar too) dims behind the open filter sheet; a tap on it closes the sheet. CSS sibling rule, no new JS state; no animation with reduced motion.
 
 ## In progress
-- 2. REQ-34 (a): AI badge only for model text, "Template" otherwise.
+- Final checks: WSL tests, browser check at 1440 and 390, review page screenshots.
 
 ## Next
-- 3 to 6 above, then WSL tests, browser check, review page, report HEAD.
+- Report HEAD. No merge, no push.
 
 ## Notes
 - Smoke DB: `POST /api/v1/portfolios` returned 500 "database is locked" once while the start-up stock fill was writing to SQLite; it worked on retry. Local SQLite only; for Agent 2 if it shows up elsewhere.

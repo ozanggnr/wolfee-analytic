@@ -136,6 +136,8 @@
             <button type="button" onclick="if(typeof clearFilters === 'function') clearFilters()" class="filter-clear-btn">Clear</button>
         </div>
     </div>
+    <!-- Dims the page behind the mobile filter sheet; a tap on it closes the sheet (outside click in filter.js) -->
+    <div id="filter-backdrop" class="filter-backdrop" aria-hidden="true"></div>
 
     <!-- ===== MAIN CONTENT ===== -->
     <div class="container">

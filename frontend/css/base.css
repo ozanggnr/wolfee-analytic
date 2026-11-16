@@ -245,7 +245,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 /* View switch: a short fade, none with reduced motion */
 .tab-transition { animation: view-in var(--duration-base) var(--ease-standard); }
 @keyframes view-in { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .tab-transition { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tab-transition, .filter-backdrop { animation: none !important; } }
 
 /* ---------- Skip link ---------- */
 .skip-link {
@@ -345,6 +345,7 @@ fieldset legend { padding: 0; margin-bottom: var(--space-1); }
 /* ---------- Bottom sheet (mobile account) ---------- */
 .sheet { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; }
 .sheet-backdrop { position: absolute; inset: 0; background: var(--color-overlay); }
+.filter-backdrop { display: none; }
 .sheet-panel {
     position: relative; width: 100%;
     padding: var(--space-4) var(--gutter-mobile) calc(var(--space-6) + env(safe-area-inset-bottom));
@@ -392,6 +393,12 @@ fieldset legend { padding: 0; margin-bottom: var(--space-1); }
         box-shadow: var(--shadow-modal);
     }
     .filter-actions button { height: var(--touch-target); }
+    /* Dim the page behind the open sheet: above the header and tab bar, below the sheet */
+    .filter-popover:not(.hidden) ~ .filter-backdrop {
+        display: block; position: fixed; inset: 0; z-index: 65;
+        background: var(--color-overlay);
+        animation: view-in var(--duration-base) var(--ease-standard);
+    }
     .search-results { width: 100%; max-width: none; }
     .search-result-item { min-height: var(--touch-target); }
 
