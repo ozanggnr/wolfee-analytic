@@ -6,8 +6,9 @@ from datetime import datetime
 from typing import Callable, Optional, Sequence
 
 from ai.guardrails import (
-    DISCLAIMER,
+    MARKET_DISCLAIMER,
     NO_OUTPUT,
+    PORTFOLIO_DISCLAIMER,
     PROVIDER_ERROR,
     TEMPLATE_GENERATOR,
     AIResult,
@@ -42,7 +43,8 @@ def explain_portfolio(
     deterministic. The model's text is used only if it passes the guardrails;
     whatever goes wrong with the model, the caller still gets a result.
     """
-    return _explain(facts, now, inputs_as_of, generate, build_portfolio_prompt, _PORTFOLIO_HEADING)
+    return _explain(facts, now, inputs_as_of, generate, build_portfolio_prompt, _PORTFOLIO_HEADING,
+                    PORTFOLIO_DISCLAIMER)
 
 
 def explain_market(
@@ -53,7 +55,8 @@ def explain_market(
     generate: Generator | None = None,
 ) -> AIResult:
     """Describe today's market ``facts``; same guarantees as :func:`explain_portfolio`."""
-    return _explain(facts, now, inputs_as_of, generate, build_market_prompt, _MARKET_HEADING)
+    return _explain(facts, now, inputs_as_of, generate, build_market_prompt, _MARKET_HEADING,
+                    MARKET_DISCLAIMER)
 
 
 def explain_stock(
@@ -64,7 +67,8 @@ def explain_stock(
     generate: Generator | None = None,
 ) -> AIResult:
     """Describe one instrument's ``facts``; same guarantees as :func:`explain_portfolio`."""
-    return _explain(facts, now, inputs_as_of, generate, build_stock_prompt, _STOCK_HEADING)
+    return _explain(facts, now, inputs_as_of, generate, build_stock_prompt, _STOCK_HEADING,
+                    MARKET_DISCLAIMER)
 
 
 def response_fields(result: AIResult) -> dict:
@@ -88,6 +92,7 @@ def _explain(
     generate: Generator | None,
     build_prompt: PromptBuilder,
     heading: str,
+    disclaimer: str,
 ) -> AIResult:
     facts = tuple(facts)
     if not facts:
@@ -101,7 +106,7 @@ def _explain(
             generated_at=now,
             inputs_as_of=inputs_as_of,
             is_fallback=False,
-            disclaimer=DISCLAIMER,
+            disclaimer=disclaimer,
         )
 
     return AIResult(
@@ -110,7 +115,7 @@ def _explain(
         generated_at=now,
         inputs_as_of=inputs_as_of,
         is_fallback=True,
-        disclaimer=DISCLAIMER,
+        disclaimer=disclaimer,
         violations=problems,
     )
 
