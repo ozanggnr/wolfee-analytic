@@ -1,55 +1,44 @@
-# Fly.io configuration — see docs/agents/DEPLOYMENT.md.
-# Sized for a handful of users: one small machine that stops when idle.
-# Nothing has been created on Fly yet; `app` must be globally unique, adjust before `fly apps create`.
-app = "wolfee-analytics"
-primary_region = "fra"
+# fly.toml app configuration file generated for wolfee-analytic on 2026-11-16T10:32:13Z
+#
+# See https://docs.fly.io/reference/configuration for information about how to use this file.
+#
+
+app = 'wolfee-analytic'
+primary_region = 'fra'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [deploy]
-  # Runs in a temporary machine from the new image, in /app/backend, before the
-  # new version starts. Any non-zero exit aborts the deploy and keeps the old version.
-  # 1. Migrations are the only way tables are created in production.
-  # 2. Instrument seed is idempotent; safe on every deploy.
+  strategy = 'immediate'
   release_command = "sh -c 'alembic upgrade head && python -m services.instrument_service'"
-  strategy = "immediate"
 
 [env]
-  COOKIE_SECURE = "true"
-  APP_BASE_URL = "https://wolfee-analytics.fly.dev"
-  CORS_ORIGINS = "https://wolfee-analytics.fly.dev"
-  # No e-mail provider at launch (user, 2026-11-16): accounts are verified on registration;
-  # password reset and resend-verification are unavailable until a provider is added.
-  REQUIRE_EMAIL_VERIFICATION = "false"
-  REFRESH_INTERVAL_MINUTES = "30"
-  # Database: a separate Fly Postgres app, pinned to major version 16 when it is created
-  # (`fly postgres create ... --image-ref flyio/postgres-flex:16`, DEPLOYMENT.md §5).
-  # Tests run on PostgreSQL 16 as well (TESTING.md §3). This file cannot set the version.
-  # Secrets (set with `fly secrets set`, never here): DATABASE_URL (via `fly postgres attach`),
-  # GEMINI_API_KEY, REGISTRATION_INVITE_CODE. No CAPTCHA keys (no CAPTCHA, user 2026-11-16),
-  # no e-mail provider at launch, no data-source keys (none are read).
-  # Must never be set in production: AUTO_VERIFY_DEV.
+  APP_BASE_URL = 'https://wolfee-analytics.fly.dev'
+  COOKIE_SECURE = 'true'
+  CORS_ORIGINS = 'https://wolfee-analytics.fly.dev'
+  REFRESH_INTERVAL_MINUTES = '30'
+  REQUIRE_EMAIL_VERIFICATION = 'false'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 50
+    type = 'requests'
     hard_limit = 80
+    soft_limit = 50
 
   [[http_service.checks]]
-    method = "GET"
-    path = "/healthz"
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "30s"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/healthz'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
