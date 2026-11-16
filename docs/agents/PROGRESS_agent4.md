@@ -21,11 +21,15 @@ Order from the user, one commit each: 1 REQ-32 Portfolio page, 2 REQ-34 (a) AI b
 - [x] 5. Registration, `29a3414`: no CAPTCHA token or markup (D1); "Invite code" field sent as `invite_code` (empty caught before the request). The current backend ignores the key until Agent 2's check lands (`RegisterRequest` does not forbid extra fields). Signing in from the dialog now fires `wolfee_auth_changed`, so the Portfolio page loads without a reload.
 - [x] 6. Filter sheet backdrop: below 768px the page (header and tab bar too) dims behind the open filter sheet; a tap on it closes the sheet. CSS sibling rule, no new JS state; no animation with reduced motion.
 
+- [x] 6 committed as `8c734ac`.
+- [x] Verified 2026-11-16 in WSL per TESTING.md §2 (Agent 4 DB `~/wolfee-test/agent4-frontend-test.db`): frontend 68 passed (also with TZ=America/New_York), backend 598 passed. Browser check at 1440 and 390 px on the smoke DB: Market, Opportunities, Portfolio and Watchlist with no horizontal scroll, no console errors, no "[object Object]", every asset at v=16.1, 5 mobile tabs. Review page updated with Portfolio screenshots (the partial-total shot is the test fixture rendered by the real module, labelled as such).
+
 ## In progress
-- Final checks: WSL tests, browser check at 1440 and 390, review page screenshots.
+- Nothing. Ready for the user to review; not merged or pushed.
 
 ## Next
-- Report HEAD. No merge, no push.
+- Agent 2: the `invite_code` check on `POST /api/auth/register` (the form already sends it).
+- Possible follow-up: the Portfolio page uses the default weighted-average cost basis; a FIFO switch (`cost_basis_method`) and realised lots (`realized_lots`) are in the API but not shown yet.
 
 ## Notes
 - Smoke DB: `POST /api/v1/portfolios` returned 500 "database is locked" once while the start-up stock fill was writing to SQLite; it worked on retry. Local SQLite only; for Agent 2 if it shows up elsewhere.
