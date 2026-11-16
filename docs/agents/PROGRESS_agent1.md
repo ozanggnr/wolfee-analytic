@@ -30,10 +30,12 @@ Resume: `git -C ../wolfee-integration status`, read this file, continue with "In
 - Decisions recorded (2026-11-16): D1 invite code, no CAPTCHA; D2 no e-mail verification at launch, reset unavailable; D3 UTC check at DB creation; D4 app name at deploy. `fly.toml` `REQUIRE_EMAIL_VERIFICATION=false`. `railway.json` and `wrangler.jsonc` deleted. New REQ-36 (Agent 2), REQ-37 (Agent 4)
 - Final merge (2026-11-16): `agent/quant-ai` `f8bef1d` → **`6fbb26d`**, `agent/backend` `cf440a2` → **`7bf4d6b`**, `agent/frontend` `ee33aee` → **`dd08370`**. REQ-32…37 DONE. API_CONTRACT §1/§2.7 (invite code 403/429, no CAPTCHA, 503s, `/api/auth/config`), DEPLOYMENT (invite secret, CAPTCHA rows removed, D6 spoofable IP, §10 split into user / Agent 1 commands), worker.js refs removed, README CAPTCHA line replaced. New REQ-38 (Agent 2 DISCLAIMER fallback), REQ-39 (Agent 2 `Fly-Client-IP`), REQ-40 (Agent 4 comment). Full WSL verification green (643 / 72 / PG16 194 / migrations / seed / browser smoke with invite code, no tokens in logs). Nothing pushed; `main` untouched
 
+- GitHub Actions plan (2026-11-16): merged `c238476` → **`c9aff26`** (REQ-38/39) and `0475bc8` → **`3a75e0a`** (REQ-40); Dockerfile flags dropped `037077d`; `.github/workflows/deploy.yml` `d90f9d9`; `.gitignore` hardened `2762671`; history secret scan (only test data in the old `wolfee.db`, already public); docs + REQ-41. Then local `main` fast-forwarded to `integration` (not pushed)
+
 ## Next (only after approval)
-- User: D6 decision (wait for REQ-39 or deploy with a long random code), then DEPLOYMENT §10.1 U1–U7
-- Agent 1 after approval: §10.2 A1–A3
-- Merge REQ-38 / REQ-39 / REQ-40 as they land
+- User: DEPLOYMENT §10.1 U1–U8, then pushes `main` (U9)
+- Agent 1 after the push: watch the workflow, §10.2 A1 and A3 (read-only)
+- Merge REQ-41 when it lands
 
 ## Notes for whoever resumes
 - `fly.toml` release_command (`alembic upgrade head && python -m services.instrument_service`) is runnable on integration since `a63f25d`. Still no Fly resources; nothing deployed.

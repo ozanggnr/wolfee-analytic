@@ -190,6 +190,7 @@ Merged on 2026-11-16 (user instruction, order quant-ai → backend → frontend)
 
 - `agent/quant-ai` `f8bef1d` → `6fbb26d` (REQ-35); `agent/backend` `cf440a2` → `7bf4d6b` (REQ-36, REQ-33); `agent/frontend` `ee33aee` → `dd08370` (REQ-32, REQ-34, REQ-37; assets v=16.2). REQ-32 to REQ-37 are DONE.
 - Final verification and the deploy sequence: TESTING.md §5, DEPLOYMENT.md §2.1 and §10. New: REQ-38 (Agent 2, drop the DISCLAIMER import fallback), REQ-39 (Agent 2, client IP from `Fly-Client-IP`, DEPLOYMENT §2.1 D6), REQ-40 (Agent 4, stale CAPTCHA comment).
+- 2026-11-16: deploys move to GitHub Actions on push to `main` (user). Merged `agent/backend` `c238476` → `c9aff26` (REQ-38, REQ-39) and `agent/frontend` `0475bc8` → `3a75e0a` (REQ-40). Dockerfile without `--proxy-headers` / `--forwarded-allow-ips=*` (`037077d`), `.github/workflows/deploy.yml` (`d90f9d9`), `.gitignore` hardened (`2762671`). New REQ-41 (Agent 2, low).
 
 Branch naming in practice is `agent/backend`, `agent/quant-ai` and `agent/frontend`, cut from `main` with no `integration` branch yet. §2 is updated when the user decides whether `integration` is still wanted.
 
@@ -678,7 +679,7 @@ Needs:     services/ai_insight_service.py:24-27: drop the temporary
            fallback.
 Why:       the fallback hides a real import error behind the old alias
 Blocking:  no
-Status:    open
+Status:    DONE 2026-11-16 — cb670b7, merged at c9aff26
 
 ID:        REQ-39
 From:      Agent 1 (review of cf440a2, 2026-11-16)
@@ -692,7 +693,7 @@ Needs:     security_middleware.get_client_ip: on Fly, use the `Fly-Client-IP` he
 Why:       with a fresh fake IP per request every per-IP limit can be bypassed, including the
            5-per-hour invite-code limit (DEPLOYMENT §2.1 D6, API_CONTRACT §1)
 Blocking:  recommended before the first deploy; a long random invite code is the stopgap
-Status:    open
+Status:    DONE 2026-11-16 — b4b7116 (Fly-Client-IP on Fly, socket peer elsewhere, CF/XFF never read), merged at c9aff26; Dockerfile flags dropped by Agent 1 at 037077d
 
 ID:        REQ-40
 From:      Agent 1 (review of ee33aee, 2026-11-16)
@@ -700,5 +701,22 @@ To:        Agent 4
 Needs:     frontend/js/auth.js:7 header comment still lists "CAPTCHA integration"; remove it.
 Why:       CAPTCHA was removed (D1)
 Blocking:  no
+Status:    DONE 2026-11-16 — 0475bc8, merged at 3a75e0a
+
+ID:        REQ-41
+From:      Agent 1 (review of c238476 and the Dockerfile change, 2026-11-16)
+To:        Agent 2
+Needs:     (a) auth_routes.get_csrf_token sets the CSRF cookie with secure=(request.url.scheme ==
+           "https"); without --proxy-headers the scheme behind Fly is http. Use
+           is_connection_secure(request) like the middleware. Also, when the cookie is missing,
+           both the route and SecurityMiddleware step 3 set csrf_token with different values in
+           the same response (the browser keeps the last, the body returns the first); set it
+           once. (b) get_client_ip logs a warning for every request without Fly-Client-IP; Fly's
+           own /healthz checks (every 30 s) will hit that path. Skip the warning for /healthz or
+           log it once. (c) backend/start.sh still runs uvicorn with --proxy-headers
+           --forwarded-allow-ips="*"; nothing uses start.sh since the Dockerfile CMD (and the
+           Procfile, if Railway is gone): delete it with the Procfile, or drop the flags.
+Why:       (a) cookie flag and double Set-Cookie; (b) log noise; (c) the old trust-all flags
+Blocking:  no — the middleware already sets a Secure cookie when COOKIE_SECURE=true (fly.toml)
 Status:    open
 ```

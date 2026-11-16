@@ -262,7 +262,7 @@ Everything on `integration` passes in WSL (TESTING.md §5) and the browser smoke
 | D2 | **No e-mail provider at launch** — DECIDED (user, 2026-11-16) | Agent 1 (`fly.toml`), Agent 2 (REQ-36 c), Agent 4 (REQ-37 b) | `REQUIRE_EMAIL_VERIFICATION=false` (set in `fly.toml`): accounts are usable right after registration. Password reset and resend-verification stay **unavailable** until a provider is added. Today, without a provider, `auth_utils` writes the full reset / verification link to the log, which would put live reset tokens in Fly logs: REQ-36 (c) makes those routes refuse without creating a token, and the UI hides them. **DONE**: merged at `7bf4d6b` / `dd08370`; verified 2026-11-16, no token in the logs |
 | D3 | **Postgres time zone must be UTC** — DECIDED (user, 2026-11-16) | Agent 1 at deploy; Agent 2 for the permanent fix | Right after `fly postgres create`, run `show timezone`; if it is not `UTC`, run `ALTER DATABASE <db> SET timezone TO 'UTC'` before the first `fly deploy` (§10 step 3). Why: `stock_data`, `turkish_gold`, `exchange_rates` `updated_at` and `ai_insights.created_at` are `timestamp without time zone` with `server_default=now()` and are read as UTC; on the Europe/Istanbul WSL cluster the insight's "data as of" read 3 h ahead. Permanent fix REQ-33 (a) merged at `7bf4d6b`: the application now writes UTC on insert and update, so only the `server_default` path still depends on the database time zone; keep the check (§10.1 U4, U6) |
 | D4 | **App name** — DECIDED (user, 2026-11-16): checked at deploy time | Agent 1 at deploy | `fly.toml` uses `wolfee-analytics` and `https://wolfee-analytics.fly.dev` in `APP_BASE_URL` / `CORS_ORIGINS`. If `fly apps create` reports the name taken, change all three together before deploying |
-| D6 | **Client IP is spoofable** — found 2026-11-16 | Agent 2 (REQ-39) | `get_client_ip` trusts `CF-Connecting-IP` and the left-most `X-Forwarded-For`; both come from the client, and uvicorn runs with `--forwarded-allow-ips=*`. A different fake IP per request bypasses the 5-per-hour invite limit, the 10/min auth limit and the 120/min API limit (the per-account login lockout still holds). On Fly the trusted value is `Fly-Client-IP`, which the Fly proxy sets. Until REQ-39 is merged, a long random invite code (`openssl rand -hex 16`) keeps guessing infeasible. **Recommended before the first deploy** |
+| D6 | **Client IP is spoofable** — found 2026-11-16 | Agent 2 (REQ-39) | `get_client_ip` trusts `CF-Connecting-IP` and the left-most `X-Forwarded-For`; both come from the client, and uvicorn runs with `--forwarded-allow-ips=*`. A different fake IP per request bypasses the 5-per-hour invite limit, the 10/min auth limit and the 120/min API limit (the per-account login lockout still holds). On Fly the trusted value is `Fly-Client-IP`, which the Fly proxy sets. **DONE 2026-11-16**: REQ-39 merged at `c9aff26` (on Fly only `Fly-Client-IP`; locally the socket peer) and the uvicorn trust-all flags removed at `037077d`. Keep the long random invite code anyway |
 | D5 | Fly Postgres major version | user runs | `--image-ref flyio/postgres-flex:16` (§5); tests run on 16.16 |
 
 **Should be fixed soon after; not blocking:**
@@ -281,7 +281,7 @@ Everything on `integration` passes in WSL (TESTING.md §5) and the browser smoke
 
 Ready on `integration` @ the commit after `dd08370` (verified 2026-11-16, TESTING.md §5). `fly deploy` builds from the local `wolfee-integration` checkout, so **nothing is pushed** and `main` is not touched. `fly launch` is never used (it would rewrite `fly.toml`). Names below: app `wolfee-analytics`, database app `wolfee-db`, region `fra`; the database that `attach` creates is `wolfee_analytics`.
 
-**Gate before step U1:** decide on §2.1 D6 (spoofable client IP): wait for REQ-39, or deploy now with a long random invite code as the stopgap.
+**Changed 2026-11-16 (user): deploys run from GitHub Actions** (`.github/workflows/deploy.yml`): pull requests to `main` run the tests; a push to `main` runs the tests and, only if they pass, `flyctl deploy --remote-only` (one deploy at a time). The user pushes; Agent 1 never pushes. D6 is resolved (REQ-39). Order: U1–U8 first, then the push.
 
 ### 10.1 Commands the user runs (they create resources, cost money, or carry secret values)
 
@@ -316,11 +316,20 @@ openssl rand -hex 16
 fly secrets set --stage -a wolfee-analytics REGISTRATION_INVITE_CODE=<the generated value>
 fly secrets set --stage -a wolfee-analytics GEMINI_API_KEY=<key>      # optional; without it the AI text uses the template
 fly secrets list -a wolfee-analytics                                   # names and digests only
+
+# U8. CI deploy token, scoped to this app only; paste it as the repository secret FLY_API_TOKEN
+#     (GitHub → Settings → Secrets and variables → Actions). Never into chat or a file.
+fly tokens create deploy -a wolfee-analytics
+
+# U9. Push (only after Agent 1 reports main == integration and the tests pass in WSL)
+git -C <main checkout> push origin main
 ```
 
 Not set, on purpose: CAPTCHA keys (D1), e-mail provider keys (D2), `AUTO_VERIFY_DEV` (must never be set). `REQUIRE_EMAIL_VERIFICATION=false`, `COOKIE_SECURE`, `APP_BASE_URL` and `CORS_ORIGINS` come from `fly.toml`.
 
-### 10.2 Commands Agent 1 runs after the user approves (read-only checks, the deploy, verification)
+### 10.2 After the push: the workflow deploys; Agent 1 verifies (read-only)
+
+The deploy itself is the `deploy` job of the workflow; A2 below is only the manual fallback if the user asks for it. A1 and A3 are read-only.
 
 ```sh
 # A1. Pre-flight, read-only
@@ -329,7 +338,7 @@ fly status -a wolfee-analytics
 fly secrets list -a wolfee-analytics                 # DATABASE_URL and REGISTRATION_INVITE_CODE present
 fly config validate -c fly.toml
 
-# A2. Deploy from the integration checkout (release_command: alembic upgrade head, then the instrument seed)
+# A2. (fallback only, on request) deploy the same commit from the main checkout
 fly deploy -c fly.toml -a wolfee-analytics
 
 # A3. Verify
@@ -344,8 +353,8 @@ fly logs -a wolfee-analytics --no-tail | grep -ciE 'token=|reset-password\?|veri
 
 ### 10.3 After the deploy is verified (user)
 
-- Choose the §6 frontend option; disconnect the Cloudflare project (its config files were deleted 2026-11-16) and any Netlify Git integration.
-- Approve merging `integration` into `main`; the user pushes. Agent 1 does not push.
+- Railway, Cloudflare and Netlify are disconnected from the repository by the user before the push (2026-11-16).
+- Later changes: merge into `integration`, verify, fast-forward `main`, the user pushes; the workflow deploys.
 
 Rollback: `fly releases -a wolfee-analytics`, then `fly deploy --image <previous image>`; or `fly scale count 0 -a wolfee-analytics` to take the app offline. Data is disposable (§5).
 
